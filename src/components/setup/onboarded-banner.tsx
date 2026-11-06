@@ -14,15 +14,15 @@ export interface EmployeeProvisioningState {
 
 type Row = { role: AgentRoleKey; label: string; detail: string; ready: boolean };
 
-/** One employee as the launch judge reads it: the same word the launch panel below shows for that employee, so the two never disagree. */
+/** One retained role profile as the launch judge reads it: the same status the launch panel below shows for that profile. */
 function judgedRow(role: AgentRoleKey, item: LaunchItem | undefined): Row {
-  if (!item) return { role, label: "Action required", detail: "This employee has not been created. iAcquire needs to review the workspace.", ready: false };
+  if (!item) return { role, label: "Action required", detail: "This AI profile has not been created. iAcquire needs to review the workspace.", ready: false };
   return { role, label: ITEM_STATE_LABEL[item.state], detail: item.detail, ready: item.state === "done" };
 }
 
 /**
  * Reads persisted configuration, health, inventory and job evidence. No elapsed-time progress is inferred. When the launch judge's reading is given, every number and word comes from
- * it: there is one answer to "how ready is this client", and a count of employees that merely answer in chat is not it. Without it (the read failed) the employees are listed
+ * it: there is one answer to "how ready is this client", and a count of profiles that merely answer in chat is not it. Without it (the read failed) the profiles are listed
  * from their own records and nothing is counted.
  */
 export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning = [], paymentCleared, readiness = null, growthPartner = null }: {
@@ -30,7 +30,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
   crmGuide: boolean;
   agents?: AgentInstanceRow[];
   provisioning?: EmployeeProvisioningState[];
-  /** Whether the setup payment is confirmed; employees do not start without it. */
+  /** Whether the setup payment is confirmed; profile work does not start without it. */
   paymentCleared?: boolean;
   /** The launch judge's reading of this workspace. */
   readiness?: LaunchReadiness | null;
@@ -43,7 +43,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     if (readiness) return judgedRow(role, judged.get(`employees.${role}`));
     const agent = agents.find((item) => item.role_key === role);
     const job = jobs.get(role);
-    if (!agent) return { role, label: "Action required", detail: "This employee has not been created. iAcquire needs to review the workspace.", ready: false };
+    if (!agent) return { role, label: "Action required", detail: "This AI profile has not been created. iAcquire needs to review the workspace.", ready: false };
     const employee = deriveEmployeeReadiness({
       displayName: agent.display_name, enabled: agent.enabled, status: agent.status,
       configVersion: agent.config_version, lastHealthCheckAt: agent.last_health_check_at?.toISOString() ?? null,
@@ -109,13 +109,13 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
             <div key={row.role} data-employee={row.role} className="rounded-2xl border border-line bg-surface-2/40 p-4">
               <div className="flex items-start justify-between gap-2"><h3 className="text-[14px] font-semibold text-ink">{meta.shortName}</h3><span className={row.ready ? "text-[12px] font-semibold text-success-ink" : "text-[12px] font-semibold text-warning-ink"}>{row.label}</span></div>
               <p className="mt-2 min-h-12 text-[12px] leading-relaxed text-muted">{row.detail}</p>
-              <Link href={row.ready ? `/chat/${meta.slug}` : `/employees/${meta.slug}`} className="mt-3 inline-block text-[12px] font-semibold text-primary hover:underline">{row.ready ? "Open chat" : "View employee"} →</Link>
+              <Link href={row.ready ? `/chat/${meta.slug}` : `/employees/${meta.slug}`} className="mt-3 inline-block text-[12px] font-semibold text-primary hover:underline">{row.ready ? "Open chat" : "View profile"} →</Link>
             </div>
           );
         })}
       </div>
       <p className="mt-4 text-[12px] leading-relaxed text-muted">
-        {nativeCrm ? "The iAcquire team applies your industry Blueprint to your CRM." : "The iAcquire team links your CRM."} Booking and external messaging require their own verified connections; they do not delay core employee chat.
+        {nativeCrm ? "The iAcquire team applies your industry Blueprint to your CRM." : "The iAcquire team links your CRM."} Booking and external messaging require their own verified connections; they do not delay available AI chat.
         {crmGuide && <> <Link href="/crm/setup" className="font-semibold text-primary underline underline-offset-2">Open your CRM setup guide</Link></>}
       </p>
     </section>

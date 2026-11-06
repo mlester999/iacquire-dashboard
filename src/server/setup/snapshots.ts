@@ -7,6 +7,7 @@ import { connectorsFor, connectorSummary } from "@/server/setup/connectors";
 import { mediaStorageStepDescription } from "@/server/setup/storage-step";
 import { MEDIA_STORAGE_STEP_KEY } from "@/lib/onboarding/media-storage-step";
 import { fleetHealth } from "@/lib/setup/health";
+import { currentSetupCopy } from "@/lib/setup-copy";
 import type { CrmMode } from "@/lib/crm/types";
 import {
   assertAgencyAccess,
@@ -89,6 +90,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       title: string;
       client_title: string | null;
       description: string;
+      completion_notice: string | null;
       section: Section;
       completion_mode: "manual" | "verified" | "activation";
       status: TaskStatus;
@@ -106,7 +108,7 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       completed_at: Date | null;
       updated_at: Date;
     }>(
-      `select id, template_key, title, client_title, description, section, completion_mode, status, required, hidden, service_excluded, sort_order,
+      `select id, template_key, title, client_title, description, completion_notice, section, completion_mode, status, required, hidden, service_excluded, sort_order,
               to_char(estimated_completion_at, 'YYYY-MM-DD') as estimated_completion_at, client_note, blocked_reason, completion_note,
               client_action, client_response, client_responded_at, completed_at, updated_at
        from client_setup_tasks where org_id = $1 order by sort_order`,
@@ -122,7 +124,18 @@ export async function getClientSetupSnapshot(ctx: OrgContext): Promise<ClientSet
       [ctx.org.orgId],
     );
     const permission = await db.query<{ can_respond: boolean }>("select app.has_permission($1, 'setup.respond') as can_respond", [ctx.org.orgId]);
-    return { inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, canRespond: permission.rows[0].can_respond };
+    const displayTasks = tasks.rows.map((task) => {
+      const copy = currentSetupCopy({
+        key: task.template_key,
+        title: task.title,
+        clientTitle: task.client_title,
+        description: task.description,
+        completionNotice: task.completion_notice,
+        clientAction: task.client_action,
+      });
+      return { ...task, title: copy.title, client_title: copy.clientTitle, description: copy.description, completion_notice: copy.completionNotice, client_action: copy.clientAction };
+    });
+    return { inst: inst.rows[0], tasks: displayTasks, deps: deps.rows, atts: atts.rows, events: events.rows, canRespond: permission.rows[0].can_respond };
   });
   if (!data.inst) return null;
 
@@ -286,7 +299,18 @@ export async function getAgencySetupSnapshot(admin: SessionUser, orgId: string):
     const payment = await db.query<{ status: string | null; cleared: boolean }>(
       "select (select b.setup_payment_status from billing_accounts b where b.org_id = $1) as status, app.setup_payment_cleared($1) as cleared", [orgId],
     );
-    return { org: org.rows[0], inst: inst.rows[0], tasks: tasks.rows, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors, payment: payment.rows[0] };
+    const displayTasks = tasks.rows.map((task) => {
+      const copy = currentSetupCopy({
+        key: task.template_key ?? "",
+        title: task.title,
+        clientTitle: task.client_title,
+        description: task.description,
+        completionNotice: task.completion_notice,
+        clientAction: task.client_action,
+      });
+      return { ...task, title: copy.title, client_title: copy.clientTitle, description: copy.description, completion_notice: copy.completionNotice, client_action: copy.clientAction as TaskRow["client_action"] };
+    });
+    return { org: org.rows[0], inst: inst.rows[0], tasks: displayTasks, deps: deps.rows, atts: atts.rows, events: events.rows, checks: checks.rows, jobs: jobs.rows, staff: staff.rows, names: new Map(names.rows.map((n) => [n.id, n.name])), connectors, payment: payment.rows[0] };
   });
   if (!d.org || !d.inst) throw new AppError("not_found", "Client not found.");
 

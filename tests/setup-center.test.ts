@@ -109,11 +109,57 @@ describe("checklist creation", () => {
     expect(rows.map((r) => r.key)).toEqual(TEMPLATE_KEYS);
   });
 
-  it("keeps the six-role setup copy for existing legacy workspaces", async () => {
+  it("uses capability-focused setup copy for workspaces with retained role profiles", async () => {
     const { org } = await fresh("Legacy Setup Copy Co");
     expect(await task(org.id, "ai_employees")).toMatchObject({
+      title: "AI runtime and safety checks passed",
+      client_title: "Your AI runtime is configured",
+      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      completion_notice: "Your AI workspace is ready",
+      client_action: {
+        type: "approve",
+        label: "Review your AI workspace configuration",
+        instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup.",
+      },
+    });
+  });
+
+  it("normalizes saved legacy copy in client and agency views without rewriting setup records", async () => {
+    const { org, ownerCtx } = await fresh("Saved Setup Copy Co");
+    const id = await taskId(org.id, "ai_employees");
+    const oldAction = {
+      type: "approve",
+      label: "Approve your AI employee configuration",
+      instructions: "Review how each AI employee will work and communicate in AI Workforce, then approve so we can finish and test them.",
+    };
+    await withSystem((db) => db.query(
+      `update client_setup_tasks set title = $2, client_title = $3, description = $4, completion_notice = $5, client_action = $6::jsonb
+       where id = $1`,
+      [id, "Six client-specific Hermes AI employees configured", "Your six AI employees are configured", "Each AI employee gets its own private environment and is checked live before it is marked ready.", "Your AI team is ready", JSON.stringify(oldAction)],
+    ));
+
+    const clientTask = (await getClientSetupSnapshot(ownerCtx))!.tasks.find((item) => item.id === id)!;
+    expect(clientTask).toMatchObject({
+      title: "Your AI runtime is configured",
+      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      action: { label: "Review your AI workspace configuration", instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup." },
+    });
+    const agencyTask = (await getAgencySetupSnapshot(await admin(), org.id)).tasks.find((item) => item.id === id)!;
+    expect(agencyTask).toMatchObject({
+      title: "AI runtime and safety checks passed",
+      clientTitle: "Your AI runtime is configured",
+      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      clientAction: { label: "Review your AI workspace configuration", instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup." },
+    });
+
+    expect((await withSystem((db) => db.query<{ title: string; client_title: string; description: string; completion_notice: string; client_action: Record<string, unknown> }>(
+      "select title, client_title, description, completion_notice, client_action from client_setup_tasks where id = $1", [id],
+    ))).rows[0]).toEqual({
       title: "Six client-specific Hermes AI employees configured",
       client_title: "Your six AI employees are configured",
+      description: "Each AI employee gets its own private environment and is checked live before it is marked ready.",
+      completion_notice: "Your AI team is ready",
+      client_action: oldAction,
     });
   });
 

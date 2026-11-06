@@ -99,27 +99,29 @@ export async function ensureSetupInstance(db: Queryable, orgId: string, actorUse
        completion_mode, check_key, service, required, requires_evidence, requires_client_response, client_action, sort_order, service_excluded, crm_provider)
      select $1, $2, tt.key,
             case when $3::boolean then coalesce(tt.growth_partner_title, tt.title) else case tt.key
-              when 'ai_employees' then 'Six client-specific Hermes AI employees configured'
-              when 'ai_configuration' then 'AI employee configuration drafts prepared'
-              when 'ai_profiles' then 'Dedicated AI employee profiles provisioned'
-              when 'integration_tests' then 'AI workforce and integration tests passed'
+              when 'ai_employees' then 'AI runtime and safety checks passed'
+              when 'ai_configuration' then 'AI workspace configuration prepared'
+              when 'ai_profiles' then 'Private AI runtime profile provisioned'
+              when 'integration_tests' then 'AI and integration checks passed'
               else tt.title end end,
             case when $3::boolean then coalesce(tt.growth_partner_client_title, tt.client_title) else case tt.key
-              when 'ai_employees' then 'Your six AI employees are configured'
-              when 'ai_profiles' then 'Your private AI employees are prepared'
+              when 'ai_employees' then 'Your AI runtime is configured'
+              when 'ai_configuration' then 'Your AI configuration is prepared'
+              when 'ai_profiles' then 'Your private AI runtime is prepared'
               else tt.client_title end end,
             case when $3::boolean then coalesce(tt.growth_partner_description, tt.description) else case tt.key
-              when 'ai_employees' then 'Each AI employee gets its own private environment and is checked live before it is marked ready.'
-              when 'ai_configuration' then 'We prepare each included employee around your business knowledge, tone and approved responsibilities.'
-              when 'ai_profiles' then 'We prepare separate employee identities for your company. They become ready only after successful connection and safety checks.'
-              when 'integration_tests' then 'We run live checks across your AI employees and connected tools before activation.'
-              when 'knowledge_review' then 'We review your approved business information so your AI employees have accurate reference material.'
+              when 'company_info' then 'The details you shared about your business, goals and how AI should support your work.'
+              when 'ai_employees' then 'We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.'
+              when 'ai_configuration' then 'We prepare an AI configuration around your approved business information, communication preferences and permitted capabilities.'
+              when 'ai_profiles' then 'We prepare the private runtime profile for your workspace. It becomes ready only after successful connection and safety checks.'
+              when 'integration_tests' then 'We run live checks across the AI runtime, CRM and connected tools before activation.'
+              when 'knowledge_review' then 'We review approved business information and reference materials before the AI runtime is activated.'
               else tt.description end end,
-            case when $3::boolean then coalesce(tt.growth_partner_completion_notice, tt.completion_notice) else case when tt.key = 'ai_employees' then 'Your AI team is ready' else tt.completion_notice end end,
+            case when $3::boolean then coalesce(tt.growth_partner_completion_notice, tt.completion_notice) else case when tt.key = 'ai_employees' then 'Your AI workspace is ready' else tt.completion_notice end end,
             tt.section, tt.completion_mode, tt.check_key,
             tt.service, tt.required, tt.requires_evidence, tt.requires_client_response,
             case when $3::boolean then coalesce(tt.growth_partner_client_action, tt.client_action)
-                 when tt.key = 'ai_employees' then '{"type":"approve","label":"Approve your AI employee configuration","instructions":"Review how each AI employee will work and communicate in AI Workforce, then approve so we can finish and test them."}'::jsonb
+                 when tt.key = 'ai_employees' then '{"type":"approve","label":"Review your AI workspace configuration","instructions":"Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup."}'::jsonb
                  else tt.client_action end,
             tt.sort_order,
             (tt.service is not null and not (tt.service = any(i.services))) or (tt.crm_provider is not null and not app.setup_crm_uses($1, tt.crm_provider)),
