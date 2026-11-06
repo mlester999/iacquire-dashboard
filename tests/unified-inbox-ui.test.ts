@@ -1,7 +1,7 @@
 import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { EMPTY_COPY, InboxListPanel, MORE_VIEWS, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
+import { employeeShortName, EMPTY_COPY, InboxListPanel, MORE_VIEWS, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
 import { INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS } from "@/lib/inbox";
 
 // What the list panel says, rendered on the server. The interactive behaviour (selection, polling) is covered in the browser QA and by the sync tests.
@@ -48,5 +48,12 @@ describe("the views", () => {
     expect([...PRIMARY_VIEWS, ...MORE_VIEWS].sort()).toEqual([...INBOX_VIEWS].sort());
     const out = text(html({ counts: Object.fromEntries(INBOX_VIEWS.map((v, i) => [v, i])) as never }));
     for (const v of PRIMARY_VIEWS) expect(out).toContain(INBOX_VIEW_LABELS[v]);
+  });
+});
+
+describe("Growth Partner identity in Inbox", () => {
+  it("uses the single product identity for Growth Partner activity", () => {
+    expect(employeeShortName({ name: "Workspace-specific display name", roleKey: "growth_partner" })).toBe("AI Growth Partner");
+    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Sales Assistant");
   });
 });

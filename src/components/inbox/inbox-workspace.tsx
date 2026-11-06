@@ -1423,9 +1423,9 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
           </Select>
           {(props.aiEmployees ?? []).length > 0 && (
             <>
-              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI profile on this conversation</label>
-              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI profile updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
-                {!c.aiAgent && <option value="">AI profile: none chosen</option>}
+              <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI handler for this conversation</label>
+              <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
+                {!c.aiAgent && <option value="">AI handler: none chosen</option>}
                 {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
               </Select>
             </>

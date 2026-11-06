@@ -111,9 +111,9 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
       </div>
       {perms.assign && aiEmployees.length > 0 && (
         <div className="hidden items-center gap-2 sm:flex">
-          <label htmlFor="ai-employee" className="shrink-0 text-muted">AI profile</label>
+          <label htmlFor="ai-employee" className="shrink-0 text-muted">AI handler</label>
           <div className="w-full max-w-[260px]">
-            <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI profile updated."); }}>
+            <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
               {aiEmployees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>

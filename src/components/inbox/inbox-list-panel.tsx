@@ -9,7 +9,7 @@ import { Badge, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from "@/components/ui/overlays";
 import { bulkConversationsAction } from "@/app/actions/inbox";
 import { PriorityBadge } from "@/components/crm/priority/priority-ui";
-import { AGENT_ROLES } from "@/lib/agents";
+import { AGENT_ROLES, AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import { ATTENTION_LABELS, CONVERSATION_OUTCOMES, INBOX_SORTS, INBOX_SORT_HELP, INBOX_SORT_LABELS, INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS, OUTCOME_LABELS, type InboxSort, type InboxView } from "@/lib/inbox";
 import { CONVERSATION_CHANNEL_LABELS, type ConversationChannel } from "@/lib/messaging";
 import { cn, initials, relativeTime, sentenceCase } from "@/lib/utils";
@@ -76,6 +76,7 @@ function ChannelMark({ channel, provider }: { channel: ConversationChannel; prov
 
 /** Short role name for the pill ("Sales Assistant"), falling back to the employee's own display name. */
 export function employeeShortName(agent: { name: string; roleKey: string }): string {
+  if (agent.roleKey === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
   return AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
 }
 
