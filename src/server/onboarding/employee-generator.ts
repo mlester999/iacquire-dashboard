@@ -163,7 +163,7 @@ export function manualOverridesFromHistory(versions: Array<{ source: string; set
     if (!parsed.success) continue;
     const current = parsed.data;
     const fields: Array<[string, string | undefined, string | undefined]> = [
-      ...(["tone", "replyLength", "language", "targetCustomers", "companyRules", "neverPromise", "escalateWhen"] as const).map((field) => [field, previous?.[field], current[field]] as [string, string | undefined, string | undefined]),
+      ...(["tone", "replyLength", "language", "communicationStyle", "targetCustomers", "companyRules", "neverPromise", "escalateWhen", "goals", "proactiveResponsibilities"] as const).map((field) => [field, previous?.[field], current[field]] as [string, string | undefined, string | undefined]),
       ...[...new Set([...Object.keys(previous?.roleAnswers ?? {}), ...Object.keys(current.roleAnswers)])].map((key) => [`roleAnswers.${key}`, previous?.roleAnswers[key], current.roleAnswers[key]] as [string, string | undefined, string | undefined]),
     ];
     for (const [field, before, after] of fields) {

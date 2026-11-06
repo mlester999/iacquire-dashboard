@@ -35,6 +35,10 @@ export const aiPreferencesSchema = z.object({
 });
 export type AiPreferences = z.infer<typeof aiPreferencesSchema>;
 
+/** The onboarding choice describes the client's preferred interaction mode; it never grants runtime permissions. */
+export const GROWTH_PARTNER_BEHAVIOR_MODES = ["answer_book", "answer_handoff", "draft_only"] as const;
+export type GrowthPartnerBehaviorMode = (typeof GROWTH_PARTNER_BEHAVIOR_MODES)[number];
+
 /** Per-employee configuration shown to clients as simple controls. */
 export const agentSettingsSchema = z.object({
   displayName: z.string().trim().min(1).max(40),
@@ -144,7 +148,9 @@ export const onboardingSchema = z.object({
   goals: z
     .object({ selected: z.array(z.string().max(40)).max(12).default([]), other: text(300) })
     .default({ selected: [], other: "" }),
-  communication: aiPreferencesSchema.default(aiPreferencesSchema.parse({})),
+  communication: aiPreferencesSchema.extend({
+    aiBehavior: z.enum(GROWTH_PARTNER_BEHAVIOR_MODES).default("answer_handoff"),
+  }).default({ ...aiPreferencesSchema.parse({}), aiBehavior: "answer_handoff" }),
   workforce: z
     .object({
       selected: z.array(z.string()).max(6).default([]),

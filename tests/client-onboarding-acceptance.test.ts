@@ -6,6 +6,7 @@ import { createClientTenant } from "@/server/admin/tenants";
 import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
+import { createConfigVersion } from "@/server/workforce/service";
 import { addMember, agencyUser, createUser, ctxFor, uid } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 
@@ -14,7 +15,7 @@ afterEach(() => {
   resetEnvCache();
 });
 
-async function onboard(name: string, description: string, service: string, customer: string) {
+async function onboard(name: string, description: string, service: string, customer: string, extraAnswers: Record<string, unknown> = {}) {
   const admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
   const ownerEmail = `owner-${uid()}@example.test`;
   // Capture invitation mail in the test environment. This acceptance makes no outbound requests.
@@ -48,6 +49,7 @@ async function onboard(name: string, description: string, service: string, custo
     "b.appointments": true,
     "b.website_need": "have",
     "d.pricing_policy": "never",
+    ...extraAnswers,
     "f.review": true,
   };
   const saved = await saveOnboardingStep(ctx, {
@@ -62,7 +64,13 @@ async function onboard(name: string, description: string, service: string, custo
 
 describe("isolated new-client onboarding acceptance (test database; no Hermes writes)", () => {
   it("creates one Growth Partner, one Business Brain and one provisioning request per client from one onboarding flow", async () => {
-    const roofing = await onboard("Brightside Roofing", "We repair residential roofs after storm damage.", "Roof repair and inspection", "Austin homeowners");
+    const roofing = await onboard("Brightside Roofing", "We repair residential roofs after storm damage.", "Roof repair and inspection", "Austin homeowners", {
+      "c.ai_behavior": "answer_book",
+      "c.tone": "professional",
+      "c.company_rules": "Use plain language with homeowners.",
+      "c.never_promise": "Never guarantee a repair date.",
+      "c.human_escalation": ["unsafe_or_uncertain"],
+    });
     const plumbing = await onboard("Harbor Plumbing", "We repair plumbing systems for local homes.", "Pipe repair and drain cleaning", "Austin property owners");
 
     for (const client of [roofing, plumbing]) {
@@ -94,6 +102,17 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
       expect(settings.personality).toBeTruthy();
       expect(settings.communicationStyle).toBeTruthy();
       expect(settings.operatingProcedures).toBeTruthy();
+      if (client === roofing) {
+        expect(settings).toMatchObject({
+          tone: "professional",
+          companyRules: "Use plain language with homeowners.",
+          neverPromise: "Never guarantee a repair date.",
+          approvalPreference: "always",
+        });
+        expect(settings.escalateWhen).toContain("anything unsafe or uncertain");
+        expect(settings.proactiveResponsibilities).toMatch(/prefers routine answers, lead qualification and booking/i);
+        expect(settings.proactiveResponsibilities).toMatch(/grants no permission/i);
+      }
       expect(rows[0].compiled_instructions).toContain(client.org.name);
       expect(rows[0].compiled_instructions).not.toContain(client === roofing ? plumbing.org.name : roofing.org.name);
 
@@ -130,6 +149,36 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
       ));
       expect(after.rows[0].n).toBe(before.rows[0].n);
     }
+
+    const runtime = (await withSystem((db) => db.query<{ id: string; settings: Record<string, unknown> }>(
+      `select a.id, v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`,
+      [roofing.org.id],
+    ))).rows[0];
+    const clientPersonality = "Keep the partner calm and concise in every conversation.";
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: roofing.org.id,
+      agentId: runtime.id,
+      settings: agentSettingsSchema.parse({ ...runtime.settings, personality: clientPersonality }),
+      source: "client_edit",
+      userId: roofing.owner.id,
+      apply: true,
+    }));
+    const changed = await saveOnboardingStep(roofing.ctx, { answers: { "c.ai_behavior": { value: "draft_only" }, "c.tone": { value: "casual" }, "f.review": { value: true } } });
+    expect(changed.rejected).toEqual({});
+    await submitOnboarding(roofing.ctx);
+    const updated = (await withSystem((db) => db.query<{ settings: unknown; compiled_instructions: string; status: string }>(
+      `select v.settings, v.compiled_instructions, v.status from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`,
+      [roofing.org.id],
+    ))).rows[0];
+    const updatedSettings = agentSettingsSchema.parse(updated.settings);
+    expect(updatedSettings.personality).toBe(clientPersonality);
+    expect(updatedSettings.tone).toBe("casual");
+    expect(updatedSettings.communicationStyle).toMatch(/Use a casual tone/i);
+    expect(updatedSettings.proactiveResponsibilities).toMatch(/draft-only behavior/i);
+    expect(updatedSettings.approvalPreference).toBe("always");
+    expect(updated.compiled_instructions).toContain("draft-only behavior");
 
     const runtimeCounts = await withSystem((db) => db.query<{ org_id: string; profiles: number; identities: number }>(
       `select o.id as org_id,

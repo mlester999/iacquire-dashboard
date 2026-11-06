@@ -2,7 +2,7 @@
 // and what the answers mean for the rest of the platform. No I/O so it runs the same in the browser
 // (instant feedback) and on the server (the authority).
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
-import { LANGUAGES, TONES, type OnboardingData, type Tone, type ReplyLength } from "@/lib/agent-settings";
+import { GROWTH_PARTNER_BEHAVIOR_MODES, LANGUAGES, TONES, type OnboardingData, type Tone, type ReplyLength } from "@/lib/agent-settings";
 import { normalizeEmail, normalizePhone, validateBusinessHours, type BusinessHours, WEEKDAYS } from "@/lib/messaging";
 import { INDUSTRY_OPTIONS, QUESTIONS, QUESTION_BY_ID, QUESTIONNAIRE_VERSION, hasHours, questionOptions, wantsAppointments, wantsWebsite, channelsOf } from "./definitions";
 import { ONBOARDING_SECTIONS, type AnswerValue, type Answers, type QuestionDef, type QuestionScope, type SectionId, type StoredAnswer, type StoredAnswers } from "./types";
@@ -471,6 +471,7 @@ export function toLegacyData(a: Answers, enabledRoles: AgentRoleKey[]): Onboardi
   const tone = TONES.includes(s(a, "c.tone") as Tone) ? (s(a, "c.tone") as Tone) : "friendly";
   const replyLength = (["concise", "balanced", "detailed"] as const).includes(s(a, "c.reply_length") as ReplyLength) ? (s(a, "c.reply_length") as ReplyLength) : "concise";
   const language = (LANGUAGES as readonly string[]).includes(s(a, "c.language")) ? (s(a, "c.language") as (typeof LANGUAGES)[number]) : "English";
+  const aiBehavior = GROWTH_PARTNER_BEHAVIOR_MODES.find((mode) => mode === s(a, "c.ai_behavior")) ?? "answer_handoff";
   const topics = labelsFor("c.sensitive_topics", a);
   const escalations = labelsFor("c.human_escalation", a).map((l) => l.toLowerCase());
   const answers = toRoleAnswers(a);
@@ -489,6 +490,7 @@ export function toLegacyData(a: Answers, enabledRoles: AgentRoleKey[]): Onboardi
       tone,
       replyLength,
       language,
+      aiBehavior,
       companyRules: s(a, "c.company_rules"),
       neverPromise: joinParts([s(a, "c.never_promise"), topics.length ? `Never answer without a person: ${topics.join(", ")}.` : ""], " "),
       escalateWhen: joinParts([escalations.length ? `Hand off when ${escalations.join(", ")}.` : "", s(a, "d.handoff_rules")], " ").slice(0, 600),

@@ -12,7 +12,7 @@ import { parseProfileSnapshot, type ProfileKey } from "@/lib/onboarding/business
 import type { Answers } from "@/lib/onboarding/types";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
-import { compileAgentConfig, defaultSettings, detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler";
+import { compileAgentConfig, defaultSettings, detectRiskFlags, sanitizeClientText, summarizeSettings } from "@/server/workforce/compiler";
 import { createConfigVersion, currentSettings, isReservedProfile, loadCompanyContext, queueSyncJob } from "@/server/workforce/service";
 import { PROVISIONING_PAYMENT_CLEARED_SQL, requestProvisioning } from "@/server/workforce/provisioning";
 import { writeKnowledgeTextTx } from "@/server/knowledge/write";
@@ -58,6 +58,7 @@ interface AgentRef {
   role_key: string;
   status: string;
   active_config_version_id: string | null;
+  enabled?: boolean;
 }
 
 /** Shown to the client as the job's own detail, and how a re-enabled employee recognises a request this module cancelled (an agency's own cancellation is never reopened). */
@@ -191,6 +192,12 @@ function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSetting
     ...data.goals.selected.map((goal) => sanitizeClientText(goal, 80)).filter(Boolean),
     sanitizeClientText(data.goals.other, 200),
   ].filter(Boolean);
+  const requestedBehavior = data.communication.aiBehavior ?? "answer_handoff";
+  const behaviorPreference = requestedBehavior === "answer_book"
+    ? "The client prefers routine answers, lead qualification and booking when the calendar connection, permissions, availability and approval rules allow. This preference grants no permission."
+    : requestedBehavior === "draft_only"
+      ? "The client prefers draft-only behavior: prepare work for review and never send or make customer-facing changes automatically."
+      : "The client prefers answers followed by a handoff; do not book or follow up without a person. This preference grants no permission."
   return agentSettingsSchema.parse({
     ...settings,
     personality: "A steady, accountable AI Growth Partner: helpful, curious, and evidence-led, with initiative bounded by current permissions.",
@@ -198,14 +205,117 @@ function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSetting
     communicationStyle: `Use a ${settings.tone} tone, ${settings.replyLength} replies, and ${settings.language}. Apply any approved brand voice and prefer clear, plain language.`,
     responseBehavior: "Answer directly. Distinguish confirmed facts from unknowns. Report an action as complete only after its authorized service confirms the persisted result.",
     operatingProcedures: "Use the active Business Brain and tenant-scoped application services. Check current permissions and approval state before every write. Preserve duplicate checks, idempotency, and audit history.",
-    proactiveResponsibilities: "Work toward the client's selected goals through enabled sources, configured schedules, and permitted internal tasks. Keep external communication behind the required approval.",
+    proactiveResponsibilities: `Work toward the client's selected goals through enabled sources, configured schedules, and permitted internal tasks. ${behaviorPreference} Keep external communication behind the required approval.`,
     reportingBehavior: "Report verified outcomes with evidence, current status, blockers, pending approvals, and next steps through the permanent conversation or Work Board.",
     responsibilities: "Coordinate six internal capability domains as one AI Growth Partner: lead discovery and qualification; sales support; calendar and appointments; CRM and pipeline; business operations; performance and analytics.",
     goals: selectedGoals.length
       ? `Work toward these client-selected objectives: ${selectedGoals.join("; ")}. Treat them as targets, never guaranteed outcomes.`
       : "Help the client acquire customers through accurate, approved work and report measured results.",
     targetCustomers,
+    companyRules: data.communication.companyRules,
+    neverPromise: data.communication.neverPromise,
+    escalateWhen: data.communication.escalateWhen,
   });
+}
+
+const GROWTH_PARTNER_ONBOARDING_FIELDS = [
+  "tone", "replyLength", "language", "communicationStyle", "targetCustomers", "companyRules", "neverPromise", "escalateWhen", "goals", "proactiveResponsibilities",
+] as const;
+
+/** Updates only Growth Partner fields that still match the last onboarding version; client-written settings remain theirs. */
+function mergeGrowthPartnerBusinessUpdate(
+  current: AgentSettings,
+  previousOnboarding: AgentSettings,
+  data: OnboardingData,
+  manualOverrides: ReadonlySet<string>,
+): AgentSettings {
+  const fresh = growthPartnerSettingsFromOnboarding(data);
+  const next: AgentSettings = { ...current, roleAnswers: { ...current.roleAnswers } };
+  for (const field of GROWTH_PARTNER_ONBOARDING_FIELDS) {
+    if (!manualOverrides.has(field) && current[field] === previousOnboarding[field]) {
+      (next as unknown as Record<string, string>)[field] = fresh[field];
+    }
+  }
+  return agentSettingsSchema.parse(next);
+}
+
+/** Keeps the single Growth Partner configuration aligned with newly confirmed onboarding answers. */
+async function ensureGrowthPartnerConfigFromAnswers(
+  db: Queryable,
+  who: EmployeeActor,
+  input: { agent: AgentRef; data: OnboardingData },
+): Promise<GeneratedEmployee> {
+  const { agent, data } = input;
+  const orgId = who.orgId;
+  const pendingRows = await db.query<{ version: number; settings: unknown; summary: string; source: string }>(
+    `select v.version, v.settings, v.summary, v.source
+     from agent_config_versions v where v.agent_instance_id = $1 and v.org_id = $2 and v.status = 'pending_agency_review'
+     order by v.version desc limit 1`,
+    [agent.id, orgId],
+  );
+  const pending = pendingRows.rows[0];
+  const parsedPending = pending ? agentSettingsSchema.safeParse(pending.settings) : null;
+  if (pending && pending.source !== "onboarding") {
+    return { role: AI_GROWTH_PARTNER_ROLE_KEY, name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY), summary: pending.summary, configStatus: "unchanged", agentStatus: agent.status };
+  }
+
+  let settings = growthPartnerSettingsFromOnboarding(data);
+  if (agent.active_config_version_id) {
+    const current = (await currentSettings(db, agent.id, orgId)).settings;
+    const { rows: appliedHistory } = await db.query<{ source: string; settings: unknown }>(
+      `select source, settings from agent_config_versions
+       where agent_instance_id = $1 and org_id = $2 and applied_at is not null order by version`,
+      [agent.id, orgId],
+    );
+    const { rows: priorRows } = await db.query<{ settings: unknown }>(
+      `select settings from agent_config_versions where agent_instance_id = $1 and org_id = $2 and source = 'onboarding'
+       and applied_at is not null order by version desc limit 1`,
+      [agent.id, orgId],
+    );
+    const prior = priorRows[0] ? agentSettingsSchema.safeParse(priorRows[0].settings) : null;
+    const { rows: pendingManualRows } = await db.query<{ source: string; settings: unknown }>(
+      `select source, settings from agent_config_versions where agent_instance_id = $1 and org_id = $2
+       and status = 'pending_agency_review' and source <> 'onboarding' order by version desc limit 1`,
+      [agent.id, orgId],
+    );
+    const pendingManual = pendingManualRows[0] ? agentSettingsSchema.safeParse(pendingManualRows[0].settings) : null;
+    const base = pendingManual?.success ? pendingManual.data : current;
+    const history = pendingManual?.success ? [...appliedHistory, pendingManualRows[0]] : appliedHistory;
+    settings = prior?.success
+      ? mergeGrowthPartnerBusinessUpdate(base, prior.data, data, manualOverridesFromHistory(history))
+      : base;
+  } else if (pending && parsedPending?.success) {
+    settings = mergeGrowthPartnerBusinessUpdate(parsedPending.data, parsedPending.data, data, new Set());
+  }
+
+  if (pending && parsedPending?.success && isDeepStrictEqual(settings, parsedPending.data)) {
+    return { role: AI_GROWTH_PARTNER_ROLE_KEY, name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY), summary: pending.summary, configStatus: "unchanged", agentStatus: agent.status };
+  }
+  if (agent.active_config_version_id) {
+    const { rows: activeRows } = await db.query<{ settings: unknown }>(
+      `select v.settings from agent_config_versions v where v.id = $1 and v.org_id = $2`,
+      [agent.active_config_version_id, orgId],
+    );
+    const active = activeRows[0];
+    const activeSettings = active ? agentSettingsSchema.safeParse(active.settings) : null;
+    if (activeSettings?.success && isDeepStrictEqual(settings, activeSettings.data) && !pending) {
+      return { role: AI_GROWTH_PARTNER_ROLE_KEY, name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY), summary: summarizeSettings(AI_GROWTH_PARTNER_ROLE_KEY, settings), configStatus: "unchanged", agentStatus: agent.status };
+    }
+  }
+
+  const config = await createConfigVersion(db, {
+    orgId,
+    agentId: agent.id,
+    settings,
+    source: "onboarding",
+    changeRequest: agent.active_config_version_id
+      ? "Synchronized newly confirmed business preferences; the client's Growth Partner settings were preserved."
+      : "Prepared the unified AI Growth Partner from confirmed company setup.",
+    actorKind: who.actorKind,
+    userId: who.userId,
+    apply: true,
+  });
+  return { role: AI_GROWTH_PARTNER_ROLE_KEY, name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY), summary: config.summary, configStatus: config.status, agentStatus: agent.status };
 }
 export async function syncEmployeesFromAnswers(
   db: Queryable,
@@ -214,7 +324,7 @@ export async function syncEmployeesFromAnswers(
 ): Promise<GeneratedEmployee[]> {
   const out: GeneratedEmployee[] = [];
   const { rows: agents } = await db.query<AgentRef>(
-    "select id, role_key, status, active_config_version_id from agent_instances where org_id = $1",
+    "select id, role_key, status, active_config_version_id, enabled from agent_instances where org_id = $1",
     [who.orgId],
   );
   for (const role of input.selected) {
@@ -224,32 +334,9 @@ export async function syncEmployeesFromAnswers(
   }
 
   const growthPartner = agents.find((agent) => agent.role_key === AI_GROWTH_PARTNER_ROLE_KEY);
-  if (growthPartner && growthPartner.status !== "disabled" && !growthPartner.active_config_version_id) {
-    const pending = await db.query(
-      `select 1 from agent_config_versions
-       where agent_instance_id = $1 and org_id = $2 and status = 'pending_agency_review'
-       limit 1`,
-      [growthPartner.id, who.orgId],
-    );
-    if (!pending.rows.length) {
-      const config = await createConfigVersion(db, {
-        orgId: who.orgId,
-        agentId: growthPartner.id,
-        settings: growthPartnerSettingsFromOnboarding(input.data),
-        source: "onboarding",
-        changeRequest: "Prepared the unified AI Growth Partner from confirmed company setup.",
-        actorKind: who.actorKind,
-        userId: who.userId,
-        apply: true,
-      });
-      out.push({
-        role: AI_GROWTH_PARTNER_ROLE_KEY,
-        name: workforceRoleName(AI_GROWTH_PARTNER_ROLE_KEY),
-        summary: config.summary,
-        configStatus: config.status,
-        agentStatus: growthPartner.status,
-      });
-    }
+  if (growthPartner?.enabled && growthPartner.status !== "disabled") {
+    const result = await ensureGrowthPartnerConfigFromAnswers(db, who, { agent: growthPartner, data: input.data });
+    if (result.configStatus !== "unchanged") out.push(result);
   }
   return out;
 }
