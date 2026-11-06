@@ -4,15 +4,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as claimRoute } from "@/app/api/internal/hermes-provisioner/claim/route";
 import { POST as completeRoute } from "@/app/api/internal/hermes-provisioner/complete/route";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { resetEnvCache } from "@/server/env";
+import { createClientTenant } from "@/server/admin/tenants";
 import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { createConfigVersion, decideHeldVersion } from "@/server/workforce/service";
-import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { addMember, agencyUser, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 
 const llm = vi.hoisted(() => ({
@@ -53,20 +54,6 @@ interface ClaimedJob {
 
 const sha256 = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
 
-function generatedPreferences(role: AgentRoleKey) {
-  return {
-    personality: `Synthetic AI-personalized ${role} employee who works carefully and reliably.`,
-    characterTraits: `Careful, accurate, and focused on ${role} responsibilities.`,
-    communicationStyle: `Use clear, calm language suited to the ${role} role.`,
-    responseBehavior: "Separate confirmed details from uncertainty and ask when facts are missing.",
-    operatingProcedures: "Follow confirmed business details and protected role procedures before acting.",
-    proactiveResponsibilities: "Surface work only when an authorized request, schedule, or trigger exists.",
-    reportingBehavior: "Report verified findings, limitations, and a useful next step.",
-    responsibilities: `Support the ${role} function using only approved company context.`,
-    goals: `Help the owner reach selected goals through accurate ${role} work.`,
-  };
-}
-
 async function postJson(handler: RouteHandler, body: unknown, token?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (token) headers.set("Authorization", "Bearer " + token);
@@ -78,9 +65,20 @@ async function postJson(handler: RouteHandler, body: unknown, token?: string) {
 }
 
 async function onboard(name: string, description: string, service: string, customer: string) {
-  const org = await createOrg({ name });
+  const admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
+  const ownerEmail = `owner-${randomUUID()}@example.test`;
+  vi.stubEnv("EMAIL_PROVIDER", "capture");
+  resetEnvCache();
+  const created = await createClientTenant(admin, {
+    name,
+    ownerEmail,
+    industry: "Home services",
+    timezone: "America/Chicago",
+    enabledRoles: [...AGENT_ROLE_KEYS],
+  });
+  const org = { id: created.orgId, name, slug: created.slug };
   await clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared");
-  const owner = await createUser();
+  const owner = await createUser({ email: ownerEmail });
   await addMember(org.id, owner.id, "owner");
   const ctx = ctxFor(owner, org, "owner");
   const answers = {
@@ -107,10 +105,10 @@ async function onboard(name: string, description: string, service: string, custo
   });
   expect(saved.rejected).toEqual({});
   const outcome = await submitOnboarding(ctx);
-  expect(outcome.employees).toHaveLength(6);
+  expect(outcome.employees).toHaveLength(1);
+  expect(outcome.employees[0].role).toBe(AI_GROWTH_PARTNER_ROLE_KEY);
   return { org, owner, ctx, outcome };
 }
-
 function successfulResult(job: ClaimedJob, apiKey?: string) {
   return {
     ok: true,
@@ -149,7 +147,7 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
 
   it("runs real onboarding through authorized claim, profile callbacks, recovery, idempotency, and config sync", async () => {
     llm.config = { baseUrl: "https://llm.example.test/v1", format: "openai", model: "test-model", apiKey: "test-only", source: "portal" };
-    llm.reply = { ok: true, text: JSON.stringify(Object.fromEntries(AGENT_ROLE_KEYS.map((role) => [role, generatedPreferences(role)]))) };
+    llm.reply = { ok: true, text: "{}" };
 
     const gatewayId = randomUUID();
     const workerToken = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
@@ -171,10 +169,10 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "Austin property owners",
     );
     const tenants = [tenantA, tenantB];
-    expect(llm.calls).toBe(2);
+    expect(llm.calls).toBe(0);
 
     const reviewer = await createUser({ platformRole: "agency_super_admin" });
-    const audienceAgentId = await agentId(tenantA.org.id, "lead_hunter");
+    const audienceAgentId = await agentId(tenantA.org.id, AI_GROWTH_PARTNER_ROLE_KEY);
     const originalAudienceConfig = await withSystem((db) => db.query<{ settings: unknown }>(
       "select v.settings from agent_instances a join agent_config_versions v on v.id=a.active_config_version_id and v.org_id=a.org_id where a.id=$1 and a.org_id=$2",
       [audienceAgentId, tenantA.org.id],
@@ -211,15 +209,15 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       currentQuestionId: "f.review",
     });
     expect(refreshedAnswers.rejected).toEqual({});
-    expect((await submitOnboarding(tenantA.ctx)).employees).toHaveLength(6);
-    expect(llm.calls).toBe(2);
+    expect((await submitOnboarding(tenantA.ctx)).employees).toHaveLength(0);
+    expect(llm.calls).toBe(0);
 
     const latestAudienceConfig = await withSystem((db) => db.query<{ settings: unknown; source: string }>(
       "select v.settings,v.source from agent_config_versions v where v.agent_instance_id=$1 and v.org_id=$2 order by v.version desc limit 1",
       [audienceAgentId, tenantA.org.id],
     ));
     expect(latestAudienceConfig.rows).toHaveLength(1);
-    expect(latestAudienceConfig.rows[0].source).toBe("onboarding");
+    expect(latestAudienceConfig.rows[0].source).toBe("client_edit");
     expect(agentSettingsSchema.parse(latestAudienceConfig.rows[0].settings).targetCustomers)
       .toBe("Owner-approved independent roof specialists");
 
@@ -246,7 +244,7 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
 
     const generatedConfigs = await withSystem((db) => db.query<{
       org_id: string;
-      role_key: AgentRoleKey;
+      role_key: WorkforceRoleKey;
       settings: unknown;
       compiled_instructions: string;
     }>(
@@ -255,21 +253,23 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "where a.org_id=$1 or a.org_id=$2 order by a.org_id,a.role_key",
       [tenantA.org.id, tenantB.org.id],
     ));
-    expect(generatedConfigs.rows).toHaveLength(12);
+    expect(generatedConfigs.rows).toHaveLength(2);
     for (const row of generatedConfigs.rows) {
       const settings = agentSettingsSchema.parse(row.settings);
-      const expected = generatedPreferences(row.role_key);
+      expect(row.role_key).toBe(AI_GROWTH_PARTNER_ROLE_KEY);
       for (const field of [
         "personality", "characterTraits", "communicationStyle", "responseBehavior", "operatingProcedures",
         "proactiveResponsibilities", "reportingBehavior", "responsibilities", "goals",
       ] as const) {
-        expect(settings[field]).toBe(expected[field]);
+        expect(settings[field].trim().length).toBeGreaterThan(0);
       }
+      expect(settings.personality).toContain("AI Growth Partner");
+      expect(settings.communicationStyle).toContain("friendly");
+      expect(settings.operatingProcedures).toContain("tenant-scoped");
+      expect(settings.goals).toContain("more_leads");
       expect(row.compiled_instructions).toContain(settings.personality);
       expect(row.compiled_instructions).toContain(row.org_id === tenantA.org.id ? tenantA.org.name : tenantB.org.name);
-      if (row.org_id === tenantA.org.id && row.role_key === "lead_hunter") {
-        expect(settings.targetCustomers).toBe("Owner-approved independent roof specialists");
-      }
+      expect(settings.targetCustomers).toBe(row.org_id === tenantA.org.id ? "Owner-approved independent roof specialists" : "Austin property owners");
     }
 
     const unauthorized = await postJson(claimRoute, { gatewayId });
@@ -333,13 +333,13 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "where a.org_id=$1 or a.org_id=$2 order by a.org_id,a.role_key",
       [tenantA.org.id, tenantB.org.id],
     ));
-    expect(claimed, JSON.stringify(queueState.rows)).toHaveLength(12);
-    expect(new Set(claimed.map((job) => job.profile)).size).toBe(12);
-    expect(new Set(claimed.map((job) => job.jobId)).size).toBe(12);
+    expect(claimed, JSON.stringify(queueState.rows)).toHaveLength(2);
+    expect(new Set(claimed.map((job) => job.profile)).size).toBe(2);
+    expect(new Set(claimed.map((job) => job.jobId)).size).toBe(2);
     for (const tenant of tenants) {
       const jobs = claimed.filter((job) => job.orgId === tenant.org.id);
-      expect(jobs).toHaveLength(6);
-      expect(jobs.map((job) => job.role).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
+      expect(jobs).toHaveLength(1);
+      expect(jobs.map((job) => job.role)).toEqual([AI_GROWTH_PARTNER_ROLE_KEY]);
     }
 
     const provisionState = await withSystem((db) => db.query<{
@@ -356,14 +356,14 @@ describe("iAcquireOS Hermes provisioning HTTP acceptance (synthetic PGlite tenan
       "where a.org_id=$1 or a.org_id=$2 order by a.org_id,a.role_key",
       [tenantA.org.id, tenantB.org.id],
     ));
-    expect(provisionState.rows).toHaveLength(12);
+    expect(provisionState.rows).toHaveLength(2);
     expect(provisionState.rows.every((row) =>
       row.hermes_profile?.startsWith("c-") &&
       row.status === "provisioning" &&
       row.job_status === "awaiting_health_check" &&
       Boolean(row.fingerprint),
     )).toBe(true);
-    expect(new Set(provisionState.rows.map((row) => row.fingerprint)).size).toBe(12);
+    expect(new Set(provisionState.rows.map((row) => row.fingerprint)).size).toBe(2);
 
     const firstJob = claimed[0];
     const firstTenant = tenants.find((candidate) => candidate.org.id === firstJob.orgId)!;

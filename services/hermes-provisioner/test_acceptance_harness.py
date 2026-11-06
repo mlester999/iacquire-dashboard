@@ -11,6 +11,8 @@ from pathlib import Path
 
 from acceptance_harness import (
     AcceptanceState,
+    EXPECTED_PROFILES,
+    PROFILES_PER_TENANT,
     ROLE_TITLES,
     TENANTS,
     _audit_event_diagnostic,
@@ -231,10 +233,10 @@ class AcceptanceFixtureTests(unittest.TestCase):
         self.assertEqual(
             _portal_status_state(
                 {
-                    "mappedProfiles": 12,
+                    "mappedProfiles": EXPECTED_PROFILES,
                     "provisionRequested": 0,
                     "provisionInProgress": 0,
-                    "provisionAwaitingHealthCheck": 12,
+                    "provisionAwaitingHealthCheck": EXPECTED_PROFILES,
                     "failedJobs": 0,
                 },
                 "provision",
@@ -293,13 +295,14 @@ class AcceptanceFixtureTests(unittest.TestCase):
             {"auditEventsObserved": 16, **state.audit_event_summary_observed},
         )
 
-    def test_fixture_is_two_isolated_tenants_with_all_six_roles(self):
+    def test_fixture_has_one_growth_partner_identity_per_tenant(self):
         state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path("/tmp"))
-        self.assertEqual(len(state.base_jobs), 12)
-        self.assertEqual(len({job["profile"] for job in state.base_jobs.values()}), 12)
+        self.assertEqual(len(state.base_jobs), EXPECTED_PROFILES)
+        self.assertEqual(len({job["profile"] for job in state.base_jobs.values()}), EXPECTED_PROFILES)
         for tenant in TENANTS:
             jobs = [job for job in state.base_jobs.values() if tenant in job["soul"]]
-            self.assertEqual({job["role"] for job in jobs}, set(ROLE_TITLES))
+            self.assertEqual({job["role"] for job in jobs}, {"growth_partner"})
+            self.assertEqual(len(jobs), PROFILES_PER_TENANT)
             self.assertEqual(len({job["orgId"] for job in jobs}), 1)
             self.assertTrue(all(job["profile"].startswith("c-") for job in jobs))
         self.assertNotIn("iAcquire", " ".join(job["soul"] for job in state.base_jobs.values()))
@@ -342,9 +345,9 @@ class AcceptanceFixtureTests(unittest.TestCase):
         self.assertTrue(state.failed_once)
         self.assertTrue(state.duplicate_completed)
         self.assertTrue(state.sync_completed)
-        self.assertEqual(len(state.base_success_profiles), 12)
-        self.assertEqual(len(state.profile_keys), 12)
-        self.assertEqual(len(set(state.profile_keys.values())), 12)
+        self.assertEqual(len(state.base_success_profiles), EXPECTED_PROFILES)
+        self.assertEqual(len(state.profile_keys), EXPECTED_PROFILES)
+        self.assertEqual(len(set(state.profile_keys.values())), EXPECTED_PROFILES)
         self.assertEqual(state.latest_manifest[first["profile"]]["configVersion"], 2)
 
     def test_unexpected_worker_failure_keeps_only_a_safe_code_for_diagnostics(self):

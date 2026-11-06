@@ -39,15 +39,16 @@ PORTAL_SOUL_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 ROLE_TITLES = {
-    "operations_manager": ("Zeng", "Operations Manager"),
-    "lead_hunter": ("Lead Hunter", "Lead Hunter"),
-    "appointment_setter": ("Appointment Setter", "Appointment Setter"),
-    "sales_assistant": ("Sales Assistant", "Sales Assistant"),
-    "crm_manager": ("CRM Manager", "CRM Manager"),
-    "performance_analyst": ("Performance Analyst", "Performance Analyst"),
+    "growth_partner": ("AI Growth Partner", "AI Growth Partner"),
 }
 ROLE_SLUGS = {key: title.lower().replace(" ", "-") for key, (_, title) in ROLE_TITLES.items()}
 TENANTS = ("northstar-synthetic", "redwood-synthetic")
+PROFILES_PER_TENANT = 1
+EXPECTED_PROFILES = len(TENANTS) * PROFILES_PER_TENANT
+EXPECTED_PROFILE_KEY_DENIALS = EXPECTED_PROFILES * (EXPECTED_PROFILES - 1)
+EXPECTED_CROSS_TENANT_DENIALS = len(TENANTS) * (len(TENANTS) - 1) * PROFILES_PER_TENANT * PROFILES_PER_TENANT
+EXPECTED_AUDIT_EVENTS = EXPECTED_PROFILES + 3
+EXPECTED_AUDIT_SUCCESSES = EXPECTED_PROFILES + 2
 POLICY = """platform_toolsets:
   api_server:
     - memory
@@ -125,10 +126,10 @@ def _portal_status_state(status: Any, phase: str) -> str:
 
     if phase == "provision":
         ready = (
-            equals_count("mappedProfiles", 12)
+            equals_count("mappedProfiles", EXPECTED_PROFILES)
             and equals_count("provisionRequested", 0)
             and equals_count("provisionInProgress", 0)
-            and equals_count("provisionAwaitingHealthCheck", 12)
+            and equals_count("provisionAwaitingHealthCheck", EXPECTED_PROFILES)
             and failed_count == 0
         )
     elif phase == "sync":
@@ -507,9 +508,13 @@ class AcceptanceState:
         actual = {entry.name for entry in profiles_root.iterdir()}
         if actual != expected:
             raise ValueError("profile_directory_set_mismatch")
-        if len(self.profile_keys) != 12 or len(set(self.profile_keys.values())) != 12:
+        if len(self.profile_keys) != EXPECTED_PROFILES or len(set(self.profile_keys.values())) != EXPECTED_PROFILES:
             raise ValueError("profile_api_key_isolation_failed")
 
+        if collections.Counter(self.profile_tenants.values()) != collections.Counter({
+            tenant: PROFILES_PER_TENANT for tenant in TENANTS
+        }):
+            raise ValueError("growth_partner_profile_count_mismatch")
         tenant_tags = [tenant.upper().replace("-", "_") for tenant in TENANTS]
         for profile, manifest in self.latest_manifest.items():
             directory = profiles_root / profile
@@ -574,7 +579,7 @@ class AcceptanceState:
                 for row in audit_rows
             ),
         }
-        if len(audit_records) != 15:
+        if len(audit_records) != EXPECTED_AUDIT_EVENTS:
             raise ValueError("audit_event_count_mismatch")
         if any("apiKey" in row or model_key in json.dumps(row) for row in audit_records):
             raise ValueError("audit_contains_secret")
@@ -583,7 +588,7 @@ class AcceptanceState:
         failed = [row for row in audit_records if row.get("outcome") == "failed"]
         if len(failed) != 1 or failed[0].get("code") != "effective_soul_unverified":
             raise ValueError("audit_recovery_evidence_missing")
-        if sum(row.get("outcome") == "succeeded" for row in audit_records) != 14:
+        if sum(row.get("outcome") == "succeeded" for row in audit_records) != EXPECTED_AUDIT_SUCCESSES:
             raise ValueError("audit_success_count_mismatch")
 
         self._verify_authenticated_routes(bootstrap_key)
@@ -639,7 +644,7 @@ class AcceptanceState:
 
             tenant = self.profile_tenants.get(profile)
             other_profiles = [(other_profile, value) for other_profile, value in self.profile_keys.items() if other_profile != profile]
-            if tenant not in TENANTS or len(other_profiles) != 11:
+            if tenant not in TENANTS or len(other_profiles) != EXPECTED_PROFILES - 1:
                 raise ValueError("tenant_profile_mapping_invalid")
             for other_profile, other_key in other_profiles:
                 wrong = urllib.request.Request(route, headers={"Authorization": "Bearer " + other_key})
@@ -656,6 +661,9 @@ class AcceptanceState:
                 self.profile_key_denials += 1
                 if self.profile_tenants.get(other_profile) != tenant:
                     self.cross_tenant_denials += 1
+
+        if self.profile_key_denials != EXPECTED_PROFILE_KEY_DENIALS or self.cross_tenant_denials != EXPECTED_CROSS_TENANT_DENIALS:
+            raise ValueError("profile_key_scope_denials_mismatch")
 
         default_request = urllib.request.Request(
             base + "/v1/models",

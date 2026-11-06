@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireWorkforceContext } from "@/server/workforce/workspace-access";
 import { getAgentByRole, listConfigVersions, refreshAgentHealthIfStale } from "@/server/workforce/service";
@@ -21,6 +21,7 @@ export default async function ChatPage({ params, searchParams }: { params: Promi
   const meta = AGENT_BY_SLUG[slug];
   if (!meta) notFound();
   const ctx = await requireWorkforceContext("agents.use");
+  if (ctx.org.kind === "client") redirect("/growth-partner/conversation");
   const agent = await getAgentByRole(ctx.user.id, ctx.org.orgId, meta.key);
   if (!agent) notFound();
   const internalVerification = ctx.org.kind === "agency"

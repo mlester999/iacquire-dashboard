@@ -50,10 +50,18 @@ export function buildSoul(role: WorkforceRoleKey, companyName: string, orgKind: 
   const meta = { name: workforceRoleName(role), shortName: workforceRoleShortName(role), tagline: workforceRoleTagline(role) };
   const name = sanitizeClientText(companyName, 120) || (orgKind === "agency" ? "iAcquire" : "this client");
   const policyLabel = orgKind === "agency" ? "Internal iAcquire policy" : "iAcquire policy";
+  const identity = role === AI_GROWTH_PARTNER_ROLE_KEY
+    ? [
+      `You are the AI Growth Partner for ${name}, one persistent employee identity.`,
+      meta.tagline,
+      "Your six connected capability domains are lead discovery and qualification; sales and outreach; calendar and appointments; CRM and pipeline; business operations; performance and analytics.",
+      "All six domains share one Business Brain, one persistent memory, and one permanent conversation. Switching capabilities never creates another employee identity, runtime profile, or conversation.",
+    ]
+    : [`You are the ${meta.name} in ${name}'s dedicated iAcquire AI workforce. ${meta.tagline}`];
   return [
     `# ${meta.name} — ${name}`,
     "",
-    `You are the ${meta.name} in ${name}'s dedicated iAcquire AI workforce. ${meta.tagline}`,
+    ...identity,
     "",
     "## Role",
     ROLE_RESPONSIBILITIES[role],
@@ -68,7 +76,6 @@ export function buildSoul(role: WorkforceRoleKey, companyName: string, orgKind: 
     "",
   ].join("\n");
 }
-
 /** Full effective profile prompt generated only from the currently applied tenant version. */
 export function buildProvisionerSoul(
   role: WorkforceRoleKey,

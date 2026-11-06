@@ -17,14 +17,10 @@ from typing import Any
 PROFILES = Path("/opt/data/profiles")
 STATE = Path("/opt/data/iacquire-provisioner-state")
 EVIDENCE = Path(os.environ.get("ACCEPTANCE_RESULT_EVIDENCE_FILE", "/run/acceptance-results/portal-evidence.json"))
-ROLES = {
-    "operations_manager",
-    "lead_hunter",
-    "appointment_setter",
-    "sales_assistant",
-    "crm_manager",
-    "performance_analyst",
-}
+ROLES = {"growth_partner"}
+EXPECTED_TENANTS = 2
+PROFILES_PER_TENANT = 1
+EXPECTED_PROFILE_COUNT = EXPECTED_TENANTS * PROFILES_PER_TENANT
 
 
 class VerificationError(Exception):
@@ -87,7 +83,7 @@ def main() -> dict[str, int | str]:
     evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
     require(isinstance(evidence, dict), "evidence_invalid")
     rows = evidence.get("profiles")
-    require(isinstance(rows, list) and len(rows) == 12, "profile_count_mismatch")
+    require(isinstance(rows, list) and len(rows) == EXPECTED_PROFILE_COUNT, "profile_count_mismatch")
     require(evidence.get("duplicateCallbackReplays") == 1, "callback_idempotency_mismatch")
 
     org_names: dict[str, str] = {}
@@ -166,8 +162,22 @@ def main() -> dict[str, int | str]:
         expected_jobs.add(current_job)
         audit_profiles.add(profile)
 
-    require(len(org_names) == 2 and all(roles == ROLES for roles in roles_by_org.values()), "tenant_role_matrix_mismatch")
-    require(len(seen_profiles) == 12 and len(seen_agents) == 12 and len(seen_keys) == 12, "isolation_count_mismatch")
+    require(len(org_names) == EXPECTED_TENANTS and all(roles == ROLES for roles in roles_by_org.values()), "tenant_role_matrix_mismatch")
+    require(all(sum(1 for row in rows if row.get("orgId") == org_id) == PROFILES_PER_TENANT for org_id in org_names), "tenant_profile_count_mismatch")
+    tenants = evidence.get("tenants")
+    require(isinstance(tenants, list) and len(tenants) == EXPECTED_TENANTS, "tenant_state_missing")
+    require(
+        {row.get("org_id") for row in tenants if isinstance(row, dict)} == set(org_names)
+        and all(
+            row.get("runtime_profiles") == 1
+            and row.get("growth_partner_profiles") == 1
+            and row.get("growth_partner_identities") == 1
+            and row.get("permanent_conversations") == 1
+            for row in tenants if isinstance(row, dict)
+        ),
+        "unified_partner_identity_or_conversation_mismatch",
+    )
+    require(len(seen_profiles) == EXPECTED_PROFILE_COUNT and len(seen_agents) == EXPECTED_PROFILE_COUNT and len(seen_keys) == EXPECTED_PROFILE_COUNT, "isolation_count_mismatch")
     require(sum(1 for row in rows if row.get("jobKind") == "sync") == 1, "configuration_sync_missing")
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -196,7 +206,9 @@ def main() -> dict[str, int | str]:
             wrong_profile_key_denials += 1
             if other_org_id != org_id:
                 cross_tenant_denials += 1
-    require(wrong_profile_key_denials == 132 and cross_tenant_denials == 72, "profile_key_isolation_count_mismatch")
+    expected_key_denials = EXPECTED_PROFILE_COUNT * (EXPECTED_PROFILE_COUNT - 1)
+    expected_cross_tenant_denials = EXPECTED_TENANTS * (EXPECTED_TENANTS - 1) * PROFILES_PER_TENANT * PROFILES_PER_TENANT
+    require(wrong_profile_key_denials == expected_key_denials and cross_tenant_denials == expected_cross_tenant_denials, "profile_key_isolation_count_mismatch")
 
     model_config = json.loads(
         read_private_text(Path("/run/secrets/profile_model_env.json"), expected_mode=0o400, label="model_secret")

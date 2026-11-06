@@ -184,6 +184,29 @@ export async function ensureEmployeeConfigFromAnswers(
 }
 
 /** The selected employees, one after another, from the answers a submission just confirmed. */
+function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSettings {
+  const settings = defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY, data.communication);
+  const targetCustomers = [...new Set(sanitizeClientText(data.business.idealCustomers, 1000).split(/\n+/).map((value) => value.trim()).filter(Boolean))].join("\n");
+  const selectedGoals = [
+    ...data.goals.selected.map((goal) => sanitizeClientText(goal, 80)).filter(Boolean),
+    sanitizeClientText(data.goals.other, 200),
+  ].filter(Boolean);
+  return agentSettingsSchema.parse({
+    ...settings,
+    personality: "A steady, accountable AI Growth Partner: helpful, curious, and evidence-led, with initiative bounded by current permissions.",
+    characterTraits: "Reliable, organized, thoughtful, transparent about uncertainty, and calm under pressure.",
+    communicationStyle: `Use a ${settings.tone} tone, ${settings.replyLength} replies, and ${settings.language}. Apply any approved brand voice and prefer clear, plain language.`,
+    responseBehavior: "Answer directly. Distinguish confirmed facts from unknowns. Report an action as complete only after its authorized service confirms the persisted result.",
+    operatingProcedures: "Use the active Business Brain and tenant-scoped application services. Check current permissions and approval state before every write. Preserve duplicate checks, idempotency, and audit history.",
+    proactiveResponsibilities: "Work toward the client's selected goals through enabled sources, configured schedules, and permitted internal tasks. Keep external communication behind the required approval.",
+    reportingBehavior: "Report verified outcomes with evidence, current status, blockers, pending approvals, and next steps through the permanent conversation or Work Board.",
+    responsibilities: "Coordinate six internal capability domains as one AI Growth Partner: lead discovery and qualification; sales support; calendar and appointments; CRM and pipeline; business operations; performance and analytics.",
+    goals: selectedGoals.length
+      ? `Work toward these client-selected objectives: ${selectedGoals.join("; ")}. Treat them as targets, never guaranteed outcomes.`
+      : "Help the client acquire customers through accurate, approved work and report measured results.",
+    targetCustomers,
+  });
+}
 export async function syncEmployeesFromAnswers(
   db: Queryable,
   who: EmployeeActor,
@@ -212,7 +235,7 @@ export async function syncEmployeesFromAnswers(
       const config = await createConfigVersion(db, {
         orgId: who.orgId,
         agentId: growthPartner.id,
-        settings: defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY, input.data.communication),
+        settings: growthPartnerSettingsFromOnboarding(input.data),
         source: "onboarding",
         changeRequest: "Prepared the unified AI Growth Partner from confirmed company setup.",
         actorKind: who.actorKind,

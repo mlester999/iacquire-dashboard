@@ -3,7 +3,7 @@ name: Synthetic client Hermes acceptance
 on:
   push:
     branches:
-      - codex/hermes-gha-acceptance
+      - codex/ai-growth-partner
 
 permissions:
   contents: read
@@ -481,24 +481,24 @@ jobs:
           expected = {
               "result": "SANDBOX_PASS",
               "syntheticTenants": 2,
-              "uniqueProfiles": 12,
-              "rolesPerTenant": 6,
-              "completionAttempts": 15,
+              "uniqueProfiles": 2,
+              "rolesPerTenant": 1,
+              "completionAttempts": 5,
               "recoveredFailures": 1,
               "idempotentDuplicateChecks": 1,
               "configurationSyncChecks": 1,
-              "effectiveSoulsVerified": 12,
-              "isolatedProfileKeys": 12,
-              "crossTenantDenials": 72,
-              "profileKeyDenials": 132,
-              "auditEvents": 15,
+              "effectiveSoulsVerified": 2,
+              "isolatedProfileKeys": 2,
+              "crossTenantDenials": 2,
+              "profileKeyDenials": 2,
+              "auditEvents": 5,
               "auditSecretLeaks": 0,
               "modelAuthenticationFailures": 0,
               "externalNetwork": "disabled",
           }
           for key, value in expected.items():
               assert result.get(key) == value, f"acceptance result mismatch: {key}"
-          assert result.get("canaryModelCalls", 0) >= 15
+          assert result.get("canaryModelCalls", 0) >= 5
           print("SANDBOX_PASS: " + json.dumps(result, sort_keys=True, separators=(",", ":")))
           PY
 
@@ -700,9 +700,9 @@ jobs:
           python3 - "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" <<'PY'
           import json, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert result == {"createdTenants": 2, "rolesPerTenant": 6, "requestedProvisionJobs": 12, "heldReviewsApproved": result["heldReviewsApproved"]}
+          assert result == {"createdTenants": 2, "rolesPerTenant": 1, "requestedProvisionJobs": 2, "heldReviewsApproved": result["heldReviewsApproved"]}
           assert isinstance(result["heldReviewsApproved"], int) and result["heldReviewsApproved"] >= 0
-          print("PORTAL_SEED_PASS: two synthetic organizations, twelve pending profile jobs, held configs reviewed")
+          print("PORTAL_SEED_PASS: two synthetic organizations, one Growth Partner profile each, held configs reviewed")
           PY
 
           # The first sandbox already completed on this isolated Hermes home. Point the same restricted worker
@@ -741,7 +741,7 @@ jobs:
           HEALTH_JSON="$health_json" python3 - <<'PY'
           import json, os
           result = json.loads(os.environ["HEALTH_JSON"])
-          assert result.get("checked") == 12 and result.get("online") == 12
+          assert result.get("checked") == 2 and result.get("online") == 2
           PY
 
           portal_failure_phase=portal_sync_request
@@ -770,7 +770,7 @@ jobs:
           SYNC_HEALTH="$sync_health" python3 - <<'PY'
           import json, os
           result = json.loads(os.environ["SYNC_HEALTH"])
-          assert result.get("checked") == 12 and result.get("online") == 12
+          assert result.get("checked") == 2 and result.get("online") == 2
           PY
 
           portal_failure_phase=portal_final_status
@@ -778,10 +778,10 @@ jobs:
           FINAL_STATUS="$final_status" python3 - <<'PY'
           import json, os
           status = json.loads(os.environ["FINAL_STATUS"])
-          assert status.get("employees") == 12
-          assert status.get("onlineEmployees") == 12
-          assert status.get("profileVersionsMatch") == 12
-          assert status.get("provisionSucceeded") == 12
+          assert status.get("employees") == 2
+          assert status.get("onlineEmployees") == 2
+          assert status.get("profileVersionsMatch") == 2
+          assert status.get("provisionSucceeded") == 2
           assert status.get("provisionRequested") == 0
           assert status.get("provisionInProgress") == 0
           assert status.get("syncSucceeded") == 1
@@ -789,7 +789,7 @@ jobs:
           assert status.get("syncInProgress") == 0
           assert status.get("failedJobs") == 0
           assert status.get("duplicateCallbackReplays") == 1
-          print("PORTAL_JOB_STATE_PASS: 12 profiles online, twelve provisions and one approved configuration sync succeeded")
+          print("PORTAL_JOB_STATE_PASS: one Growth Partner profile per tenant is online; two provisions and one approved configuration sync succeeded")
           PY
 
           portal_failure_phase=portal_runtime_evidence

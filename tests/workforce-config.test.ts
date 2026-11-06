@@ -215,6 +215,17 @@ describe("provisioning safety", () => {
     expect(soul).not.toContain("Never discuss iAcquire's internal systems");
   });
 
+  it("keeps the Growth Partner as one runtime identity across six capability domains", () => {
+    const soul = buildSoul("growth_partner", "Lakeside Roofing");
+    expect(soul).toContain("AI Growth Partner for Lakeside Roofing, one persistent employee identity");
+    expect(soul).toContain("lead discovery and qualification");
+    expect(soul).toContain("sales and outreach");
+    expect(soul).toContain("calendar and appointments");
+    expect(soul).toContain("CRM and pipeline");
+    expect(soul).toContain("business operations");
+    expect(soul).toContain("performance and analytics");
+    expect(soul).toContain("one permanent conversation");
+  });
   it("detects restricted tools exposed by a profile", () => {
     expect(restrictedToolsIn([{ name: "core", enabled: true, tools: ["web_search", "memory", "terminal", "write_file"] }])).toEqual(["terminal", "write_file"]);
     expect(restrictedToolsIn([{ name: "browser", enabled: false, tools: ["browser_click"] }])).toEqual([]);

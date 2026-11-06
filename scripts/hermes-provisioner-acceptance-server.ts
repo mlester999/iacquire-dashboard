@@ -33,6 +33,7 @@ if (process.env.NODE_ENV !== "test") throw new Error("acceptance_test_environmen
 process.env.AUTH_PROVIDER = "local";
 process.env.SECRET_STORE = "test-memory";
 process.env.DATABASE_DRIVER = "pglite-memory";
+process.env.EMAIL_PROVIDER = "capture";
 
 const [
   claimRouteModule,
@@ -44,6 +45,7 @@ const [
   fixtureModule,
   billingFixtureModule,
   settingsModule,
+  adminTenantsModule,
 ] = await Promise.all([
   import("@/app/api/internal/hermes-provisioner/claim/route"),
   import("@/app/api/internal/hermes-provisioner/complete/route"),
@@ -54,6 +56,7 @@ const [
   import("../tests/support/fixtures"),
   import("../tests/support/billing"),
   import("@/lib/agent-settings"),
+  import("@/server/admin/tenants"),
 ]);
 
 type RouteHandler = (request: Request) => Promise<Response>;
@@ -176,10 +179,21 @@ async function approveHeldConfigs(orgIds: string[], reviewerId: string) {
 }
 
 async function onboardSyntheticClient(name: string, description: string, service: string, customers: string) {
-  const org = await fixtureModule.createOrg({ name });
-  // The worker's claim only takes a provision job for a workspace whose setup fee is cleared, so the synthetic client has it cleared before it submits.
+  const admin = fixtureModule.agencyUser(
+    await fixtureModule.createUser({ platformRole: "agency_super_admin" }),
+    "agency_super_admin",
+  );
+  const ownerEmail = `owner-${cryptoLabel()}@example.test`;
+  const created = await adminTenantsModule.createClientTenant(admin, {
+    name,
+    ownerEmail,
+    industry: "Home services",
+    timezone: "America/Chicago",
+  });
+  const org = { id: created.orgId, name, slug: created.slug };
+  // The worker's claim only takes a provision job for a workspace whose setup fee is cleared.
   await billingFixtureModule.clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared");
-  const owner = await fixtureModule.createUser();
+  const owner = await fixtureModule.createUser({ email: ownerEmail });
   await fixtureModule.addMember(org.id, owner.id, "owner");
   const ctx = fixtureModule.ctxFor(owner, org, "owner");
   const answers = {
@@ -205,10 +219,21 @@ async function onboardSyntheticClient(name: string, description: string, service
   });
   if (Object.keys(saved.rejected).length) throw new Error("acceptance_onboarding_answers_rejected");
   const outcome = await onboardingModule.submitOnboarding(ctx);
-  if (outcome.employees.length !== 6) throw new Error("acceptance_employee_count_mismatch");
+  if (outcome.employees.length !== 1 || outcome.employees[0]?.role !== "growth_partner") {
+    throw new Error("acceptance_growth_partner_identity_mismatch");
+  }
+  const brain = await dbModule.withSystem((db) => db.query<{ current_version: number | null; source: string }>(
+    `select p.current_version, v.source
+     from ai_growth_partners p
+     left join ai_growth_partner_versions v on v.partner_id=p.id and v.org_id=p.org_id and v.version=p.current_version
+     where p.org_id=$1`,
+    [org.id],
+  ));
+  if (brain.rows.length !== 1 || brain.rows[0]?.current_version !== 1 || brain.rows[0]?.source !== "onboarding") {
+    throw new Error("acceptance_business_brain_missing");
+  }
   return { org, owner };
 }
-
 function safeGatewayUrl(raw: unknown): string {
   if (typeof raw !== "string") throw new Error("acceptance_gateway_url_invalid");
   const url = new URL(raw);
@@ -256,7 +281,7 @@ async function seed(body: unknown) {
       "select count(*)::int as count from agent_provisioning_jobs where (org_id=$1 or org_id=$2) and kind='provision' and status='requested'",
       orgIds,
     ));
-    if (readyConfigs.rows[0]?.count !== 12 || requestedJobs.rows[0]?.count !== 12) {
+    if (readyConfigs.rows[0]?.count !== 2 || requestedJobs.rows[0]?.count !== 2) {
       throw new Error("acceptance_onboarding_not_provisionable");
     }
     return requestedJobs;
@@ -266,7 +291,7 @@ async function seed(body: unknown) {
     { orgId: tenantTwo.org.id, name: tenantTwo.org.name, ownerId: tenantTwo.owner.id, ownerEmail: tenantTwo.owner.email },
   ];
   state.reviewerId = reviewer.id;
-  return { createdTenants: 2, rolesPerTenant: 6, requestedProvisionJobs: requestedJobs.rows[0].count, heldReviewsApproved };
+  return { createdTenants: 2, profilesPerTenant: 1, requestedProvisionJobs: requestedJobs.rows[0].count, heldReviewsApproved };
 }
 
 function cryptoLabel() {
@@ -351,7 +376,7 @@ async function runHealthChecks() {
 async function createSync() {
   if (!state.reviewerId || state.syncVersionId) throw new Error("acceptance_sync_state_invalid");
   const online = await readStatus();
-  if (online.onlineEmployees !== 12) throw new Error("acceptance_health_gate_not_met");
+  if (online.onlineEmployees !== 2) throw new Error("acceptance_health_gate_not_met");
   const tenant = state.tenants[0];
   const { rows } = await dbModule.withSystem((db) => db.query<{ id: string; settings: unknown; role_key: string }>(
     "select a.id,v.settings,a.role_key from agent_instances a " +
@@ -450,7 +475,28 @@ async function runtimeEvidence() {
         : null,
     });
   }
-  return { profiles: evidence, duplicateCallbackReplays: state.duplicateCallbackReplays };
+  const tenantState = await dbModule.withSystem((db) => db.query<{
+    org_id: string;
+    runtime_profiles: number;
+    growth_partner_profiles: number;
+    growth_partner_identities: number;
+    permanent_conversations: number;
+  }>(
+    `select o.id as org_id,
+            (select count(*)::int from agent_instances a where a.org_id=o.id) as runtime_profiles,
+            (select count(*)::int from agent_instances a where a.org_id=o.id and a.role_key='growth_partner') as growth_partner_profiles,
+            (select count(*)::int from ai_growth_partners p where p.org_id=o.id and p.runtime_agent_instance_id is not null) as growth_partner_identities,
+            (select count(*)::int from chat_conversations c
+             join ai_growth_partners p on p.id=c.growth_partner_id and p.org_id=c.org_id
+             where c.org_id=o.id and c.deleted_at is null) as permanent_conversations
+       from organizations o where o.id=any($1::uuid[]) order by o.id`,
+    [state.tenants.map((tenant) => tenant.orgId)],
+  ));
+  return {
+    profiles: evidence,
+    tenants: tenantState.rows,
+    duplicateCallbackReplays: state.duplicateCallbackReplays,
+  };
 }
 
 async function requestBody(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) {

@@ -1,16 +1,35 @@
-import { describe, expect, it } from "vitest";
-import { withSystem } from "@/server/db";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseBusinessBrain } from "@/lib/ai-growth-partner";
 import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
+import { createClientTenant } from "@/server/admin/tenants";
+import { resetEnvCache } from "@/server/env";
+import { withSystem } from "@/server/db";
 import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
-import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { addMember, agencyUser, createUser, ctxFor, uid } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+  resetEnvCache();
+});
+
 async function onboard(name: string, description: string, service: string, customer: string) {
-  const org = await createOrg({ name });
-  // Provisioning requests need the setup payment confirmed (tests/payment-gate.test.ts is about that); this test is about the workforce the flow builds.
-  await clearSetupPayment(org.id);
-  const owner = await createUser();
+  const admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
+  const ownerEmail = `owner-${uid()}@example.test`;
+  // Capture invitation mail in the test environment. This acceptance makes no outbound requests.
+  vi.stubEnv("EMAIL_PROVIDER", "capture");
+  resetEnvCache();
+  const client = await createClientTenant(admin, {
+    name,
+    ownerEmail,
+    industry: "Home services",
+    timezone: "America/Chicago",
+    enabledRoles: [...AGENT_ROLE_KEYS],
+  });
+  const org = { id: client.orgId, name, slug: client.slug };
+  await clearSetupPayment(org.id, "Synthetic onboarding acceptance: setup fee cleared");
+  const owner = await createUser({ email: ownerEmail });
   await addMember(org.id, owner.id, "owner");
   const ctx = ctxFor(owner, org, "owner");
   const answers = {
@@ -31,46 +50,99 @@ async function onboard(name: string, description: string, service: string, custo
     "d.pricing_policy": "never",
     "f.review": true,
   };
-  const saved = await saveOnboardingStep(ctx, { answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])), currentQuestionId: "f.review" });
+  const saved = await saveOnboardingStep(ctx, {
+    answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])),
+    currentQuestionId: "f.review",
+  });
   expect(saved.rejected).toEqual({});
   const result = await submitOnboarding(ctx);
+  expect(client.emailDelivery.status).toBe("captured");
   return { org, owner, ctx, result };
 }
 
 describe("isolated new-client onboarding acceptance (test database; no Hermes writes)", () => {
-  it("configures two distinct six-person workforces from one flow each without cross-tenant knowledge or fake readiness", async () => {
-    const dental = await onboard("Brightside Roofing", "We repair residential roofs after storm damage.", "Roof repair and inspection", "Austin homeowners");
-    const legal = await onboard("Harbor Plumbing", "We repair plumbing systems for local homes.", "Pipe repair and drain cleaning", "Austin property owners");
-    for (const client of [dental, legal]) {
-      expect(client.result.employees).toHaveLength(6);
-      const { rows } = await withSystem((db) => db.query<{ role_key: string; status: string; hermes_profile: string | null; settings: unknown; compiled_instructions: string; config_status: string }>(
+  it("creates one Growth Partner, one Business Brain and one provisioning request per client from one onboarding flow", async () => {
+    const roofing = await onboard("Brightside Roofing", "We repair residential roofs after storm damage.", "Roof repair and inspection", "Austin homeowners");
+    const plumbing = await onboard("Harbor Plumbing", "We repair plumbing systems for local homes.", "Pipe repair and drain cleaning", "Austin property owners");
+
+    for (const client of [roofing, plumbing]) {
+      expect(client.result.employees).toHaveLength(1);
+      expect(client.result.employees[0].role).toBe("growth_partner");
+
+      const { rows } = await withSystem((db) => db.query<{
+        role_key: string;
+        status: string;
+        hermes_profile: string | null;
+        settings: unknown;
+        compiled_instructions: string;
+        config_status: string;
+      }>(
         `select a.role_key, a.status, a.hermes_profile, v.settings, v.compiled_instructions, v.status as config_status
          from agent_instances a
-         left join lateral (
-           select settings, compiled_instructions, status from agent_config_versions
-           where agent_instance_id = a.id and org_id = a.org_id order by version desc limit 1
-         ) v on true
-         where a.org_id = $1 order by a.role_key`, [client.org.id],
+         join agent_config_versions v on v.id = a.active_config_version_id and v.org_id = a.org_id
+         where a.org_id = $1 order by a.role_key`,
+        [client.org.id],
       ));
-      expect(rows.map((row) => row.role_key).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
-      expect(rows.every((row) => row.status !== "online" && row.hermes_profile === null)).toBe(true);
-      expect(rows.every((row) => row.settings !== null)).toBe(true);
-      for (const row of rows) {
-        expect(["applied", "pending_agency_review"]).toContain(row.config_status);
-        const settings = agentSettingsSchema.parse(row.settings);
-        expect(settings.personality).toBeTruthy();
-        expect(settings.communicationStyle).toBeTruthy();
-        expect(settings.operatingProcedures).toBeTruthy();
-        expect(row.compiled_instructions).toContain(client.org.name);
-        expect(row.compiled_instructions).not.toContain(client === dental ? legal.org.name : dental.org.name);
-      }
-      const jobs = await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from agent_provisioning_jobs where org_id = $1", [client.org.id]));
-      expect(jobs.rows[0].n).toBe(6);
-      const before = await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from agent_config_versions where org_id = $1", [client.org.id]));
-      const repeated = await submitOnboarding(client.ctx);
-      expect(repeated.employees.every((item) => item.configStatus === "unchanged")).toBe(true);
-      const after = await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from agent_config_versions where org_id = $1", [client.org.id]));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        role_key: "growth_partner",
+        status: "setup_required",
+        hermes_profile: null,
+      });
+      expect(["applied", "pending_agency_review"]).toContain(rows[0].config_status);
+      const settings = agentSettingsSchema.parse(rows[0].settings);
+      expect(settings.personality).toBeTruthy();
+      expect(settings.communicationStyle).toBeTruthy();
+      expect(settings.operatingProcedures).toBeTruthy();
+      expect(rows[0].compiled_instructions).toContain(client.org.name);
+      expect(rows[0].compiled_instructions).not.toContain(client === roofing ? plumbing.org.name : roofing.org.name);
+
+      const brainRows = await withSystem((db) => db.query<{ current_version: number; source: string; business_brain: unknown }>(
+        `select p.current_version, v.source, v.business_brain
+         from ai_growth_partners p
+         join ai_growth_partner_versions v on v.partner_id = p.id and v.org_id = p.org_id and v.version = p.current_version
+         where p.org_id = $1`,
+        [client.org.id],
+      ));
+      expect(brainRows.rows).toHaveLength(1);
+      expect(brainRows.rows[0].current_version).toBe(1);
+      expect(brainRows.rows[0].source).toBe("onboarding");
+      const brain = parseBusinessBrain(brainRows.rows[0].business_brain);
+      expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: client.org.name, state: "client_confirmed" });
+      expect(brain.sections.productsServicesOffers.services).toMatchObject({ value: client === roofing ? "Roof repair and inspection" : "Pipe repair and drain cleaning", state: "client_confirmed" });
+      expect(brain.sections.productsServicesOffers.pricing.state).toBe("unknown");
+      expect(brain.sections.productsServicesOffers.pricing.value).toBeNull();
+
+      const jobs = await withSystem((db) => db.query<{ kind: string; status: string }>(
+        "select kind, status from agent_provisioning_jobs where org_id = $1",
+        [client.org.id],
+      ));
+      expect(jobs.rows).toEqual([{ kind: "provision", status: "requested" }]);
+
+      const before = await withSystem((db) => db.query<{ n: number }>(
+        "select count(*)::int as n from ai_growth_partner_versions where org_id = $1",
+        [client.org.id],
+      ));
+      await submitOnboarding(client.ctx);
+      const after = await withSystem((db) => db.query<{ n: number }>(
+        "select count(*)::int as n from ai_growth_partner_versions where org_id = $1",
+        [client.org.id],
+      ));
       expect(after.rows[0].n).toBe(before.rows[0].n);
     }
+
+    const runtimeCounts = await withSystem((db) => db.query<{ org_id: string; profiles: number; identities: number }>(
+      `select o.id as org_id,
+              count(distinct a.id)::int as profiles,
+              count(distinct p.id)::int as identities
+       from organizations o
+       left join agent_instances a on a.org_id = o.id
+       left join ai_growth_partners p on p.org_id = o.id
+       where o.id in ($1, $2)
+       group by o.id order by o.id`,
+      [roofing.org.id, plumbing.org.id],
+    ));
+    expect(runtimeCounts.rows).toHaveLength(2);
+    expect(runtimeCounts.rows.every((row) => row.profiles === 1 && row.identities === 1)).toBe(true);
   });
 });
