@@ -13,13 +13,19 @@ import { StatusPill } from "@/components/ui/status";
 import { acknowledgeInternalHermesCapabilitiesAction, resetHermesToolPolicyAction, saveHermesToolPolicyAction } from "@/app/(admin)/admin/actions";
 import { resolveEffectiveHermesPolicy } from "@/lib/hermes-tool-policies";
 import type { HermesPolicyRecord, HermesToolPolicyView } from "@/server/workforce/tool-policies";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { AGENT_BY_KEY, workforceIdentityLabel } from "@/lib/agents";
 import { formatDate } from "@/lib/utils";
 
 type Target = "client_default" | `client:${string}` | `agent:${string}`;
 type PolicyTargetOption = { value: Target; companyName: string; targetName: string; typeOrder: number; label: string };
 
-function policyTargetOptions(data: HermesToolPolicyView): PolicyTargetOption[] {
+function policyAgentLabel(agent: HermesToolPolicyView["agents"][number]) {
+  return agent.orgKind === "agency"
+    ? `Internal profile · ${agent.displayName}`
+    : workforceIdentityLabel(agent.roleKey, agent.displayName);
+}
+
+export function policyTargetOptions(data: HermesToolPolicyView): PolicyTargetOption[] {
   const collator = new Intl.Collator("en", { sensitivity: "base" });
   return [
     ...data.clients.map((client): PolicyTargetOption => ({
@@ -34,7 +40,7 @@ function policyTargetOptions(data: HermesToolPolicyView): PolicyTargetOption[] {
       companyName: agent.orgName,
       targetName: agent.displayName,
       typeOrder: 1,
-      label: `${agent.orgName} · Employee · ${agent.displayName}`,
+      label: `${agent.orgName} · ${policyAgentLabel(agent)}`,
     })),
   ].sort((a, b) =>
     collator.compare(a.companyName, b.companyName)
@@ -52,12 +58,12 @@ function targetInfo(data: HermesToolPolicyView, target: Target): { policy: Herme
   }
   const agentId = target.slice("agent:".length);
   const agent = data.agents.find((entry) => entry.id === agentId);
-  if (!agent) return { policy: data.clientDefault, inherited: true, saveTarget: { scopeKind: "agent", agentId }, title: "Employee policy" };
+  if (!agent) return { policy: data.clientDefault, inherited: true, saveTarget: { scopeKind: "agent", agentId }, title: "Profile policy" };
   const client = data.clients.find((entry) => entry.id === agent.orgId);
   const inheritedPolicy = resolveEffectiveHermesPolicy(agent.orgKind === "agency"
     ? { internalDefault: data.internalDefault }
     : { clientDefault: data.clientDefault, clientOverride: client?.policy });
-  return { policy: agent.policy ?? inheritedPolicy ?? data.clientDefault, inherited: !agent.policy, saveTarget: { scopeKind: "agent", agentId }, title: `${agent.displayName} · ${agent.orgName}` };
+  return { policy: agent.policy ?? inheritedPolicy ?? data.clientDefault, inherited: !agent.policy, saveTarget: { scopeKind: "agent", agentId }, title: `${policyAgentLabel(agent)} · ${agent.orgName}` };
 }
 
 export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyView; timeZone: string }) {
@@ -74,7 +80,7 @@ export function HermesToolPolicies({ data, timeZone }: { data: HermesToolPolicyV
       return profile?.activeConfigVersionId ? [{ agentId, expectedActiveConfigVersionId: profile.activeConfigVersionId }] : [];
     });
     if (targets.length !== selectedProfiles.length) {
-      toast.error("Reload the page; one selected employee no longer has the same applied configuration.");
+      toast.error("Reload the page; one selected profile no longer has the same applied configuration.");
       return;
     }
     const res = await acknowledgeInternalHermesCapabilitiesAction(targets);
@@ -149,7 +155,7 @@ function PolicyConfiguration({ data, target, onTargetChange }: {
   });
 
   return <Card className="space-y-5 p-5">
-    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-base font-semibold text-ink">Policy configuration</h2><p className="mt-1 text-[12px] text-muted">Edit the default, a client override, or an employee override.</p></div><div className="sm:w-80"><Select aria-label="Policy target" value={target} disabled={pending} onChange={(event) => onTargetChange(event.target.value as Target)}><option value="client_default">Default client policy</option>{targetOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></div></div>
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-base font-semibold text-ink">Policy configuration</h2><p className="mt-1 text-[12px] text-muted">Edit the default, a client override, or a runtime profile override.</p></div><div className="sm:w-80"><Select aria-label="Policy target" value={target} disabled={pending} onChange={(event) => onTargetChange(event.target.value as Target)}><option value="client_default">Default client policy</option>{targetOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></div></div>
     <div className="rounded-xl border border-line bg-surface-2 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold text-ink">{selectedTarget.title}</p><p className="mt-1 text-[12px] text-muted">{selectedTarget.inherited ? "Currently inherits the policy shown below." : "This scope has a saved override."}</p></div><StatusPill tone="warning">Desired · Not enforced</StatusPill></div></div>
     <div className="space-y-2"><label htmlFor="hermes-policy-name" className="text-[12px] font-medium text-ink">Policy name</label><input id="hermes-policy-name" className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={readOnly || pending || agentIsInternal} /></div>
     {agentIsInternal && <p className="rounded-xl border border-warning/20 bg-warning-soft p-3 text-[12px] text-warning-ink">Internal profiles remain on their existing Hermes configuration. Saving a per-profile desired override will block new portal runs until the gateway can apply and verify the changed policy.</p>}
@@ -208,7 +214,7 @@ function InternalAcknowledgement({ profiles, timeZone, selected, setSelected, on
           />
         </div>;
       })}
-      {!profiles.length && <p className="rounded-xl bg-surface-2 p-3 text-[12px] text-muted">No existing internal employee records were found. Connect or verify them from Internal Workforce first.</p>}
+      {!profiles.length && <p className="rounded-xl bg-surface-2 p-3 text-[12px] text-muted">No existing internal profiles were found. Connect or verify them from Internal Workforce first.</p>}
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
       <p className="text-[12px] text-muted">Expired inventory is refreshed during acknowledgement; the inventory digest must match its previously verified baseline.</p>
