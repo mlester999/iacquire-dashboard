@@ -172,8 +172,8 @@ export default async function OverviewPage() {
         {agents.length > 0 && <Card className="xl:col-span-2" data-aqi-target="overview.ai-team">
           <CardHeader>
             <div>
-              <CardTitle>Previous employee profiles</CardTitle>
-              <CardDescription>Existing profile records retained during the move to one AI Growth Partner.</CardDescription>
+              <CardTitle>Previous role profiles</CardTitle>
+              <CardDescription>Saved role settings and history retained during the move to one AI Growth Partner.</CardDescription>
             </div>
             <ButtonLink href="/employees" variant="ghost" size="sm">
               Review profiles <ArrowRight className="size-3.5" />

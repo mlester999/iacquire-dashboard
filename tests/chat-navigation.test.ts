@@ -8,7 +8,7 @@ import { calendarDaysAgo, compactRelativeTime, conversationGroup, fullTimestamp,
 describe("chat navigation targets", () => {
   it("sends a client workspace to the dashboard and labels retained profiles accurately", () => {
     const t = chatNavTargets("client", "lead-hunter");
-    expect(t).toMatchObject({ home: "/overview", workforce: "/employees", workforceLabel: "previous employee profiles", profile: "/employees/lead-hunter", manage: "/employees/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
+    expect(t).toMatchObject({ home: "/overview", workforce: "/employees", workforceLabel: "previous role profiles", profile: "/employees/lead-hunter", manage: "/employees/lead-hunter?tab=configure", chat: "/chat/lead-hunter" });
   });
 
   it("sends the agency workspace to the agency dashboard and the agency workforce area", () => {

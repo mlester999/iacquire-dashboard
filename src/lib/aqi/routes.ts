@@ -15,7 +15,7 @@ export interface AqiRoute {
 export const AQI_ROUTES: AqiRoute[] = [
   { path: "/overview", label: "Overview", description: "Your workspace dashboard and current status.", permission: "workspace.view" },
   { path: "/growth-partner", label: "AI Growth Partner", description: "Review the partner identity, Business Brain and current availability.", permission: "agents.use" },
-  { path: "/employees", label: "Previous employee profiles", description: "Saved role profiles from before the Growth Partner migration.", permission: "agents.configure" },
+  { path: "/employees", label: "Previous role profiles", description: "Saved role profiles from before the Growth Partner migration.", permission: "agents.configure" },
   { path: "/growth-partner/conversation", label: "Growth Partner conversation", description: "The permanent conversation with your AI Growth Partner.", permission: "agents.use" },
   { path: "/work", label: "Work Board", description: "Real AI work, its stage, progress and recorded outcomes.", permission: "agents.use" },
   { path: "/knowledge", label: "Knowledge Center", description: "Company knowledge and reference documents.", permission: "knowledge.view" },

@@ -40,7 +40,7 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.approvals", label: "Approvals", description: "Approvals in the main navigation.", routes: ["*"], permission: "approvals.view", navigation: true },
   { id: "nav.knowledge", label: "Knowledge Center", description: "Knowledge Center in the main navigation.", routes: ["*"], permission: "knowledge.view", navigation: true },
   { id: "nav.workforce", label: "AI Growth Partner", description: "AI Growth Partner in the main navigation.", routes: ["*"], permission: "agents.use", navigation: true },
-  { id: "nav.previous-profiles", label: "Previous employee profiles", description: "Saved employee profiles from before the Growth Partner migration.", routes: ["*"], permission: "agents.configure", navigation: true },
+  { id: "nav.previous-profiles", label: "Previous role profiles", description: "Saved role profiles from before the Growth Partner migration.", routes: ["*"], permission: "agents.configure", navigation: true },
   { id: "nav.settings", label: "Settings", description: "Settings in the main navigation.", routes: ["*"], permission: "workspace.view", navigation: true },
   { id: "nav.website", label: "Website", description: "Website in the main navigation.", routes: ["*"], permission: "website.view", navigation: true },
   { id: "nav.support", label: "Support", description: "Support in the main navigation.", routes: ["*"], permission: "support.use", navigation: true },
@@ -105,8 +105,8 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "leads.research", label: "New prospect research request", description: "Prepare a cited, human-reviewable prospect research job.", routes: ["/leads"], permission: "leads.research" },
 
   // Workforce.
-  { id: "workforce.hero", label: "Previous employee profiles", description: "Saved role profiles from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
-  { id: "workforce.gallery", label: "Previous employee profiles", description: "Saved employee profiles retained from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.hero", label: "Previous role profiles", description: "Saved role profiles from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
+  { id: "workforce.gallery", label: "Previous role profiles", description: "Saved role profiles retained from before the Growth Partner migration.", routes: ["/employees"], permission: "agents.configure" },
   { id: "workforce.employee", label: "Previous role profile", description: "A saved role profile with its original history and configuration.", routes: ["/employees"], permission: "agents.configure" },
   { id: "workforce.employee.hero", label: "Previous role profile", description: "The saved role profile's identity, readiness and primary actions.", routes: ["/employees"], permission: "agents.configure" },
   { id: "workforce.employee.configure", label: "Previous profile configuration", description: "The saved profile's grouped configuration form.", routes: ["/employees"], permission: "agents.configure" },

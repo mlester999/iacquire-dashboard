@@ -9,6 +9,7 @@ import { MetricCard, PageHero } from "@/components/ui/workspace";
 import { StatusPill } from "@/components/ui/status";
 import type { listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { formatDateTime } from "@/lib/utils";
+import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 
 type ClientWorkforce = Awaited<ReturnType<typeof listClientWorkforceSummaries>>[number];
 
@@ -48,7 +49,7 @@ export function ClientWorkforcesManager({ clients, timeZone }: { clients: Client
                 ? { label: "Needs attention", tone: "danger" as const }
                 : partnerConfigured
                   ? { label: "Awaiting health check", tone: "warning" as const }
-                  : { label: "Setup required", tone: "warning" as const };
+                  : { label: SETUP_REQUIRED_LABEL, tone: "warning" as const };
           const provisioningStatus = client.provisioning_failed
             ? "failed"
             : client.provisioning_open

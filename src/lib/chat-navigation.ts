@@ -29,7 +29,7 @@ export function chatNavTargets(orgKind: string, slug: string): ChatNavTargets {
     home: agency ? "/admin" : "/overview",
     homeLabel: agency ? "Agency dashboard" : "Dashboard",
     workforce: agency ? "/admin/employees" : "/employees",
-    workforceLabel: agency ? "iAcquire internal profiles" : "previous employee profiles",
+    workforceLabel: agency ? "iAcquire internal profiles" : "previous role profiles",
     profile: `/employees/${slug}`,
     manage: `/employees/${slug}?tab=configure`,
     chat: `/chat/${slug}`,

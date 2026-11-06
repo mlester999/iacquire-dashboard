@@ -189,7 +189,7 @@ export function EmployeeDetail(props: Props) {
   return (
     <div className="space-y-6">
       <Link href="/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink">
-        <ArrowLeft className="size-3.5" /> {props.isClientLegacyProfile ? "Previous employee profiles" : "Retained profiles"}
+        <ArrowLeft className="size-3.5" /> {props.isClientLegacyProfile ? "Previous role profiles" : "Retained profiles"}
       </Link>
 
       {props.isClientLegacyProfile && <PreviousEmployeeProfileNotice />}
@@ -200,7 +200,7 @@ export function EmployeeDetail(props: Props) {
         description={props.description}
         readiness={readiness}
         target="workforce.employee.hero"
-        eyebrow={props.isAgencyEmployee ? "iAcquire internal profile" : props.isClientLegacyProfile ? "Previous employee profile" : "Retained role profile"}
+        eyebrow={props.isAgencyEmployee ? "iAcquire internal profile" : props.isClientLegacyProfile ? "Previous role profile" : "Retained role profile"}
         actions={<>{primary}{secondary}{props.adminManageHref && primary && readiness.cta !== "connection" ? <ButtonLink href={props.adminManageHref} variant="ghost">Admin controls <ArrowUpRight className="size-3.5" /></ButtonLink> : null}</>}
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

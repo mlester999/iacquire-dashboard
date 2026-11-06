@@ -71,7 +71,7 @@ describe("Growth Partner navigation (main iAcquire sidebar)", () => {
     const links = hrefs();
     expect(links).toContain("/growth-partner");
     expect(screen.getByRole("link", { name: "AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner");
-    expect(screen.getByRole("link", { name: "Previous employee profiles" }).getAttribute("href")).toBe("/employees");
+    expect(screen.getByRole("link", { name: "Previous role profiles" }).getAttribute("href")).toBe("/employees");
     expect(links.filter((href) => href?.startsWith("/employees/") || href?.startsWith("/chat/")).length).toBe(0);
   });
 

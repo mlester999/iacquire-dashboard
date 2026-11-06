@@ -17,8 +17,8 @@ describe("the top bar title", () => {
 
   it("keeps the titles it had, and the more specific entry still wins over the general one", () => {
     expect(titleFor("/overview")).toBe("Overview");
-    expect(titleFor("/employees/abc/configure")).toBe("Configure employee");
-    expect(titleFor("/employees/abc")).toBe("Previous employee profiles");
+    expect(titleFor("/employees/abc/configure")).toBe("Configure role profile");
+    expect(titleFor("/employees/abc")).toBe("Previous role profiles");
     expect(titleFor("/crm/contacts/123")).toBe("Contacts");
     expect(titleFor("/crm/reports/sources")).toBe("CRM");
     expect(titleFor("/crm/reviews/anything")).toBe("Reviews");

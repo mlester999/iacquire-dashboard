@@ -15,15 +15,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: "getting-around",
     title: "Getting around the portal",
     keywords: ["navigate", "navigation", "menu", "sidebar", "find", "where", "page", "dashboard", "overview", "home"],
-    body: "The sidebar is your map. Overview shows your workspace at a glance. AI Growth Partner opens your ongoing conversation and work controls. Leads, Appointments, Sales Pipeline and Customer Retention cover each stage of your customer journey. Approvals is where you review actions that need your go-ahead. Workspaces with earlier employee profiles can still find them under Previous employee profiles. On mobile, open the menu with the button at the top left.",
+    body: "The sidebar is your map. Overview shows your workspace at a glance. AI Growth Partner opens your ongoing conversation and work controls. Leads, Appointments, Sales Pipeline and Customer Retention cover each stage of your customer journey. Approvals is where you review actions that need your go-ahead. Workspaces with earlier role profiles can still find them under Previous role profiles. On mobile, open the menu with the button at the top left.",
     links: [{ label: "Overview", href: "/overview" }, { label: "AI Growth Partner", href: "/growth-partner" }],
   },
   {
     id: "ai-growth-partner",
     title: "Your AI Growth Partner",
     keywords: ["employee", "employees", "workforce", "agent", "agents", "team", "operations", "lead hunter", "appointment setter", "sales assistant", "crm manager", "analyst", "roles"],
-    body: "New workspaces get one AI Growth Partner: one identity, one private runtime, one permanent conversation and one Business Brain, with capabilities for operations, lead research, appointments, sales, CRM and performance. Your partner shares the business context across those capabilities. Workspaces created with earlier employee profiles keep their history and can still open those profiles under Previous employee profiles.",
-    links: [{ label: "AI Growth Partner", href: "/growth-partner" }, { label: "Previous employee profiles", href: "/employees" }],
+    body: "New workspaces get one AI Growth Partner: one identity, one private runtime, one permanent conversation and one Business Brain, with capabilities for operations, lead research, appointments, sales, CRM and performance. Your partner shares the business context across those capabilities. Workspaces created with earlier role profiles keep their history and can still open those profiles under Previous role profiles.",
+    links: [{ label: "AI Growth Partner", href: "/growth-partner" }, { label: "Previous role profiles", href: "/employees" }],
   },
   {
     id: "agent-status",
@@ -36,7 +36,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: "chatting",
     title: "Chatting with your AI Growth Partner",
     keywords: ["chat", "message", "conversation", "ask", "talk", "history", "new chat", "regenerate", "stop", "copy", "search conversations"],
-    body: "Open AI Growth Partner and type your question in the permanent conversation. Your partner uses the shared Business Brain and can help across its capabilities. Review requests for important changes appear in Approvals. Previous employee profiles retain their original separate conversation histories.",
+    body: "Open AI Growth Partner and type your question in the permanent conversation. Your partner uses the shared Business Brain and can help across its capabilities. Review requests for important changes appear in Approvals. Previous role profiles retain their original separate conversation histories.",
     links: [{ label: "AI Growth Partner", href: "/growth-partner" }],
   },
   {

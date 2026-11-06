@@ -118,7 +118,7 @@ describe("ChatRail navigation", () => {
   it("shows the brand, links home, and labels retained client profiles accurately", () => {
     renderRail();
     expect(screen.getByRole("link", { name: /iAcquire dashboard/i })).toHaveAttribute("href", "/overview");
-    expect(screen.getByRole("link", { name: /Back to previous employee profiles/i })).toHaveAttribute("href", "/employees");
+    expect(screen.getByRole("link", { name: /Back to previous role profiles/i })).toHaveAttribute("href", "/employees");
     expect(screen.getByText("AcquireOS")).toBeInTheDocument();
   });
 
@@ -185,7 +185,7 @@ describe("ChatRail navigation", () => {
     const onNavigate = vi.fn();
     const onClose = vi.fn();
     renderRail({ onNavigate, onClose });
-    fireEvent.click(screen.getByRole("link", { name: /Back to previous employee profiles/i }));
+    fireEvent.click(screen.getByRole("link", { name: /Back to previous role profiles/i }));
     expect(onNavigate).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Close navigation" }));
     expect(onClose).toHaveBeenCalled();
@@ -301,7 +301,7 @@ describe("ChatRail collapsed (desktop)", () => {
   it("keeps every navigation action reachable by name when only icons are shown", () => {
     const onToggleCompact = vi.fn();
     renderRail({ compact: true, onToggleCompact });
-    expect(screen.getByRole("link", { name: "Back to previous employee profiles" })).toHaveAttribute("href", "/employees");
+    expect(screen.getByRole("link", { name: "Back to previous role profiles" })).toHaveAttribute("href", "/employees");
     expect(screen.getByRole("link", { name: "Lead Hunter, Setup required" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Operations Manager, Online" })).toHaveAttribute("href", "/chat/operations-manager");
     expect(screen.getByRole("button", { name: "New conversation" })).toBeInTheDocument();

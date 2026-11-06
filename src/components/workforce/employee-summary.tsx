@@ -50,7 +50,7 @@ export function PreviousEmployeeProfileNotice() {
   return (
     <aside aria-labelledby="previous-profile-title" className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-primary-soft/35 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="min-w-0">
-        <p id="previous-profile-title" className="text-[13px] font-semibold text-ink">Previous employee profile</p>
+        <p id="previous-profile-title" className="text-[13px] font-semibold text-ink">Previous role profile</p>
         <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
           This role record is retained so its settings, schedules and history remain available. Use the AI Growth Partner’s permanent conversation for new requests.
         </p>
