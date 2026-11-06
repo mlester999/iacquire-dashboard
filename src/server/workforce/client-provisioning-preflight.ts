@@ -1,5 +1,5 @@
 import "server-only";
-import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, isAgentRoleKey } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, isWorkforceRoleKey } from "@/lib/agents";
 import { RUNTIME_ONLINE_STATUSES } from "@/lib/employee-runtime";
 import { MIGRATION_PREREQUISITES, type Queryable } from "@/server/db";
 import { inReadOnlyTransaction } from "@/server/workforce/hermes-a4a-evidence";
@@ -267,7 +267,7 @@ export interface JobFacts {
 
 export interface ProfileFacts {
   clientWorkspaces: number | null;
-  notSixPerClient: Finding | null;
+  unsupportedWorkforceModel: Finding | null;
   reservedOnClients: Finding | null;
   notClientNamed: Finding | null;
   gatewayPairing: Finding | null;
@@ -433,14 +433,34 @@ async function readProfiles(db: Queryable): Promise<ProfileFacts> {
   // The one place a profile name is looked at: it must equal the identity the provisioner derives for that workspace and role. Only ids leave this function.
   const identityMismatch = await guarded(db, async (): Promise<Finding> => {
     const { rows } = await db.query<{ id: string; role_key: string; hermes_profile: string; slug: string }>(`select a.id::text as id, a.role_key, a.hermes_profile, o.slug ${clientEmployees} and a.hermes_profile like 'c-%'`);
-    const wrong = rows.filter((row) => !isAgentRoleKey(row.role_key) || row.hermes_profile !== suggestedProfileName(row.slug, row.role_key)).map((row) => row.id).sort();
+    const wrong = rows.filter((row) => !isWorkforceRoleKey(row.role_key) || row.hermes_profile !== suggestedProfileName(row.slug, row.role_key)).map((row) => row.id).sort();
     return { count: wrong.length, ids: wrong.slice(0, FINDING_IDS) };
   });
   const versionForeign = (column: string) =>
     `select a.id::text as id from agent_instances a where a.${column} is not null and not exists (select 1 from agent_config_versions v where v.id = a.${column} and v.org_id = a.org_id and v.agent_instance_id = a.id)`;
   return {
     clientWorkspaces: await count("select count(*)::int as n from organizations where kind = 'client' and not is_demo"),
-    notSixPerClient: await finding(db, `select o.id::text as id from organizations o where o.kind = 'client' and not o.is_demo and ((select count(*) from agent_instances a where a.org_id = o.id) <> $1::int or (select count(distinct a.role_key) from agent_instances a where a.org_id = o.id and a.role_key = any($2::text[])) <> $1::int)`, [AGENT_ROLE_KEYS.length, [...AGENT_ROLE_KEYS]]),
+    unsupportedWorkforceModel: await finding(db, `
+      select o.id::text as id
+        from organizations o
+       where o.kind = 'client' and not o.is_demo
+         and not (
+           (
+             (select count(*) from agent_instances a where a.org_id = o.id) = $1::int
+             and (select count(distinct a.role_key) from agent_instances a where a.org_id = o.id and a.role_key = any($2::text[])) = $1::int
+             and not exists (select 1 from ai_growth_partners p where p.org_id = o.id)
+           )
+           or
+           (
+             (select count(*) from agent_instances a where a.org_id = o.id) = 1
+             and (select count(*) from agent_instances a where a.org_id = o.id and a.role_key = 'growth_partner') = 1
+             and exists (
+               select 1 from ai_growth_partners p
+                 join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
+                where p.org_id = o.id and a.role_key = 'growth_partner'
+             )
+           )
+         )`, [AGENT_ROLE_KEYS.length, [...AGENT_ROLE_KEYS]]),
     reservedOnClients: await finding(db, `select a.id::text as id ${clientEmployees} and a.hermes_profile is not null and (a.hermes_profile = 'default' or a.hermes_profile like 'iacquire-%' or a.hermes_profile = any($1::text[]))`, [reserved]),
     notClientNamed: await finding(db, `select a.id::text as id ${clientEmployees} and a.hermes_profile is not null and a.hermes_profile not like 'c-%'`),
     gatewayPairing: await finding(db, `select a.id::text as id ${clientEmployees} and ((a.hermes_profile is not null and a.hermes_gateway_id is null) or (a.hermes_gateway_id is not null and (a.hermes_profile is null or not exists (select 1 from hermes_gateways g where g.id = a.hermes_gateway_id and rtrim(g.base_url, '/') = rtrim(coalesce(a.hermes_base_url, ''), '/')))))`),
@@ -679,7 +699,7 @@ export function evaluateProvisioningPreflight(facts: ProvisioningFacts, options:
 
   // ---- profile table integrity
   const profiles = facts.profiles;
-  finds("profiles_six_per_client", "profiles", profiles.notSixPerClient, { none: `Every client workspace has exactly ${AGENT_ROLE_KEYS.length} employees, one per role.`, some: (n) => `${plural(n, "client workspace")} without exactly one employee for each of the six roles.` });
+  finds("profiles_supported_workforce_model", "profiles", profiles.unsupportedWorkforceModel, { none: `Every client workspace has either one linked AI Growth Partner runtime or exactly one employee for each of the ${AGENT_ROLE_KEYS.length} legacy roles.`, some: (n) => `${plural(n, "client workspace")} with an incomplete, mixed or unlinked workforce model.` });
   finds("profiles_reserved_on_clients", "profiles", profiles.reservedOnClients, { none: "No client employee is mapped to a reserved or internal profile.", some: (n) => `${plural(n, "client employee")} mapped to a reserved or internal agency profile.` });
   finds("profiles_naming", "profiles", profiles.notClientNamed, { fail: "warn", none: "Every client profile carries the client prefix.", some: (n) => `${plural(n, "client profile")} without the client prefix (connected by hand, not provisioned).` });
   finds("profiles_identity_matches", "profiles", profiles.identityMismatch, { none: "Every provisioned client profile equals the identity derived for its workspace and role.", some: (n) => `${plural(n, "client profile")} that is not the identity derived for its workspace and role.` });

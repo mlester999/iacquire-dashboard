@@ -11,7 +11,7 @@ import {
   type Finding, type PreflightMode, type PreflightResult, type ProvisioningFacts,
 } from "@/server/workforce/client-provisioning-preflight";
 import { processIo, runPreflightCli } from "@/server/workforce/client-provisioning-preflight-cli";
-import { suggestedProfileName } from "@/server/workforce/service";
+import { ensureGrowthPartnerRuntime, suggestedProfileName } from "@/server/workforce/service";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 
 // The read-only client-provisioning preflight. The pure checks are tested on hand-made facts (each check id with a passing and a failing set, the dormant and enabled matrices), then
@@ -53,7 +53,7 @@ function healthy(attestedGateway: boolean): ProvisioningFacts {
       ineligibleDue: none, ineligibleOpen: none, withoutRequester: none,
     },
     profiles: {
-      clientWorkspaces: 2, notSixPerClient: none, reservedOnClients: none, notClientNamed: none, gatewayPairing: none, duplicateProfiles: none, identityMismatch: none, credentialForeign: none,
+      clientWorkspaces: 2, unsupportedWorkforceModel: none, reservedOnClients: none, notClientNamed: none, gatewayPairing: none, duplicateProfiles: none, identityMismatch: none, credentialForeign: none,
       credentialRevoked: none, credentialShared: none, credentialFingerprintShared: none, onlineWithoutProfile: none, activeVersionForeign: none, profileVersionForeign: none, jobVersionForeign: none,
       jobSourceForeign: none, agencyWorkspaces: 1, agencyOnAttestedGateway: none, clientOnAgencyGateway: none, enabledWithoutAppliedConfig: none,
     },
@@ -127,7 +127,7 @@ describe("client provisioning preflight: the checks (pure)", () => {
     ["jobs_ineligible_open", "fail", (f) => { f.jobs.ineligibleDue = some(1); }, "enabled"],
     ["jobs_ineligible_running", "warn", (f) => { f.jobs.ineligibleOpen = some(1); }],
     ["jobs_without_requester", "warn", (f) => { f.jobs.withoutRequester = some(1); }],
-    ["profiles_six_per_client", "fail", (f) => { f.profiles.notSixPerClient = some(1); }],
+    ["profiles_supported_workforce_model", "fail", (f) => { f.profiles.unsupportedWorkforceModel = some(1); }],
     ["profiles_reserved_on_clients", "fail", (f) => { f.profiles.reservedOnClients = some(1); }],
     ["profiles_naming", "warn", (f) => { f.profiles.notClientNamed = some(1); }],
     ["profiles_identity_matches", "fail", (f) => { f.profiles.identityMismatch = some(1); }],
@@ -175,9 +175,10 @@ describe("client provisioning preflight: the checks (pure)", () => {
     facts.gateways = null;
     facts.jobs.duplicateOpen = null;
     facts.jobs.byKindStatus = null;
+    facts.profiles.unsupportedWorkforceModel = null;
     facts.profiles.reservedOnClients = null;
     const result = run(facts, "dormant");
-    for (const id of ["ledger_tables", "ledger_required_versions", "schema_tables", "schema_server_version", "rls_enabled", "gateway_inventory", "jobs_duplicate_open", "jobs_by_status_kind", "profiles_reserved_on_clients"]) {
+    for (const id of ["ledger_tables", "ledger_required_versions", "schema_tables", "schema_server_version", "rls_enabled", "gateway_inventory", "jobs_duplicate_open", "jobs_by_status_kind", "profiles_supported_workforce_model", "profiles_reserved_on_clients"]) {
       expect(statusOf(result, id), id).toBe("unknown");
     }
     expect(result.complete).toBe(false);
@@ -293,6 +294,7 @@ describe("client provisioning preflight: the reader, on a seeded database", () =
   let agency: Awaited<ReturnType<typeof createOrg>>;
   let clientA: Awaited<ReturnType<typeof createOrg>>;
   let clientB: Awaited<ReturnType<typeof createOrg>>;
+  let clientUnified: Awaited<ReturnType<typeof createOrg>>;
   const gatewayUrl = "https://private-host.hermes.test";
   const gatewayLabel = "Private Gateway Label Probe";
   let profileName = "";
@@ -312,11 +314,14 @@ describe("client provisioning preflight: the reader, on a seeded database", () =
     agency = await createOrg({ kind: "agency", name: "Preflight Agency" });
     clientA = await createOrg({ kind: "client", name: NAME });
     clientB = await createOrg({ kind: "client", name: "Preflight Client Two" });
+    clientUnified = await createOrg({ kind: "client", name: "Preflight Unified Client" });
     const owner = await createUser();
     await addMember(clientA.id, owner.id, "owner");
     // A provisioned employee of client A: the profile the provisioner derives, on a client-only gateway with its own credential. The name, the slug, the profile, the address and the label are all private.
     profileName = suggestedProfileName(clientA.slug, "lead_hunter");
     await withSystem(async (db) => {
+      await db.query("delete from agent_instances where org_id = $1", [clientUnified.id]);
+      await ensureGrowthPartnerRuntime(clientUnified.id, db);
       await db.query("insert into hermes_gateways (id, label, environment, base_url, gateway_type, status, profile_creation_status) values ($1, $2, 'development', $3, 'multiplexed_profiles', 'connected', 'unverified')", [GATEWAY, gatewayLabel, gatewayUrl]);
       const credential = await db.query<{ id: string }>("insert into integration_credentials (org_id, provider, label, ciphertext, fingerprint) values ($1, 'hermes', 'Probe credential label', 'ciphertext-probe', 'sha256:0123456789ab') returning id", [clientA.id]);
       await db.query("update agent_instances set hermes_base_url = $2, hermes_profile = $3, hermes_gateway_id = $4, credential_id = $5 where id = $1", [await emp(db, clientA.id, "lead_hunter"), gatewayUrl, profileName, GATEWAY, credential.rows[0].id]);
@@ -330,7 +335,7 @@ describe("client provisioning preflight: the reader, on a seeded database", () =
     expect(result.complete).toBe(true);
     for (const id of [
       "ledger_required_versions", "schema_tables", "schema_columns", "schema_indexes", "schema_triggers", "schema_functions", "rls_enabled", "rls_select_policy", "rls_no_public_access", "rls_app_role_read_only",
-      "jobs_duplicate_open", "profiles_six_per_client", "profiles_reserved_on_clients", "profiles_identity_matches", "profiles_gateway_pairing", "profiles_credential_integrity", "profiles_agency_count",
+      "jobs_duplicate_open", "profiles_supported_workforce_model", "profiles_reserved_on_clients", "profiles_identity_matches", "profiles_gateway_pairing", "profiles_credential_integrity", "profiles_agency_count",
       "profiles_agency_on_client_gateway",
     ]) expect(statusOf(result, id), id).toBe("pass");
     // What the real catalog shows about a gateway that is not attested: it is listed, and nothing is claimed.
@@ -434,19 +439,44 @@ describe("client provisioning preflight: the reader, on a seeded database", () =
     });
   });
 
-  it("finds, with the real queries, a client short of an employee, a credential shared by two employees, a revoked one and an employee shown online with no profile", async () => {
+  it("accepts complete legacy and unified clients, and finds incomplete, mixed or unlinked workforce models", async () => {
     await rolledBack(async (db) => {
       const result = await evaluateIn(db, "dormant");
-      expect(statusOf(result, "profiles_six_per_client")).toBe("pass");
+      expect(statusOf(result, "profiles_supported_workforce_model")).toBe("pass");
       expect(statusOf(result, "profiles_credential_integrity")).toBe("pass");
       expect(statusOf(result, "profiles_online_without_profile")).toBe("pass");
     });
-    // Client B loses one employee: it no longer has exactly one per role. Client A is untouched and is not named.
+    // Client B loses one legacy employee. The unified client and client A remain supported and are not named.
     await rolledBack(async (db) => {
       await db.query("delete from agent_instances where id = $1", [await emp(db, clientB.id, "performance_analyst")]);
       const result = await evaluateIn(db, "dormant");
-      expect(statusOf(result, "profiles_six_per_client")).toBe("fail");
-      expect(result.checks.find((check) => check.id === "profiles_six_per_client")).toMatchObject({ count: 1, ids: [clientB.id] });
+      expect(statusOf(result, "profiles_supported_workforce_model")).toBe("fail");
+      expect(result.checks.find((check) => check.id === "profiles_supported_workforce_model")).toMatchObject({ count: 1, ids: [clientB.id] });
+    });
+    // The unified model cannot retain one of the former specialist runtime rows.
+    await rolledBack(async (db) => {
+      await db.query("insert into agent_instances (org_id, role_key, display_name) values ($1, 'lead_hunter', 'Legacy Lead Hunter')", [clientUnified.id]);
+      const result = await evaluateIn(db, "dormant");
+      expect(statusOf(result, "profiles_supported_workforce_model")).toBe("fail");
+      expect(result.checks.find((check) => check.id === "profiles_supported_workforce_model")).toMatchObject({ count: 1, ids: [clientUnified.id] });
+    });
+    // A Growth Partner row without its same-tenant identity binding is not treated as a complete unified setup.
+    await rolledBack(async (db) => {
+      await db.query("update ai_growth_partners set runtime_agent_instance_id = null where org_id = $1", [clientUnified.id]);
+      const result = await evaluateIn(db, "dormant");
+      expect(statusOf(result, "profiles_supported_workforce_model")).toBe("fail");
+      expect(result.checks.find((check) => check.id === "profiles_supported_workforce_model")?.ids).toEqual([clientUnified.id]);
+    });
+    // A linked unified runtime may use its own role-derived client profile name.
+    await rolledBack(async (db) => {
+      const runtime = await emp(db, clientUnified.id, "growth_partner");
+      const expected = suggestedProfileName(clientUnified.slug, "growth_partner");
+      await db.query("update agent_instances set hermes_profile = $2 where id = $1", [runtime, expected]);
+      expect(statusOf(await evaluateIn(db, "dormant"), "profiles_identity_matches")).toBe("pass");
+      await db.query("update agent_instances set hermes_profile = 'c-wrong-growth-partner-profile' where id = $1", [runtime]);
+      const result = await evaluateIn(db, "dormant");
+      expect(statusOf(result, "profiles_identity_matches")).toBe("fail");
+      expect(result.checks.find((check) => check.id === "profiles_identity_matches")?.ids).toContain(runtime);
     });
     // Two employees on one credential.
     await rolledBack(async (db) => {
