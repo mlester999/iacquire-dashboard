@@ -137,7 +137,7 @@ function WaiveFeeForm({ open, onOpenChange, orgId, orgName }: { open: boolean; o
       size="sm"
       icon={<HandCoins />}
       title={`Waive the setup fee for ${orgName}?`}
-      description="The client's AI team can then be set up and the setup can be activated without a payment. Your reason is saved with your name and the time, and the client does not see it."
+      description="The client's AI Growth Partner and included capabilities can then be set up and the workspace activated without a payment. Your reason is saved with your name and the time, and the client does not see it."
       footer={<><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="danger" loading={busy} disabled={reason.trim().length < 10} onClick={submit}>Waive the fee</Button></>}
     >
       <div className="space-y-3">
