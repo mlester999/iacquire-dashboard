@@ -11,7 +11,7 @@ import { refreshEmployeesFromWorkspace } from "@/server/onboarding/employee-sync
 import { manualOverridesFromHistory } from "@/server/onboarding/employee-generator";
 import { onRoleChanged } from "@/server/staff/service";
 import { attentionWarning, checkBookingsAfterChange } from "@/server/calendars/impact";
-import { AGENT_BY_KEY, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isWorkforceRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { agentSettingsSchema, aiPreferencesSchema, type AgentSettings, type AiPreferences } from "@/lib/agent-settings";
 import { PREFERENCE_KEYS, PROFILE_KEYS, PROFILE_LIMITS, type PreferenceKey, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
 import { configAttribution } from "@/lib/config-review";
@@ -243,7 +243,7 @@ const PREFERENCE_LABEL: Record<PreferenceKey, string> = {
 };
 
 export interface AiPrefsApplySkip {
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   fields: PreferenceKey[];
   /** client_edit: the employee's own wording was kept. blocked: the new version could not be made (the reason is in `detail`); the other employees were not affected. */
   why: "client_edit" | "blocked";
@@ -252,35 +252,37 @@ export interface AiPrefsApplySkip {
 
 export interface AiPrefsApplyResult {
   /** New attributed versions that are now applied. */
-  updated: AgentRoleKey[];
+  updated: WorkforceRoleKey[];
   /** A new version was made but waits for iAcquire's review: the employee still runs what it had. */
-  held: AgentRoleKey[];
+  held: WorkforceRoleKey[];
   skipped: AiPrefsApplySkip[];
 }
 
 export interface AiPrefsApplyPreview {
-  employees: Array<{ role: AgentRoleKey; name: string; /** Fields that would get the new value. */ changes: Array<{ field: PreferenceKey; label: string }>; /** Fields the employee's own configuration changed and that would be replaced. */ replaces: Array<{ field: PreferenceKey; label: string }> }>;
+  employees: Array<{ role: WorkforceRoleKey; name: string; /** Fields that would get the new value. */ changes: Array<{ field: PreferenceKey; label: string }>; /** Fields the client's own configuration changed and that would be replaced. */ replaces: Array<{ field: PreferenceKey; label: string }> }>;
 }
 
 interface ApplyTarget {
   agentId: string;
-  role: AgentRoleKey;
+  role: WorkforceRoleKey;
   settings: AgentSettings;
   /** Fields the employee's own configuration changed (an earlier company-wide apply does not count: it carried the company's value). */
   owned: ReadonlySet<string>;
 }
 
-/** The enabled employees that run a configuration, with what each one's own edits are. */
+/** Enabled Growth Partner and retained profiles that run a configuration, with what each one's own edits are. */
 async function applyTargets(db: Queryable, orgId: string): Promise<ApplyTarget[]> {
   const { rows } = await db.query<{ id: string; role_key: string; settings: unknown }>(
-    `select a.id, a.role_key, v.settings from agent_instances a join agent_roles r on r.key = a.role_key join agent_config_versions v on v.id = a.active_config_version_id
-      where a.org_id = $1 and a.enabled order by r.sort_order`,
+    `select a.id, a.role_key, v.settings from agent_instances a
+      join agent_config_versions v on v.id = a.active_config_version_id
+      where a.org_id = $1 and a.enabled
+      order by case when a.role_key = 'growth_partner' then 0 else 1 end, a.role_key`,
     [orgId],
   );
   const out: ApplyTarget[] = [];
   for (const row of rows) {
     const parsed = agentSettingsSchema.safeParse(row.settings);
-    if (!parsed.success || !isAgentRoleKey(row.role_key)) continue;
+    if (!parsed.success || !isWorkforceRoleKey(row.role_key)) continue;
     const { rows: history } = await db.query<{ source: string; settings: unknown; change_request: string | null }>(
       "select source, settings, change_request from agent_config_versions where agent_instance_id = $1 and org_id = $2 and applied_at is not null order by version",
       [row.id, orgId],
@@ -307,7 +309,7 @@ export async function previewAiPreferencesApply(ctx: OrgContext, input: z.input<
     employees: targets
       .map((t) => {
         const { planned, own } = planApply(t, prefs);
-        return { role: t.role, name: AGENT_BY_KEY[t.role].shortName, changes: planned.filter((f) => !own.includes(f)).map(label), replaces: own.map(label) };
+        return { role: t.role, name: t.role === AI_GROWTH_PARTNER_ROLE_KEY ? workforceRoleShortName(t.role) : AGENT_BY_KEY[t.role].shortName, changes: planned.filter((f) => !own.includes(f)).map(label), replaces: own.map(label) };
       })
       .filter((e) => e.changes.length || e.replaces.length),
   };

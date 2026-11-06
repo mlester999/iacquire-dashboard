@@ -433,7 +433,7 @@ describe("Settings > AI preferences: apply to employees", () => {
   const prefs = { tone: "friendly", replyLength: "concise", language: "English", companyRules: "", neverPromise: "", escalateWhen: "" } as const;
   const preview = { ok: true, data: { employees: [{ role: "lead_hunter", name: "Lead Hunter", changes: [{ field: "replyLength", label: "Reply length" }], replaces: [{ field: "companyRules", label: "Company rules" }] }] } };
   const result = { ok: true, data: { updated: ["lead_hunter"], held: ["appointment_setter", "operations_manager"], skipped: [{ role: "lead_hunter", fields: ["companyRules"], why: "client_edit" }] } };
-  const applySwitch = () => screen.getByRole("switch", { name: "Apply to all configured employees" });
+  const applySwitch = () => screen.getByRole("switch", { name: "Apply to the AI Growth Partner and retained profiles" });
   const edit = () => fireEvent.click(screen.getByRole("radio", { name: /Detailed/ }));
   const saveButton = () => screen.getByRole("button", { name: "Save changes" });
 
@@ -442,7 +442,7 @@ describe("Settings > AI preferences: apply to employees", () => {
     render(<AiPrefsForm prefs={prefs} retention="forever" canEdit />);
     expect(applySwitch().getAttribute("aria-checked")).toBe("false");
     expect(settingsActions.previewAiPreferencesApplyAction).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Some employees have wording of their own/)).toBeNull();
+    expect(screen.queryByText(/Some configurations have wording of their own/)).toBeNull();
     edit();
     fireEvent.click(saveButton());
     await waitFor(() => expect(settingsActions.updateAiPreferencesAction).toHaveBeenCalledWith(expect.objectContaining({ replyLength: "detailed", applyToEmployees: false, replaceOwnEdits: false })));
@@ -455,15 +455,27 @@ describe("Settings > AI preferences: apply to employees", () => {
     render(<AiPrefsForm prefs={prefs} retention="forever" canEdit />);
     edit();
     fireEvent.click(applySwitch());
-    expect(await screen.findByText(/Some employees have wording of their own/, undefined, { timeout: 3000 })).toBeTruthy();
+    expect(await screen.findByText(/Some configurations have wording of their own/, undefined, { timeout: 3000 })).toBeTruthy();
     expect(screen.getByText(/Lead Hunter: Company rules/)).toBeTruthy();
-    expect(screen.getByTestId("apply-preview-summary").textContent).toBe("1 employee would get a new version.");
-    expect(screen.getByRole("switch", { name: "Also replace the wording I changed on these employees" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByTestId("apply-preview-summary").textContent).toBe("1 retained profile would get a new version.");
+    expect(screen.getByRole("switch", { name: "Also replace client-edited wording in these configurations" }).getAttribute("aria-checked")).toBe("false");
     expect(settingsActions.previewAiPreferencesApplyAction).toHaveBeenCalledWith(expect.objectContaining({ replyLength: "detailed" }));
 
     fireEvent.click(saveButton());
     await waitFor(() => expect(settingsActions.updateAiPreferencesAction).toHaveBeenCalledWith(expect.objectContaining({ applyToEmployees: true, replaceOwnEdits: false })));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("AI preferences saved", { description: "Applied to 1 retained profile. 2 updates are waiting for iAcquire's review. 1 retained profile kept its own wording for some fields." }));
+  });
+
+  it("shows the unified partner by name when previewing and applying its shared preferences", async () => {
+    const { toast } = await import("sonner");
+    settingsActions.previewAiPreferencesApplyAction.mockResolvedValue({ ok: true, data: { employees: [{ role: "growth_partner", name: "AI Growth Partner", changes: [{ field: "replyLength", label: "Reply length" }], replaces: [] }] } });
+    settingsActions.updateAiPreferencesAction.mockResolvedValue({ ok: true, data: { updated: ["growth_partner"], held: [], skipped: [] } });
+    render(<AiPrefsForm prefs={prefs} retention="forever" canEdit />);
+    edit();
+    fireEvent.click(applySwitch());
+    expect((await screen.findByTestId("apply-preview-summary", undefined, { timeout: 3000 })).textContent).toBe("your AI Growth Partner would get a new version.");
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("AI preferences saved", { description: "Applied to your AI Growth Partner." }));
   });
 
   it("counts only the employees that would really get a version: one whose every difference is its own wording gets none unless the client ticks to replace it", async () => {
@@ -473,10 +485,10 @@ describe("Settings > AI preferences: apply to employees", () => {
     edit();
     fireEvent.click(applySwitch());
     const summary = async () => screen.getByTestId("apply-preview-summary").textContent;
-    expect(await screen.findByText(/Some employees have wording of their own/, undefined, { timeout: 3000 })).toBeTruthy();
-    expect(await summary()).toMatch(/^No employee would get a new version/);
-    fireEvent.click(screen.getByRole("switch", { name: "Also replace the wording I changed on these employees" }));
-    expect(await summary()).toBe("1 employee would get a new version.");
+    expect(await screen.findByText(/Some configurations have wording of their own/, undefined, { timeout: 3000 })).toBeTruthy();
+    expect(await summary()).toMatch(/^No configuration would change/);
+    fireEvent.click(screen.getByRole("switch", { name: "Also replace client-edited wording in these configurations" }));
+    expect(await summary()).toBe("1 retained profile would get a new version.");
   });
 
   it("replaces the employee's own wording only when the client ticks to", async () => {
@@ -485,7 +497,7 @@ describe("Settings > AI preferences: apply to employees", () => {
     render(<AiPrefsForm prefs={prefs} retention="forever" canEdit />);
     edit();
     fireEvent.click(applySwitch());
-    fireEvent.click(await screen.findByRole("switch", { name: "Also replace the wording I changed on these employees" }, { timeout: 3000 }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Also replace client-edited wording in these configurations" }, { timeout: 3000 }));
     fireEvent.click(saveButton());
     await waitFor(() => expect(settingsActions.updateAiPreferencesAction).toHaveBeenCalledWith(expect.objectContaining({ applyToEmployees: true, replaceOwnEdits: true })));
   });

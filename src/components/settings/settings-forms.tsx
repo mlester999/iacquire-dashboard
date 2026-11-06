@@ -537,7 +537,15 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
   const replacing = (preview?.employees ?? []).filter((e) => e.replaces.length > 0);
   // Who really gets a version on save: an employee with a field to change, or (only while the replace switch is on) one whose own wording would be replaced. An employee whose every
   // differing field is the client's own is kept as it is, and gets no version.
-  const gettingVersion = (preview?.employees ?? []).filter((e) => e.changes.length > 0 || (replaceOwn && e.replaces.length > 0)).length;
+  const gettingVersionTargets = (preview?.employees ?? []).filter((e) => e.changes.length > 0 || (replaceOwn && e.replaces.length > 0));
+  const gettingVersion = gettingVersionTargets.length;
+  const versionTargetLabel = () => {
+    const hasPartner = gettingVersionTargets.some((e) => e.role === "growth_partner");
+    const retained = gettingVersion - Number(hasPartner);
+    if (hasPartner && retained > 0) return `your AI Growth Partner and ${retained} retained profile${retained === 1 ? "" : "s"}`;
+    if (hasPartner) return "your AI Growth Partner";
+    return `${gettingVersion} retained profile${gettingVersion === 1 ? "" : "s"}`;
+  };
   return (
     <div className="space-y-6">
       {!canEdit && (
@@ -566,11 +574,17 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
                 const res = await updateAiPreferencesAction({ ...p, chatRetentionDays: r as never, applyToEmployees: apply, replaceOwnEdits: apply && replaceOwn });
                 setPending(false);
                 if (!res.ok) return toast.error(res.error);
+                const skippedOwn = res.data.skipped.filter((x) => x.why === "client_edit");
+                const skippedBlocked = res.data.skipped.filter((x) => x.why === "blocked");
                 const said = aiPreferencesApplyMessage({
                   updated: res.data.updated.length,
                   held: res.data.held.length,
-                  keptOwn: res.data.skipped.filter((x) => x.why === "client_edit").length,
-                  blocked: res.data.skipped.filter((x) => x.why === "blocked").length,
+                  keptOwn: skippedOwn.length,
+                  blocked: skippedBlocked.length,
+                  growthPartnerUpdated: res.data.updated.includes("growth_partner"),
+                  growthPartnerHeld: res.data.held.includes("growth_partner"),
+                  growthPartnerKeptOwn: skippedOwn.some((x) => x.role === "growth_partner"),
+                  growthPartnerBlocked: skippedBlocked.some((x) => x.role === "growth_partner"),
                 });
                 toast.success("AI preferences saved", said ? { description: said } : undefined);
                 router.refresh();
@@ -633,21 +647,21 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
           </GuidedField>
         </div>
         {canEdit && (
-          <SettingRow as="label" icon={<RefreshCw />} tone="primary" title="Apply to all configured employees now" description="Off by default. Creates a new configuration version for each employee, and keeps any wording you changed on an employee unless you choose otherwise.">
-            <Switch checked={apply} onCheckedChange={setApply} aria-label="Apply to all configured employees" />
+          <SettingRow as="label" icon={<RefreshCw />} tone="primary" title="Apply these preferences to your AI Growth Partner now" description="Off by default. Creates new versions for the Growth Partner and any retained profiles, keeping wording you changed unless you choose otherwise.">
+            <Switch checked={apply} onCheckedChange={setApply} aria-label="Apply to the AI Growth Partner and retained profiles" />
           </SettingRow>
         )}
         {canEdit && apply && preview && (
           <div className="space-y-3" aria-live="polite">
             <p className="text-[13px] text-muted" data-testid="apply-preview-summary">
               {gettingVersion
-                ? `${gettingVersion} employee${gettingVersion === 1 ? " would" : "s would"} get a new version.`
+                ? `${versionTargetLabel()} would get a new version.`
                 : preview.employees.length
-                  ? "No employee would get a new version: the differences are wording you changed on an employee, which is kept unless you choose to replace it."
-                  : "Every employee already has these preferences."}
+                  ? "No configuration would change: the differences are wording you changed, which is kept unless you choose to replace it."
+                  : "The configured AI profiles already have these preferences."}
             </p>
             {replacing.length > 0 && (
-              <Notice tone="warning" icon={<Lock />} title="Some employees have wording of their own">
+              <Notice tone="warning" icon={<Lock />} title="Some configurations have wording of their own">
                 <ul className="mt-1 list-disc space-y-0.5 pl-5">
                   {replacing.map((e) => (
                     <li key={e.role}>
@@ -655,10 +669,10 @@ export function AiPrefsForm({ prefs, retention, canEdit }: { prefs: AiPreference
                     </li>
                   ))}
                 </ul>
-                <p className="mt-2">These fields are kept as they are unless you choose to replace them.</p>
+                <p className="mt-2">These client-edited fields stay as they are unless you choose to replace them.</p>
                 <label className="mt-3 flex items-center gap-2 text-[13px] font-medium text-ink-2">
-                  <Switch checked={replaceOwn} onCheckedChange={setReplaceOwn} aria-label="Also replace the wording I changed on these employees" />
-                  Also replace the wording I changed on these employees
+                  <Switch checked={replaceOwn} onCheckedChange={setReplaceOwn} aria-label="Also replace client-edited wording in these configurations" />
+                  Also replace client-edited wording in these configurations
                 </label>
               </Notice>
             )}

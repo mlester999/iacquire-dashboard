@@ -5,13 +5,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { withSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { aiPreferencesApplyMessage, parseProfileSnapshot } from "@/lib/onboarding/business-profile";
 import { aiPrefsInputSchema, getProfile, previewAiPreferencesApply, updateAiPreferences } from "@/server/settings/service";
 import { getOnboardingSession, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { createConfigVersion } from "@/server/workforce/service";
-import { addMember, agentId, createUser, ctxFor } from "./support/fixtures";
+import { defaultSettings } from "@/server/workforce/compiler";
+import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { submitRealOnboarding } from "./support/billing";
 
 // One test makes a single employee's new version fail; every other test runs the real thing.
@@ -32,7 +33,9 @@ type Ctx = ReturnType<typeof ctxFor>;
 const HELD_FIRST: AgentRoleKey = "crm_manager";
 const APPLIED_ROLES = AGENT_ROLE_KEYS.filter((r) => r !== HELD_FIRST);
 const rows = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await withSystem((db) => db.query<T & Record<string, unknown>>(sql, params))).rows;
-const activeOf = async (orgId: string, role: AgentRoleKey) => (await rows<{ version: number; source: string; settings: Record<string, string>; change_request: string | null }>(
+const activeOf = async (orgId: string, role: string) => (await rows<{ version: number; source: string; settings: Record<string, string>; change_request: string | null }>(
+  `select v.version, v.source, v.settings, v.change_request from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.org_id = $1 and a.role_key = $2`, [orgId, role]))[0];
+const activeWorkforceOf = async (orgId: string, role: string) => (await rows<{ version: number; source: string; settings: Record<string, string>; change_request: string | null }>(
   `select v.version, v.source, v.settings, v.change_request from agent_config_versions v join agent_instances a on a.active_config_version_id = v.id where a.org_id = $1 and a.role_key = $2`, [orgId, role]))[0];
 const versionTotals = async (orgId: string) => Object.fromEntries((await rows<{ role_key: string; n: number }>(
   "select a.role_key, count(v.id)::int as n from agent_instances a left join agent_config_versions v on v.agent_instance_id = a.id where a.org_id = $1 group by a.role_key", [orgId])).map((r) => [r.role_key, r.n]));
@@ -112,8 +115,32 @@ async function ownCompanyRules(orgId: string, owner: { id: string }, role: Agent
   await withSystem((db) => createConfigVersion(db, { orgId, agentId: id, settings: agentSettingsSchema.parse({ ...active, companyRules: own }), source: "client_edit", userId: owner.id, apply: true }));
   return own;
 }
-const statusOfLatest = async (orgId: string, role: AgentRoleKey) => (await rows<{ status: string }>(
+const statusOfLatest = async (orgId: string, role: string) => (await rows<{ status: string }>(
   "select v.status from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id where a.org_id = $1 and a.role_key = $2 order by v.version desc limit 1", [orgId, role]))[0].status;
+
+async function createGrowthPartnerOnlyWorkspace(name: string) {
+  const org = await createOrg({ name });
+  const owner = await createUser();
+  await addMember(org.id, owner.id, "owner");
+  const ctx = ctxFor(owner, org, "owner");
+  const agentId = await withSystem(async (db) => {
+    await db.query("update agent_instances set enabled = false where org_id = $1", [org.id]);
+    await db.query(
+      `insert into agent_roles (key, name, short_name, tagline, description, capabilities, default_tools, accent, sort_order)
+       values ('growth_partner', 'AI Growth Partner', 'Growth Partner', 'One partner', 'Unified test identity', '[]'::jsonb, '[]'::jsonb, '#6d63d8', 7)
+       on conflict (key) do nothing`,
+    );
+    const { rows: agents } = await db.query<{ id: string }>(
+      "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner') returning id",
+      [org.id],
+    );
+    const id = agents[0].id;
+    await createConfigVersion(db, { orgId: org.id, agentId: id, settings: defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY), source: "onboarding", userId: owner.id, apply: true });
+    await db.query("insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2)", [org.id, id]);
+    return id;
+  });
+  return { org, owner, ctx, agentId };
+}
 
 describe("apply to employees", () => {
   it("is off unless asked for: saving the preferences changes no employee", async () => {
@@ -124,6 +151,26 @@ describe("apply to employees", () => {
     const res = await updateAiPreferences(c.ctx, { ...PREFS });
     expect(res).toEqual({ updated: [], held: [], skipped: [] });
     expect(await versionTotals(c.org.id)).toEqual(before);
+  }, 120_000);
+
+  it("previews and applies company preferences to the single AI Growth Partner configuration", async () => {
+    const c = await createGrowthPartnerOnlyWorkspace("Preferences Growth Partner Only");
+    const control = await createGrowthPartnerOnlyWorkspace("Preferences Growth Partner Control");
+    const before = await rows<{ count: string }>("select count(*)::text as count from agent_config_versions where agent_instance_id = $1", [c.agentId]);
+    const preferences = { ...PREFS, tone: "casual" as const };
+
+    const savedOnly = await updateAiPreferences(c.ctx, preferences);
+    expect(savedOnly).toEqual({ updated: [], held: [], skipped: [] });
+    expect((await activeWorkforceOf(c.org.id, AI_GROWTH_PARTNER_ROLE_KEY)).settings.tone).toBe("friendly");
+    expect(await rows<{ count: string }>("select count(*)::text as count from agent_config_versions where agent_instance_id = $1", [c.agentId])).toEqual(before);
+
+    const preview = await previewAiPreferencesApply(c.ctx, preferences);
+    expect(preview.employees).toContainEqual(expect.objectContaining({ role: AI_GROWTH_PARTNER_ROLE_KEY, name: "AI Growth Partner", changes: expect.arrayContaining([expect.objectContaining({ field: "tone" })]) }));
+    const applied = await updateAiPreferences(c.ctx, { ...preferences, applyToEmployees: true });
+    expect(applied.updated).toEqual([AI_GROWTH_PARTNER_ROLE_KEY]);
+    expect(applied.held).toEqual([]);
+    expect((await activeWorkforceOf(c.org.id, AI_GROWTH_PARTNER_ROLE_KEY)).settings.tone).toBe("casual");
+    expect((await activeWorkforceOf(control.org.id, AI_GROWTH_PARTNER_ROLE_KEY)).settings.tone).toBe("friendly");
   }, 120_000);
 
   it("gives every configured employee a new version when asked, says which are applied and which wait, and never touches a role outside the plan", async () => {
@@ -237,5 +284,7 @@ describe("aiPreferencesApplyMessage", () => {
     expect(aiPreferencesApplyMessage({ updated: 4, held: 2, keptOwn: 1, blocked: 1 })).toBe(
       "Applied to 4 retained profiles. 2 updates are waiting for iAcquire's review. 1 retained profile kept its own wording for some fields. 1 retained profile could not be updated.",
     );
+    expect(aiPreferencesApplyMessage({ updated: 1, held: 0, keptOwn: 0, blocked: 0, growthPartnerUpdated: true })).toBe("Applied to your AI Growth Partner.");
+    expect(aiPreferencesApplyMessage({ updated: 3, held: 0, keptOwn: 0, blocked: 0, growthPartnerUpdated: true })).toBe("Applied to your AI Growth Partner and 2 retained profiles.");
   });
 });

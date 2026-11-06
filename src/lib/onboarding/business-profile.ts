@@ -345,13 +345,30 @@ export function employeeUpdateMessage(r: { updated: number; held: number; failed
   return parts.join(" ");
 }
 
-/** The sentence after "apply to employees": how many got the new preferences, how many wait for review, how many kept their own wording, and how many could not be changed. */
-export function aiPreferencesApplyMessage(r: { updated: number; held: number; keptOwn: number; blocked: number }): string {
+/** The sentence after a company-wide apply, with the unified partner distinguished from retained profiles. */
+export function aiPreferencesApplyMessage(r: {
+  updated: number; held: number; keptOwn: number; blocked: number;
+  growthPartnerUpdated?: boolean; growthPartnerHeld?: boolean; growthPartnerKeptOwn?: boolean; growthPartnerBlocked?: boolean;
+}): string {
   const parts: string[] = [];
-  if (r.updated > 0) parts.push(`Applied to ${r.updated} retained profile${r.updated === 1 ? "" : "s"}.`);
-  if (r.held > 0) parts.push(`${r.held} update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
-  if (r.keptOwn > 0) parts.push(`${r.keptOwn} retained profile${r.keptOwn === 1 ? " kept its" : "s kept their"} own wording for some fields.`);
-  if (r.blocked > 0) parts.push(`${r.blocked} retained profile${r.blocked === 1 ? "" : "s"} could not be updated.`);
+  const target = (count: number, includesPartner = false) => {
+    const profiles = count - Number(includesPartner);
+    if (includesPartner && profiles > 0) return `your AI Growth Partner and ${profiles} retained profile${profiles === 1 ? "" : "s"}`;
+    if (includesPartner) return "your AI Growth Partner";
+    return `${count} retained profile${count === 1 ? "" : "s"}`;
+  };
+  if (r.updated > 0) parts.push(`Applied to ${target(r.updated, r.growthPartnerUpdated)}.`);
+  if (r.held > 0) parts.push(r.growthPartnerHeld
+    ? r.held === 1
+      ? "An update for your AI Growth Partner is waiting for iAcquire's review."
+      : `Updates for ${target(r.held, true)} are waiting for iAcquire's review.`
+    : `${r.held} update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
+  if (r.keptOwn > 0) parts.push(r.growthPartnerKeptOwn
+    ? `Some wording was kept on ${target(r.keptOwn, true)}.`
+    : `${r.keptOwn} retained profile${r.keptOwn === 1 ? " kept its" : "s kept their"} own wording for some fields.`);
+  if (r.blocked > 0) parts.push(r.growthPartnerBlocked
+    ? `Could not update ${target(r.blocked, true)}.`
+    : `${r.blocked} retained profile${r.blocked === 1 ? "" : "s"} could not be updated.`);
   return parts.join(" ");
 }
 
