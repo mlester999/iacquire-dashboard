@@ -40,6 +40,12 @@ export function workforceRoleSlug(role: WorkforceRoleKey): string {
   return role === AI_GROWTH_PARTNER_ROLE_KEY ? "growth-partner" : AGENT_BY_KEY[role].slug;
 }
 
+/** Stable product name for the one current identity; legacy role records stay explicitly historical. */
+export function workforceIdentityLabel(role: WorkforceRoleKey, storedName?: string | null): string {
+  if (role === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
+  return `Previous profile · ${storedName?.trim() || workforceRoleShortName(role)}`;
+}
+
 /** Existing iAcquire Hermes employees, confirmed by the agency's Hermes profile inventory. */
 export const AGENCY_HERMES_PROFILE_IDS: Record<AgentRoleKey, string> = {
   operations_manager: "iacquire-operations-manager",

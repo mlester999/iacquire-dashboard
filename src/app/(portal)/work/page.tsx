@@ -6,7 +6,7 @@ import { listTriggers, triggersOperatorEnabled } from "@/server/workforce/trigge
 import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { WorkBoard } from "@/components/work/work-board";
-import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, workforceIdentityLabel, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 
 export const metadata = { title: "Work Board" };
@@ -31,7 +31,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
     ...legacyAgents,
     ...(partner?.runtimeAgentInstanceId ? [{
       role_key: AI_GROWTH_PARTNER_ROLE_KEY,
-      display_name: partner.name,
+      display_name: "AI Growth Partner",
       enabled: partner.runtimeEnabled === true,
       status: partner.runtimeStatus ?? "setup_required" as const,
       config_version: partner.currentVersion,
@@ -46,7 +46,7 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
         ? AI_GROWTH_PARTNER_ROLE_KEY
         : definition.allowedRoles[0];
       const agent = agents.find((row) => row.role_key === role) ?? null;
-      const employeeName = agent?.display_name ?? workforceRoleShortName(role);
+      const employeeName = workforceIdentityLabel(role, agent?.display_name ?? workforceRoleShortName(role));
       const permission = ctx.can(definition.requiredPermission);
       const reason = !permission
         ? "Your role can't start this work."

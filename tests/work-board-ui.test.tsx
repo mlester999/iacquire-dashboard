@@ -130,14 +130,30 @@ describe("AI Work Board proactive reports", () => {
     expect(screen.getByText("Operations Manager found 1 urgent signal")).toBeTruthy();
     expect(screen.getAllByText("One integration needs attention").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("link", { name: /Open evidence/ }).getAttribute("href")).toBe("/settings/integrations");
+    expect(screen.getByRole("link", { name: "Previous profile · Operations Manager" }).getAttribute("href")).toBe("/employees/operations-manager");
+    fireEvent.click(screen.getByRole("button", { name: "Review schedule coverage" }));
+    expect(screen.getByText("Monitoring by AI identity")).toBeTruthy();
+    expect(screen.getAllByText("Previous profile · Operations Manager").length).toBeGreaterThanOrEqual(2);
     await userEvent.click(screen.getByRole("button", { name: /Acknowledge/ }));
     await waitFor(() => expect(acknowledgeReport).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows Growth Partner monitoring as one identity in coverage", () => {
+    const partnerMonitoring: MonitoringStatus = {
+      ...activeMonitoring,
+      byRole: [{ role: "growth_partner", schedules: 1, triggers: 0, enabled: 1 }],
+    };
+    render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" reports={[]} monitoring={partnerMonitoring} />);
+    fireEvent.click(screen.getByRole("button", { name: "Review schedule coverage" }));
+    expect(screen.getByText("AI Growth Partner", { selector: "p" })).toBeTruthy();
+    expect(screen.getByText("1 enabled schedule · 0 enabled event triggers")).toBeTruthy();
+    expect(screen.queryByText("Operations Manager")).toBeNull();
   });
 
   it("does not imply continuous monitoring when no schedule is configured", () => {
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" reports={[]} monitoring={{ ...activeMonitoring, state: "not_configured", schedulesEnabled: 0, triggersEnabled: 0, byRole: [] }} />);
     expect(screen.getByText("No monitoring schedule")).toBeTruthy();
-    expect(screen.getByText(/employees are not watching continuously/i)).toBeTruthy();
+    expect(screen.getByText(/nothing is being monitored continuously/i)).toBeTruthy();
     expect(screen.getByText("No proactive reports yet")).toBeTruthy();
   });
 });

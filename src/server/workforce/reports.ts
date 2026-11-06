@@ -9,7 +9,7 @@ import { notifyUser } from "@/server/notifications";
 import type { WorkJobRow } from "@/server/workforce/jobs";
 import type { ReviewFinding, ReviewMetric } from "@/server/workforce/read-only-review";
 import type { OrgContext } from "@/server/tenancy/context";
-import type { AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import {
   highestSeverity,
   localDateKey,
@@ -73,7 +73,7 @@ export interface ProactiveReportView {
   actions: ProactiveActionView[];
   data: Record<string, unknown>;
   employeeName: string;
-  employeeRole: AgentRoleKey | null;
+  employeeRole: WorkforceRoleKey | null;
   capability: string | null;
   jobId: string | null;
   jobStatus: string | null;
@@ -93,7 +93,7 @@ export interface MonitoringStatus {
   triggersOperatorEnabled: boolean;
   briefingsOperatorEnabled: boolean;
   lastVerifiedReportAt: string | null;
-  byRole: Array<{ role: AgentRoleKey; schedules: number; triggers: number; enabled: number }>;
+  byRole: Array<{ role: WorkforceRoleKey; schedules: number; triggers: number; enabled: number }>;
 }
 
 export function proactiveBriefingsEnabled(): boolean {
@@ -851,7 +851,7 @@ export async function runProactiveBriefings(now = new Date()): Promise<{
 /** Reports visible to a supervisor with activity.view, with the current person's delivery state. */
 export async function listProactiveReports(
   ctx: OrgContext,
-  options: { limit?: number; role?: AgentRoleKey; includeBriefings?: boolean } = {},
+  options: { limit?: number; role?: WorkforceRoleKey; includeBriefings?: boolean } = {},
 ): Promise<ProactiveReportView[]> {
   if (!ctx.can("activity.view")) return [];
   const limit = Math.min(50, Math.max(1, options.limit ?? 20));
@@ -861,7 +861,7 @@ export async function listProactiveReports(
       id: string; kind: ProactiveReportKind; severity: ProactiveSeverity; title: string; summary: string;
       sections: unknown; findings: unknown; evidence: unknown; data: Record<string, unknown>; actions: unknown;
       capability: string | null; job_id: string | null; status: "open" | "acknowledged" | "resolved";
-      acknowledged_at: Date | null; created_at: Date; employee_name: string | null; employee_role: AgentRoleKey | null;
+      acknowledged_at: Date | null; created_at: Date; employee_name: string | null; employee_role: string | null;
       job_status: string | null; delivery_status: ProactiveReportView["deliveryStatus"]; delivery_reason: string | null;
     }>(
       `select r.id, r.kind, r.severity, r.title, r.summary, r.sections, r.findings, r.evidence, r.data, r.actions,
@@ -894,7 +894,7 @@ export async function listProactiveReports(
         actions: asActions(row.actions),
         data,
         employeeName: row.employee_name ?? "AI workforce",
-        employeeRole: row.employee_role,
+        employeeRole: row.employee_role && isWorkforceRoleKey(row.employee_role) ? row.employee_role : null,
         capability: row.capability,
         jobId: row.job_id,
         jobStatus: row.job_status,
@@ -959,13 +959,13 @@ export async function getProactiveMonitoringStatus(ctx: OrgContext): Promise<Mon
   }
   return withUser(ctx.user.id, async (db) => {
     const [scheduleRows, triggerRows, reportRows] = await Promise.all([
-      db.query<{ role: AgentRoleKey; n: number }>(
+      db.query<{ role: string; n: number }>(
         `select a.role_key as role, count(*) filter (where s.enabled)::int as n
            from ai_work_schedules s join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
           where s.org_id = $1 group by a.role_key`,
         [ctx.org.orgId],
       ),
-      db.query<{ role: AgentRoleKey; n: number }>(
+      db.query<{ role: string; n: number }>(
         `select a.role_key as role, count(*) filter (where t.enabled)::int as n
            from ai_work_triggers t join agent_instances a on a.id = t.agent_instance_id and a.org_id = t.org_id
           where t.org_id = $1 group by a.role_key`,
@@ -991,10 +991,11 @@ export async function getProactiveMonitoringStatus(ctx: OrgContext): Promise<Mon
       triggersOperatorEnabled: triggersOn,
       briefingsOperatorEnabled: proactiveBriefingsEnabled(),
       lastVerifiedReportAt: iso(reportRows.rows[0]?.last ?? null),
-      byRole: [...roles].map((role) => {
+      byRole: [...roles].flatMap((role) => {
+        if (!isWorkforceRoleKey(role)) return [];
         const schedules = num(scheduleRows.rows.find((row) => row.role === role)?.n);
         const triggers = num(triggerRows.rows.find((row) => row.role === role)?.n);
-        return { role: role as AgentRoleKey, schedules, triggers, enabled: schedules + triggers };
+        return [{ role, schedules, triggers, enabled: schedules + triggers }];
       }),
     };
   });

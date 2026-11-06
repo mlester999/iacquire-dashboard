@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { WorkforceCalendar } from "@/components/work/workforce-calendar";
 import { getWorkforceCalendarRange } from "@/lib/workforce-calendar-view";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import type { WorkforceCalendarData } from "@/server/workforce/calendar";
 
 vi.mock("next/link", async () => {
@@ -42,7 +42,7 @@ function data(): WorkforceCalendarData {
       resultCount: 7,
       failureMessage: null,
       employeeName: "Performance Analyst",
-      employeeRole: "performance_analyst" as AgentRoleKey,
+      employeeRole: "performance_analyst" as WorkforceRoleKey,
       startsAt: "2027-03-14T14:30:00.000Z",
       createdAt: "2027-03-14T14:30:00.000Z",
       startedAt: "2027-03-14T14:30:02.000Z",
@@ -57,7 +57,7 @@ function data(): WorkforceCalendarData {
       capability: "crm_quality_review",
       capabilityLabel: "CRM quality review",
       employeeName: "CRM Manager",
-      employeeRole: "crm_manager" as AgentRoleKey,
+      employeeRole: "crm_manager" as WorkforceRoleKey,
       cadence: "daily",
       intervalMinutes: 1440,
       recurrenceRule: { kind: "daily", localTime: "09:00" },
@@ -81,7 +81,7 @@ describe("workforce calendar UI", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<WorkforceCalendar initialData={data()} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules />);
 
-    const occurrence = screen.getAllByRole("button", { name: /CRM quality review, CRM Manager, scheduled occurrence, not a job/ })[0];
+    const occurrence = screen.getAllByRole("button", { name: /CRM quality review, Previous profile · CRM Manager, scheduled occurrence, not a job/ })[0];
     expect(occurrence).toBeTruthy();
     expect(occurrence.textContent).toContain("9:00 AM");
     expect(screen.getByText("Future occurrence · not a job")).toBeTruthy();
@@ -95,23 +95,37 @@ describe("workforce calendar UI", () => {
     expect(screen.getByRole("link", { name: /Edit schedule/ }).getAttribute("href")).toBe("/work?schedule=schedule-calendar-1#scheduled-work");
     expect(screen.getByRole("switch", { name: "Enable CRM quality review schedule" })).toBeTruthy();
 
-    const jobEvent = screen.getAllByRole("button", { name: /Monthly performance review, Performance Analyst, Completed/ })[0];
+    const jobEvent = screen.getAllByRole("button", { name: /Monthly performance review, Previous profile · Performance Analyst, Completed/ })[0];
     fireEvent.click(jobEvent);
     expect(screen.getByText("Recorded job")).toBeTruthy();
     expect(screen.getByText("Seven verified measures were compared.")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Open work details/ }).getAttribute("href")).toBe("/work?job=job-calendar-1");
   });
 
-  it("filters schedule projections and persisted jobs by employee", () => {
+  it("filters schedule projections and persisted jobs by AI identity", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<WorkforceCalendar initialData={data()} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "CRM Manager" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile · CRM Manager" }));
     expect(screen.getAllByText("CRM quality review").length).toBeGreaterThan(0);
     expect(screen.queryByText("Monthly performance review")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Performance Analyst" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile · Performance Analyst" }));
     expect(screen.queryByText("CRM quality review")).toBeNull();
     expect(screen.getAllByText("Monthly performance review").length).toBeGreaterThan(0);
+  });
+
+  it("uses the single canonical partner name for its saved work", () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const partnerData = data();
+    partnerData.jobs[0].employeeRole = "growth_partner";
+    partnerData.jobs[0].employeeName = "Workspace-customized name";
+    partnerData.schedules[0].employeeRole = "growth_partner";
+    partnerData.schedules[0].employeeName = "Workspace-customized name";
+    render(<WorkforceCalendar initialData={partnerData} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules={false} />);
+
+    expect(screen.getAllByRole("button", { name: /AI Growth Partner/ }).length).toBeGreaterThan(0);
+    const event = screen.getAllByRole("button", { name: /Monthly performance review, AI Growth Partner, Completed/ })[0];
+    expect(event).toBeTruthy();
   });
 });

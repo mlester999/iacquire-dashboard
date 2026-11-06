@@ -71,6 +71,26 @@ function schedule(): ScheduleView {
 }
 
 describe("AI Work Board Kanban", () => {
+  it("shows the single partner identity and marks retained role work as a previous profile", () => {
+    render(<WorkBoardKanban
+      jobs={[
+        job({ id: "partner-job", title: "Partner review", employeeRole: "growth_partner", employeeName: "Workspace-customized name" }),
+        job({ id: "legacy-job", title: "Previous profile review", employeeRole: "sales_assistant", employeeName: "Sales Assistant" }),
+      ]}
+      schedules={[]}
+      filter="all"
+      scheduleOperatorEnabled={false}
+      timeZone="UTC"
+      focusJobId={null}
+      referenceTime="2026-10-24T08:00:00.000Z"
+    />);
+
+    expect(screen.getAllByText("AI Growth Partner").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Previous profile · Sales Assistant").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("link", { name: "Partner Control Center" }).getAttribute("href")).toBe("/growth-partner");
+    expect(screen.getByRole("link", { name: "Previous profile settings" }).getAttribute("href")).toBe("/employees/sales-assistant");
+  });
+
   it("keeps persisted jobs and future schedule occurrences in separate truthful lanes", () => {
     render(<WorkBoardKanban
       jobs={[
@@ -130,7 +150,7 @@ describe("AI Work Board Kanban", () => {
     expect(draftCard.innerHTML).not.toMatch(/success/);
   });
 
-  it("filters jobs and projected occurrences together by employee", () => {
+  it("filters jobs and projected occurrences together by AI identity", () => {
     render(<WorkBoardKanban
       jobs={[job(), job({ id: "job-2", title: "Sales follow-up review", status: "blocked", statusLabel: "Blocked", employeeName: "Sales Assistant", employeeRole: "sales_assistant" })]}
       schedules={[schedule()]}
@@ -141,7 +161,7 @@ describe("AI Work Board Kanban", () => {
       referenceTime="2026-10-24T08:00:00.000Z"
     />);
 
-    fireEvent.click(screen.getByRole("button", { name: "CRM Manager" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile · CRM Manager" }));
     expect(screen.getAllByText("CRM quality review").length).toBeGreaterThan(0);
     expect(screen.queryByText("Operations review job")).toBeNull();
     expect(screen.queryByText("Sales follow-up review")).toBeNull();

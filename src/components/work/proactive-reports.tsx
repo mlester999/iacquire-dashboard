@@ -20,6 +20,7 @@ import {
   ListPlus,
   Radar,
   ShieldCheck,
+  Sparkles,
   Sunrise,
 } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
@@ -28,9 +29,8 @@ import { EmptyState } from "@/components/ui/primitives";
 import { InfoChip, StatusPill } from "@/components/ui/status";
 import { Panel } from "@/components/overview/panel";
 import { acknowledgeReportAction, createFindingTaskAction } from "@/app/actions/work";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import {
-  PROACTIVE_DUTIES,
   PROACTIVE_KIND_LABELS,
   PROACTIVE_SEVERITY_LABELS,
   type ProactiveReportKind,
@@ -76,7 +76,10 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
   const [open, setOpen] = React.useState(focus);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [taskIds, setTaskIds] = React.useState<Record<string, string>>({});
+  const isGrowthPartner = report.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY;
   const meta = report.employeeRole && isAgentRoleKey(report.employeeRole) ? AGENT_BY_KEY[report.employeeRole] : null;
+  const identityLabel = report.employeeRole ? workforceIdentityLabel(report.employeeRole, report.employeeName) : report.employeeName;
+  const identityHref = isGrowthPartner ? "/growth-partner" : meta ? `/employees/${meta.slug}` : null;
   const note = deliveryNote(report);
   const autoTask = report.actions.find((action) => action.type === "task_created" && action.taskId);
   const href = reportHref(report);
@@ -127,8 +130,8 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
             <span className="text-[12px] font-medium text-muted">{PROACTIVE_KIND_LABELS[report.kind]}</span>
             <span className="text-[12px] text-faint">·</span>
             <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
-              {meta && <AgentAvatar role={meta} size="xs" />}
-              {meta ? <Link href={`/employees/${meta.slug}`} className="font-medium hover:text-ink hover:underline">{report.employeeName}</Link> : report.employeeName}
+              {meta ? <AgentAvatar role={meta} size="xs" /> : isGrowthPartner && <Sparkles className="size-3.5 text-primary-ink" aria-hidden />}
+              {identityHref ? <Link href={identityHref} className="font-medium hover:text-ink hover:underline">{identityLabel}</Link> : identityLabel}
             </span>
             {report.status === "acknowledged" && <InfoChip icon={<Check />}>Acknowledged</InfoChip>}
             {note && <StatusPill tone={note.tone} size="sm">{note.label}</StatusPill>}
@@ -270,28 +273,28 @@ function ReportCard({ report, timeZone, focus }: { report: ProactiveReportView; 
   );
 }
 
-function CoverageRow({ role, status }: { role: (typeof PROACTIVE_DUTIES)[number]; status: MonitoringStatus }) {
-  const meta = AGENT_BY_KEY[role.role];
-  const row = status.byRole.find((item) => item.role === role.role);
-  const enabled = row?.enabled ?? 0;
+function CoverageRow({ row, status }: { row: MonitoringStatus["byRole"][number]; status: MonitoringStatus }) {
+  const meta = isAgentRoleKey(row.role) ? AGENT_BY_KEY[row.role] : null;
+  const canRun = (row.schedules > 0 && status.schedulesOperatorEnabled) || (row.triggers > 0 && status.triggersOperatorEnabled);
+  const operatorLabel = row.enabled === 0 ? "No enabled rows" : canRun ? "Operator enabled" : "Operator off";
+  const scheduleLabel = `${row.schedules} enabled schedule${row.schedules === 1 ? "" : "s"}`;
+  const triggerLabel = `${row.triggers} enabled event trigger${row.triggers === 1 ? "" : "s"}`;
   return (
     <li className="flex items-start gap-2.5 rounded-xl border border-line bg-surface-2/30 p-2.5">
-      <AgentAvatar role={meta} size="sm" />
+      {meta ? <AgentAvatar role={meta} size="sm" /> : <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-ink"><Sparkles className="size-4" /></span>}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] font-semibold text-ink">{meta.shortName}</p>
-        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{role.title}</p>
+        <p className="truncate text-[12px] font-semibold text-ink">{workforceIdentityLabel(row.role)}</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{scheduleLabel} · {triggerLabel}</p>
       </div>
       <span
         className={cn(
           "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[12px] font-semibold ring-1 ring-inset",
-          enabled
-            ? status.state === "active"
-              ? "bg-success-soft text-success-ink ring-success/20"
-              : "bg-warning-soft text-warning-ink ring-warning/20"
-            : "bg-surface text-faint ring-line",
+          row.enabled > 0 && canRun
+            ? "bg-success-soft text-success-ink ring-success/20"
+            : "bg-warning-soft text-warning-ink ring-warning/20",
         )}
       >
-        {enabled ? (status.state === "active" ? "Watching" : "Paused") : "Not scheduled"}
+        {operatorLabel}
       </span>
     </li>
   );
@@ -337,24 +340,24 @@ export function ProactiveWatch({
             </p>
           ) : (
             <p>
-              No recurring monitoring is scheduled. The reports below came from work a person started, or from an event trigger that has since been paused. The employees are not watching continuously.
+              No recurring monitoring is scheduled. The reports below came from work a person started, or from an event trigger that has since been paused. Nothing is being monitored continuously.
             </p>
           )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[12px] font-semibold text-ink">Employee coverage</p>
+          <p className="text-[12px] font-semibold text-ink">Monitoring by AI identity</p>
           <button type="button" onClick={() => setShowCoverage((value) => !value)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/40" aria-expanded={showCoverage}>
-            {showCoverage ? "Hide duties" : "What each employee watches"} {showCoverage ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
+            {showCoverage ? "Hide coverage" : "Review schedule coverage"} {showCoverage ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
         </div>
         {showCoverage && (
           <div className="space-y-3">
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {PROACTIVE_DUTIES.map((duty) => <CoverageRow key={duty.role} role={duty} status={monitoring} />)}
+              {monitoring.byRole.map((row) => <CoverageRow key={row.role} row={row} status={monitoring} />)}
             </ul>
             <p className="text-[12px] text-muted">
-              Each employee is limited to its reviewed capability and tenant. Creating a schedule is always paused first; enabling one still needs the operator switch.
+              The AI Growth Partner uses one identity across its reviewed capabilities. Saved schedules and event triggers on previous profiles remain visible here. Creating a schedule starts paused; the matching operator switch must also be on before it can run.
             </p>
           </div>
         )}
@@ -367,7 +370,7 @@ export function ProactiveWatch({
           <EmptyState
             icon={<BellRing className="size-5" />}
             title="No proactive reports yet"
-            description="When a reviewed employee completes a monitoring job, its verified findings and recommended next actions appear here. Nothing is generated from an open page."
+            description="When a reviewed capability completes a monitoring job, its verified findings and recommended next actions appear here. Nothing is generated from an open page."
           />
         ) : (
           <ul className="space-y-2">

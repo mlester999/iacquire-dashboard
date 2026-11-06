@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
-import { createConfigVersion } from "@/server/workforce/service";
+import { createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { createWorkJob, getWorkJob } from "@/server/workforce/jobs";
 import {
@@ -118,6 +118,8 @@ beforeEach(async () => {
   delete process.env.WORKFORCE_TRIGGERS_ENABLED;
   delete process.env.WORKFORCE_BRIEFINGS_ENABLED;
   await withSystem(async (db) => {
+    await db.query("delete from ai_work_schedules where org_id = $1", [org.id]);
+    await db.query("delete from ai_work_triggers where org_id = $1", [org.id]);
     await db.query("delete from notifications where org_id = $1", [org.id]);
     await db.query("delete from tasks where org_id = $1", [org.id]);
     await db.query("delete from ai_work_reports where org_id = $1", [org.id]);
@@ -256,6 +258,24 @@ describe("proactive report delivery policy", () => {
 });
 
 describe("monitoring state and briefing slots", () => {
+  it("includes the one Growth Partner identity in persisted monitoring coverage", async () => {
+    const partnerOrg = await createOrg({ name: "Growth Partner Monitoring Co" });
+    const partnerOwner = await createUser();
+    await addMember(partnerOrg.id, partnerOwner.id, "owner");
+    const ctx = ctxFor(partnerOwner, partnerOrg, "owner");
+    const partnerAgentId = await withSystem((db) => ensureGrowthPartnerRuntime(partnerOrg.id, db));
+    await withSystem((db) => db.query(
+      `insert into ai_work_schedules (org_id, agent_instance_id, capability, enabled)
+       values ($1, $2, 'crm_quality_review', true)`,
+      [partnerOrg.id, partnerAgentId],
+    ));
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
+
+    const status = await getProactiveMonitoringStatus(ctx);
+    expect(status.byRole).toContainEqual({ role: "growth_partner", schedules: 1, triggers: 0, enabled: 1 });
+    expect(status.state).toBe("active");
+  }, 30000);
+
   it("reports no monitoring until a row is enabled and the operator switch is on", async () => {
     const ctx = ctxFor(owner, org, "owner");
     expect((await getProactiveMonitoringStatus(ctx)).state).toBe("not_configured");

@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceIdentityLabel, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -77,6 +77,10 @@ function jobLane(job: WorkBoardJob): Exclude<LaneKey, "planned"> {
 
 function roleKey(value: string): AgentRoleKey | null {
   return isAgentRoleKey(value) ? value : null;
+}
+
+function identityLabel(role: string, name: string): string {
+  return isWorkforceRoleKey(role) ? workforceIdentityLabel(role, name) : name || "AI identity";
 }
 
 function jobHref(job: WorkBoardJob): string | null {
@@ -160,7 +164,7 @@ function JobCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusPill tone={tone} size="sm" dot={job.status === "running" && !job.recoveryPending}>{job.statusLabel}</StatusPill>
             <EvidenceChip evidence={job.evidence} />
-            <span className="truncate text-[12px] text-muted">{job.employeeName}</span>
+            <span className="truncate text-[12px] text-muted">{identityLabel(job.employeeRole, job.employeeName)}</span>
           </div>
           <button type="button" onClick={onToggle} aria-expanded={expanded} className="mt-2 block w-full text-left">
             <span className="block text-[14px] font-semibold leading-snug text-ink">{job.title}</span>
@@ -177,7 +181,7 @@ function JobCard({
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-semibold text-ink-2 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Activity className="size-3.5" aria-hidden />{expanded ? "Hide activity" : "Activity"}
         </button>
-        {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{job.capability === "lead_research" ? "Review" : job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? "Open Growth Partner" : "Open employee"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
+        {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{job.capability === "lead_research" ? "Review" : job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? job.conversationId ? "Open Partner conversation" : "Partner Control Center" : job.conversationId ? "Open related conversation" : "Previous profile settings"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
       </div>
       {expanded && <WorkJobPanel jobId={job.id} className="mt-3" />}
     </article>
@@ -200,12 +204,12 @@ function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; o
             <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-semibold", mayCreateJob ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{scheduleState}</span>
           </div>
           <h3 className="mt-2 text-[14px] font-semibold leading-snug text-ink">{schedule.capabilityLabel}</h3>
-          <p className="mt-1 text-[12px] text-muted">{schedule.employeeName} · <time dateTime={item.startsAt}>{calendarTimestampLabel(item.startsAt, timeZone)}</time></p>
+          <p className="mt-1 text-[12px] text-muted">{workforceIdentityLabel(schedule.employeeRole, schedule.employeeName)} · <time dateTime={item.startsAt}>{calendarTimestampLabel(item.startsAt, timeZone)}</time></p>
         </div>
       </div>
       <p className="mt-2 text-[12px] leading-relaxed text-muted">
         {mayCreateJob
-          ? "An occurrence is planned. The operator, employee readiness and safety checks still apply before a job can be created."
+          ? "An occurrence is planned. The operator, AI runtime readiness and safety checks still apply before a job can be created."
           : !schedule.enabled
             ? "This schedule is paused. The occurrence is not a job."
             : "The operator switch is off, so this occurrence will not create a job."}
@@ -293,7 +297,7 @@ export function WorkBoardKanban({
         <AlertTriangle className={cn("size-4 shrink-0", scheduleOperatorEnabled ? "text-success-ink" : "text-warning-ink")} aria-hidden />
         <p className={cn("text-[12px] leading-relaxed", scheduleOperatorEnabled ? "text-success-ink" : "text-warning-ink")}>
           <strong>{scheduleOperatorEnabled ? "Operator switch on." : "Operator switch off."}</strong>{" "}
-          {scheduleOperatorEnabled ? "Enabled schedules may create jobs only after employee readiness and safety checks." : "Schedules will not create jobs while off. Planned cards are future occurrences only, not jobs."}
+          {scheduleOperatorEnabled ? "Enabled schedules may create jobs only after AI runtime readiness and safety checks." : "Schedules will not create jobs while off. Planned cards are future occurrences only, not jobs."}
         </p>
       </div>
 
@@ -322,7 +326,7 @@ export function WorkBoardKanban({
           <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All work</button>
           {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>
             {role === AI_GROWTH_PARTNER_ROLE_KEY ? <span className="flex size-5 items-center justify-center rounded-md bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span> : <AgentAvatar role={AGENT_BY_KEY[role]} size="xs" />}
-            {employeeNames?.[role] ?? workforceRoleShortName(role)}
+            {workforceIdentityLabel(role, employeeNames?.[role] ?? workforceRoleShortName(role))}
           </button>)}
         </div>
       </div>
@@ -333,7 +337,7 @@ export function WorkBoardKanban({
         </div>
       ) : filteredJobs.length === 0 && filteredPlanned.length === 0 ? (
         <div className="rounded-2xl border border-line bg-surface">
-          <EmptyState icon={<Search className="size-5" />} title="No work matches these filters" description="Clear the search or choose another employee, date or status." compact />
+          <EmptyState icon={<Search className="size-5" />} title="No work matches these filters" description="Clear the search or choose another AI identity, date or status." compact />
         </div>
       ) : view === "kanban" ? (
         <div className="scrollbar-thin -mx-1 overflow-x-auto px-1 pb-2" role="region" tabIndex={0} aria-label="Work status columns; scroll horizontally to see every status">

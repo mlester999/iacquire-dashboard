@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
 import { StatusPill } from "@/components/ui/status";
 import { setScheduleEnabledAction } from "@/app/actions/work";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey, workforceIdentityLabel, workforceRoleShortName } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -103,8 +103,10 @@ function navigationLabel(view: WorkforceCalendarView, dateKey: string, visibleDa
   return `${formatCalendarDateKey(dateKey, { month: "short", day: "numeric" })} – ${formatCalendarDateKey(last, { month: "short", day: "numeric", year: "numeric" })}`;
 }
 
-function employeeOf(item: CalendarItem): string {
-  return item.kind === "job" ? item.job.employeeName : item.schedule.employeeName;
+function identityOf(item: CalendarItem): string {
+  const role = item.kind === "job" ? item.job.employeeRole : item.schedule.employeeRole;
+  const name = item.kind === "job" ? item.job.employeeName : item.schedule.employeeName;
+  return workforceIdentityLabel(role, name);
 }
 
 function roleOf(item: CalendarItem): WorkforceRoleKey {
@@ -170,7 +172,7 @@ function EventButton({
           ? "border-l-violet bg-violet-soft/80 text-violet-ink"
           : "border-l-primary bg-primary-soft/70 text-primary-ink";
   const status = scheduled ? "scheduled occurrence, not a job" : item.job.statusLabel;
-  const label = `${titleOf(item)}, ${employeeOf(item)}, ${status}, ${calendarTimestampLabel(item.startsAt, timeZone)}`;
+  const label = `${titleOf(item)}, ${identityOf(item)}, ${status}, ${calendarTimestampLabel(item.startsAt, timeZone)}`;
   return (
     <button type="button" onClick={onClick} aria-label={label} aria-pressed={selected} title={label} className={cn("block w-full min-w-0 truncate rounded-md border-l-2 px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", tone, selected && "ring-1 ring-primary/35", compact ? "text-[12px]" : "text-[12px]")}>
       <span className="font-semibold">{calendarTimeLabel(item.startsAt, timeZone)}</span>
@@ -206,7 +208,7 @@ function SelectedItem({
           <div><p className="text-[12px] font-semibold uppercase tracking-[.12em] text-primary-ink">Recorded job</p><p className="mt-1 text-[12px] text-ink-2">{calendarTimestampLabel(job.startsAt, timeZone)}</p></div>
           <StatusPill tone={JOB_TONE[job.status]} size="sm">{job.statusLabel}</StatusPill>
         </div>
-        <div className="mt-3 flex items-center gap-2.5"><WorkforceAvatar role={job.employeeRole} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{job.title}</h2><p className="mt-0.5 text-[12px] text-ink-2">{job.employeeName} · {job.source === "schedule" ? "Created from a schedule" : "Requested work"}</p></div></div>
+        <div className="mt-3 flex items-center gap-2.5"><WorkforceAvatar role={job.employeeRole} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{job.title}</h2><p className="mt-0.5 text-[12px] text-ink-2">{workforceIdentityLabel(job.employeeRole, job.employeeName)} · {job.source === "schedule" ? "Created from a schedule" : "Requested work"}</p></div></div>
         <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2.5 text-[12px] leading-relaxed text-ink-2">{job.failureMessage ?? job.resultSummary ?? job.stageLabel ?? "No additional execution detail is recorded."}</p>
         {job.resultCount > 0 && <p className="mt-2 text-[12px] text-ink-2">{job.resultCount} result{job.resultCount === 1 ? "" : "s"} recorded</p>}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
@@ -227,10 +229,10 @@ function SelectedItem({
   return (
     <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft" aria-labelledby="calendar-selected-title">
       <div className="flex items-start justify-between gap-3"><div><p className="text-[12px] font-semibold uppercase tracking-[.12em] text-primary-ink">Future occurrence · not a job</p><p className="mt-1 text-[12px] text-ink-2">{calendarTimestampLabel(item.startsAt, timeZone)}</p></div><div className="flex items-center gap-2"><span className={cn("rounded-full px-2.5 py-1 text-[12px] font-semibold", runnableGate ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{scheduleState}</span>{canManageSchedules && <Switch checked={schedule.enabled} disabled={scheduleBusy !== null} onCheckedChange={(next) => onToggleSchedule(schedule.id, next)} aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`} />}</div></div>
-      <div className="mt-3 flex items-center gap-2.5"><WorkforceAvatar role={schedule.employeeRole} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{schedule.capabilityLabel}</h2><p className="mt-0.5 text-[12px] text-ink-2">{schedule.employeeName} · {schedule.cadence} · {schedule.timezone}</p></div></div>
+      <div className="mt-3 flex items-center gap-2.5"><WorkforceAvatar role={schedule.employeeRole} size="sm" /><div className="min-w-0"><h2 id="calendar-selected-title" className="truncate text-[14px] font-semibold text-ink">{schedule.capabilityLabel}</h2><p className="mt-0.5 text-[12px] text-ink-2">{workforceIdentityLabel(schedule.employeeRole, schedule.employeeName)} · {schedule.cadence} · {schedule.timezone}</p></div></div>
       <div className="mt-3 rounded-xl border border-warning/25 bg-warning-soft/50 px-3 py-2.5 text-[12px] leading-relaxed text-warning-ink">
         {runnableGate
-          ? "An occurrence is planned, but the calendar entry is not a job. Employee readiness, business hours and worker checks still apply when the scheduler runs."
+          ? "An occurrence is planned, but the calendar entry is not a job. AI runtime readiness, business hours and worker checks still apply when the scheduler runs."
           : !schedule.enabled
             ? "This schedule is paused. No job will be created from this occurrence."
             : "Scheduled work automation is off. No job will be created from this occurrence."}
@@ -398,14 +400,14 @@ export function WorkforceCalendar({
           <AlertTriangle className={cn("size-4 shrink-0", data.operatorEnabled ? "text-success-ink" : "text-warning-ink")} aria-hidden />
           <p className={cn("text-[12px] leading-relaxed", data.operatorEnabled ? "text-success-ink" : "text-warning-ink")}>
             <strong>{data.operatorEnabled ? "Operator switch on." : "Operator switch off."}</strong>{" "}
-            {data.operatorEnabled ? "Enabled schedules may create jobs after employee readiness and safety checks; a calendar occurrence alone is never a job." : "Future occurrences are visible, but no schedule creates a job while the operator switch is off. New schedules save paused."}
+            {data.operatorEnabled ? "Enabled schedules may create jobs after AI runtime readiness and safety checks; a calendar occurrence alone is never a job." : "Future occurrences are visible, but no schedule creates a job while the operator switch is off. New schedules save paused."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="relative flex max-w-full gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter work by AI partner or existing role">
             <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All work</button>
-            {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}><WorkforceAvatar role={role} size="xs" />{employeeNames?.[role] ?? workforceRoleShortName(role)}</button>)}
+            {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}><WorkforceAvatar role={role} size="xs" />{workforceIdentityLabel(role, employeeNames?.[role] ?? workforceRoleShortName(role))}</button>)}
           </div>
           <span className="text-[12px] text-ink-2">{items.length} item{items.length === 1 ? "" : "s"} · times use {data.timezone}</span>
         </div>
@@ -439,7 +441,7 @@ export function WorkforceCalendar({
 
             <section className="rounded-2xl border border-line bg-surface p-4 shadow-soft" aria-labelledby="calendar-upcoming-heading">
               <div className="flex items-start justify-between gap-2"><div><h2 id="calendar-upcoming-heading" className="text-[14px] font-semibold text-ink">Work in this period</h2><p className="mt-0.5 text-[12px] text-ink-2">Projected occurrences and recorded jobs</p></div><span className="rounded-full bg-surface-2 px-2 py-1 text-[12px] font-medium text-ink-2">{data.timezone}</span></div>
-              {items.length === 0 ? <p className="mt-3 text-[12px] leading-relaxed text-ink-2">No entries appear in this calendar period.</p> : <div className="mt-3 space-y-2">{items.slice(0, 5).map((item) => <button key={item.key} type="button" onClick={() => selectItem(item)} className={cn("flex w-full items-start gap-2 rounded-xl border p-2.5 text-left hover:bg-surface-2", selectedKey === item.key ? "border-primary/30 bg-primary-soft/30" : "border-line")}><WorkforceAvatar role={roleOf(item)} size="xs" /><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-ink">{titleOf(item)}</span><span className="mt-0.5 block text-[12px] text-ink-2">{employeeOf(item)} · {calendarTimestampLabel(item.startsAt, data.timezone)}</span><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide", item.kind === "schedule" ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>{item.kind === "schedule" ? "Scheduled · not a job" : item.job.statusLabel}</span></span></button>)}</div>}
+              {items.length === 0 ? <p className="mt-3 text-[12px] leading-relaxed text-ink-2">No entries appear in this calendar period.</p> : <div className="mt-3 space-y-2">{items.slice(0, 5).map((item) => <button key={item.key} type="button" onClick={() => selectItem(item)} className={cn("flex w-full items-start gap-2 rounded-xl border p-2.5 text-left hover:bg-surface-2", selectedKey === item.key ? "border-primary/30 bg-primary-soft/30" : "border-line")}><WorkforceAvatar role={roleOf(item)} size="xs" /><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-ink">{titleOf(item)}</span><span className="mt-0.5 block text-[12px] text-ink-2">{identityOf(item)} · {calendarTimestampLabel(item.startsAt, data.timezone)}</span><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[12px] font-semibold uppercase tracking-wide", item.kind === "schedule" ? "bg-primary-soft text-primary-ink" : "bg-surface-2 text-ink-2")}>{item.kind === "schedule" ? "Scheduled · not a job" : item.job.statusLabel}</span></span></button>)}</div>}
             </section>
 
             {invalidSchedules.length > 0 && <section className="rounded-2xl border border-warning/25 bg-warning-soft/50 p-3.5" role="status"><p className="flex items-center gap-2 text-[12px] font-semibold text-warning-ink"><AlertTriangle className="size-3.5" aria-hidden />{invalidSchedules.length} schedule{invalidSchedules.length === 1 ? " has" : "s have"} a recurrence or time-zone issue</p><p className="mt-1 text-[12px] leading-relaxed text-warning-ink">Those schedules are omitted from projected calendar entries until their settings are corrected.</p></section>}

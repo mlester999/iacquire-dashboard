@@ -16,7 +16,7 @@ import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTrig
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
 import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
-import type { WorkforceRoleKey } from "@/lib/agents";
+import { workforceIdentityLabel, type WorkforceRoleKey } from "@/lib/agents";
 import { nextWorkforceScheduleAt } from "@/lib/workforce-calendar-view";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
@@ -244,7 +244,7 @@ export function WorkBoard({
     const res = await startReviewAction(selected.capability);
     setStarting(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success(`${selected.label} started`, { description: "The employee reads only persisted records and records its findings. No record is changed." });
+    toast.success(`${selected.label} started`, { description: "The selected AI identity reads only persisted records and records its findings. No record is changed." });
     router.refresh();
   };
 
@@ -438,7 +438,7 @@ export function WorkBoard({
                       aria-label={`${schedule.enabled ? "Pause" : "Enable"} ${schedule.capabilityLabel} schedule`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-ink">{schedule.capabilityLabel} · {schedule.employeeName}</p>
+                      <p className="truncate text-[13px] font-semibold text-ink">{schedule.capabilityLabel} · {workforceIdentityLabel(schedule.employeeRole, schedule.employeeName)}</p>
                       {schedule.payload.prompt && <p className="mt-0.5 truncate text-[12px] text-ink-2" title={schedule.payload.prompt}>{schedule.payload.prompt}</p>}
                       <p className="mt-0.5 text-[12px] text-muted" suppressHydrationWarning>
                         {schedule.recurrenceRule
@@ -520,7 +520,7 @@ export function WorkBoard({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">{TRIGGER_EVENT_LABELS[trigger.eventType] ?? trigger.eventType}</p>
                       <p className="mt-0.5 text-[12px] text-muted">
-                        {trigger.capabilityLabel} · {trigger.employeeName} · last event #{trigger.lastEventId}
+                        {trigger.capabilityLabel} · {workforceIdentityLabel(trigger.employeeRole, trigger.employeeName)} · last event #{trigger.lastEventId}
                         {trigger.enabled && !triggerOperatorEnabled ? " · paused by operator" : ""}
                       </p>
                     </div>
