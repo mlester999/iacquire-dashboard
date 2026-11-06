@@ -29,6 +29,7 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceR
   "chat:appointment_change": { label: "Prepare an appointment cancellation or reschedule for approval", roles: ["appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:targeting_update": { label: "Update saved lead targeting rules", roles: ["lead_hunter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:partner_preferences_update": { label: "Change persistent AI Growth Partner communication preferences", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:outbound_control": { label: "Pause or resume all outbound AI actions for this workspace", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_contact_create": { label: "Create one CRM contact after checking for duplicates", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:appointment_policy_update": { label: "Update appointment booking rules", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:calendar_create": { label: "Create a private calendar and hidden appointment type", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
@@ -102,6 +103,8 @@ export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   "chat:targeting_update": ["research.public_web"],
   // This is a direct, owner-authorized workspace settings change, not an autonomous employee tool.
   "chat:partner_preferences_update": [],
+  // Workspace pause/resume is directly authorized by the signed-in owner/admin, not by model autonomy.
+  "chat:outbound_control": [],
   "chat:crm_contact_create": ["crm.contacts.create"],
   "chat:appointment_policy_update": ["calendar.booking_rules.update"],
   "chat:calendar_create": ["calendar.create"],

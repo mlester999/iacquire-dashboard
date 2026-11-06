@@ -80,6 +80,8 @@ import { HERMES_INFERENCE_ONLY_CHAT_CANARY } from "@/lib/hermes-inference-only";
 import { requestInferenceOnly } from "@/server/integrations/hermes/inference-only";
 import { agentSettingsSchema, aiPreferencesSchema } from "@/lib/agent-settings";
 import { getProfile, updateAiPreferences } from "@/server/settings/service";
+import { parseWorkforceChatOutboundControlIntent } from "@/lib/workforce-chat-outbound-control-intent";
+import { setClientPause } from "@/server/automation/controls";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -934,6 +936,65 @@ async function handleChatPreferencesIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The settings service could not save the change just now.";
     return reply(`I didn't change the Growth Partner's persistent preferences. ${chatSafeText(message)}`, systemNoticeMarker());
+  }
+}
+
+async function handleChatOutboundControlIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatOutboundControlIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "change") return reply("I couldn't identify a supported outbound safety-control change. No setting was changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:outbound_control"))) {
+    return reply("The AI Growth Partner can't change outbound safety controls from chat right now. No setting was changed.");
+  }
+  if (!ctx.can("automation.pause")) {
+    return reply("Only a workspace owner or admin can pause or resume all outbound AI actions. No setting was changed.");
+  }
+
+  const readPaused = async () => withSystem(async (db) => {
+    const { rows } = await db.query<{ active: boolean }>(
+      "select active from automation_pauses where org_id = $1 and scope = 'outbound'",
+      [ctx.org.orgId],
+    );
+    return rows[0]?.active === true;
+  });
+  const wasPaused = await readPaused();
+  if (wasPaused === input.intent.paused) {
+    return reply(`All outbound AI actions are already ${input.intent.paused ? "paused" : "resumed"}. No setting changed.`);
+  }
+
+  try {
+    const state = await setClientPause(ctx, {
+      scope: "outbound",
+      paused: input.intent.paused,
+      reason: "Changed by an authorized member in the AI Growth Partner conversation.",
+    });
+    if (state.pauses.outbound.active !== input.intent.paused) {
+      return reply("I couldn't verify the outbound safety-control state after the request. Check Safety controls before relying on a change.", systemNoticeMarker());
+    }
+    const content = input.intent.paused
+      ? "Paused all outbound AI actions for this workspace. Queued sends are blocked until an owner or admin resumes them in Safety controls. No message was sent by this setting change."
+      : "Resumed all outbound AI actions for this workspace. Queued work can proceed only after its usual permission, approval and channel checks pass.";
+    return reply(content, serverMarker("approved_write"));
+  } catch (error) {
+    const verifiedPaused = await readPaused();
+    if (verifiedPaused === input.intent.paused) {
+      return reply(
+        `The outbound safety-control setting now reads ${verifiedPaused ? "paused" : "resumed"}, but I couldn't verify the full audit and notification step. Check Activity and Safety controls before relying on the change.`,
+        systemNoticeMarker(),
+      );
+    }
+    const message = error instanceof AppError ? error.message : "The outbound safety-control service could not save the change just now.";
+    return reply(`I couldn't change outbound AI actions: ${chatSafeText(message)} No setting was confirmed as changed.`, systemNoticeMarker());
   }
 }
 
@@ -2423,6 +2484,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: preferencesIntent,
+    });
+  }
+  const outboundControlIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatOutboundControlIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (outboundControlIntent.kind !== "none" && !refusal) {
+    return handleChatOutboundControlIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: outboundControlIntent,
     });
   }
   const scheduleConfirmation = !input.regenerateMessageId && !namedOtherRole ? isScheduleConfirmation(prepared.userContent) : null;

@@ -12,6 +12,7 @@ import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { activateGrowthPartnerBusinessBrainVersion, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
 import { setScheduleEnabled } from "@/server/workforce/schedules";
+import { getControlState } from "@/server/automation/controls";
 import { memberActor } from "@/server/crm/actor";
 import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -280,6 +281,86 @@ describe("AI Growth Partner chat to native workflow", () => {
       await saveTargeting(ctx, previousTargeting);
       await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, growthPartnerAgentId]));
       await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
+  it("pauses and resumes tenant outbound actions through the permanent Growth Partner conversation", async () => {
+    const requestStart = mock.requests.length;
+    await resetAgentMessageRateLimit(owner.id);
+    await resetAgentMessageRateLimit(member.id);
+    await withSystem((db) => db.query("delete from automation_pauses where org_id = $1 and scope = 'outbound'", [org.id]));
+    try {
+      const paused = await sendChatMessage(ctxFor(owner, org, "owner"), {
+        agentRole: "growth_partner",
+        content: "Pause outbound campaigns.",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect(paused).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+      const pauseReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [paused.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(pauseReply).toContain("Paused all outbound AI actions");
+      expect(pauseReply).toContain("Queued sends are blocked");
+      expect(pauseReply).toContain("No message was sent");
+      expect(await withSystem((db) => getControlState(db, org.id))).toMatchObject({ pauses: { outbound: { active: true } } });
+      expect((await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from audit_logs where org_id = $1 and action = 'automation.paused' and target_id = 'outbound'",
+        [org.id],
+      ))).rows[0].count).toBe("1");
+
+      const repeated = await sendChatMessage(ctxFor(owner, org, "owner"), {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Pause outbound campaigns.", clientMessageId: crypto.randomUUID(),
+      });
+      const repeatedReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [repeated.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(repeatedReply).toContain("already paused");
+
+      const denied = await sendChatMessage(ctxFor(member, org, "member"), {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Resume outbound campaigns.", clientMessageId: crypto.randomUUID(),
+      });
+      const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [denied.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(deniedReply).toContain("Only a workspace owner or admin");
+      expect(await withSystem((db) => getControlState(db, org.id))).toMatchObject({ pauses: { outbound: { active: true } } });
+
+      const resumed = await sendChatMessage(ctxFor(owner, org, "owner"), {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Resume outbound campaigns.", clientMessageId: crypto.randomUUID(),
+      });
+      const resumeReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [resumed.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(resumeReply).toContain("Resumed all outbound AI actions");
+      expect(resumeReply).toContain("usual permission, approval and channel checks");
+      expect(await withSystem((db) => getControlState(db, org.id))).toMatchObject({ pauses: { outbound: { active: false } } });
+      expect((await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from audit_logs where org_id = $1 and action in ('automation.paused', 'automation.resumed') and target_id = 'outbound'",
+        [org.id],
+      ))).rows[0].count).toBe("2");
+
+      const noOpResume = await sendChatMessage(ctxFor(owner, org, "owner"), {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Resume outbound campaigns.", clientMessageId: crypto.randomUUID(),
+      });
+      const noOpReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [noOpResume.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(noOpReply).toContain("already resumed");
+      expect((await withSystem((db) => db.query("select 1 from automation_pauses where org_id = $1 and scope = 'outbound' and active", [org.id]))).rows).toHaveLength(0);
+      expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    } finally {
+      await withSystem((db) => db.query("delete from automation_pauses where org_id = $1 and scope = 'outbound'", [org.id]));
+      await resetAgentMessageRateLimit(owner.id);
+      await resetAgentMessageRateLimit(member.id);
     }
   });
 

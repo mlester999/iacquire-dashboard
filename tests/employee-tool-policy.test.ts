@@ -101,6 +101,7 @@ describe("the policy table, role by role", () => {
     expect(ids).toContain("chat:crm_contact_create");
     expect(ids).toContain("chat:appointment_policy_update");
     expect(ids).toContain("chat:calendar_create");
+    expect(ids).toContain("chat:outbound_control");
     expect(ids).not.toContain("runtime:terminal");
     expect(ids.some((id) => /send|publish|delete|export|import|campaign/.test(id))).toBe(false);
     expect(runtimeToolExposure("growth_partner", ["memory", "session_search", "todo_list", "vision_analyze", "web_search", "web_extract"]))
