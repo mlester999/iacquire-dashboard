@@ -46,6 +46,22 @@ export function ReadinessInline({ readiness, detail = false }: { readiness: Empl
   );
 }
 
+export function PreviousEmployeeProfileNotice() {
+  return (
+    <aside aria-labelledby="previous-profile-title" className="flex flex-col gap-4 rounded-2xl border border-primary/15 bg-primary-soft/35 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="min-w-0">
+        <p id="previous-profile-title" className="text-[13px] font-semibold text-ink">Previous employee profile</p>
+        <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">
+          This role record is retained so its settings, schedules and history remain available. Use the AI Growth Partner’s permanent conversation for new requests.
+        </p>
+      </div>
+      <ButtonLink href="/growth-partner/conversation" variant="secondary" className="shrink-0">
+        Open AI Growth Partner <ArrowRight className="size-3.5" aria-hidden />
+      </ButtonLink>
+    </aside>
+  );
+}
+
 function StepGlyph({ step, dark = false }: { step: ReadinessStep; dark?: boolean }) {
   const base = "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ring-1 ring-inset";
   if (step.state === "done") {

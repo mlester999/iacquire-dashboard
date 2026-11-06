@@ -47,7 +47,7 @@ import { auditRoleConfiguration, recommendedSettings } from "@/lib/role-playbook
 import { deriveEmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { capabilityChecksFor, type CapabilityActivity } from "@/lib/employee-capability-status";
 import { CapabilityChecklist } from "@/components/workforce/capability-checklist";
-import { EmployeeProfileHero, ReadinessChecklist } from "@/components/workforce/employee-summary";
+import { EmployeeProfileHero, PreviousEmployeeProfileNotice, ReadinessChecklist } from "@/components/workforce/employee-summary";
 import { OperatingModeCard, type AgentMode } from "@/components/workforce/operating-controls";
 import { ConfigTestDialog } from "@/components/workforce/config-test-dialog";
 import { EmployeeInstructions } from "@/components/workforce/employee-instructions";
@@ -108,6 +108,7 @@ interface Props {
   acknowledgementCurrent: boolean | null;
   identityCurrent: boolean | null;
   isAgencyEmployee: boolean;
+  isClientLegacyProfile: boolean;
   /** Whether the client's setup payment is confirmed; absent for an internal employee, where it does not apply. */
   paymentCleared?: boolean;
   adminManageHref: string | null;
@@ -167,7 +168,9 @@ export function EmployeeDetail(props: Props) {
     !agent.enabled ? (
       props.adminManageHref ? <ButtonLink href={props.adminManageHref} variant="secondary">Open admin controls</ButtonLink> : null
     ) : readiness.cta === "chat" && props.canChat ? (
-      <ButtonLink href={`/chat/${meta.slug}`} variant="brand"><MessageSquare className="size-4" /> Start a chat</ButtonLink>
+      props.isClientLegacyProfile
+        ? <ButtonLink href="/growth-partner/conversation" variant="brand"><MessageSquare className="size-4" /> Open AI Growth Partner</ButtonLink>
+        : <ButtonLink href={`/chat/${meta.slug}`} variant="brand"><MessageSquare className="size-4" /> Start a chat</ButtonLink>
     ) : readiness.cta === "history" ? (
       <Button variant="brand" onClick={() => setTab("history")}><History className="size-4" /> Review status</Button>
     ) : readiness.cta === "connection" && props.adminManageHref ? (
@@ -178,7 +181,7 @@ export function EmployeeDetail(props: Props) {
 
   const secondary =
     readiness.cta === "chat" && props.canConfigure ? (
-      <Button variant="secondary" onClick={goConfigure}><Settings2 className="size-4" /> Manage profile</Button>
+      <Button variant="secondary" onClick={goConfigure}><Settings2 className="size-4" /> {props.isClientLegacyProfile ? "Manage previous profile" : "Manage profile"}</Button>
     ) : (
       <Button variant="secondary" onClick={showRequirements}><ClipboardCheck className="size-4" /> View setup requirements</Button>
     );
@@ -186,8 +189,10 @@ export function EmployeeDetail(props: Props) {
   return (
     <div className="space-y-6">
       <Link href="/employees" className="inline-flex items-center gap-1.5 text-[14px] text-muted transition hover:text-ink">
-        <ArrowLeft className="size-3.5" /> Retained profiles
+        <ArrowLeft className="size-3.5" /> {props.isClientLegacyProfile ? "Previous employee profiles" : "Retained profiles"}
       </Link>
+
+      {props.isClientLegacyProfile && <PreviousEmployeeProfileNotice />}
 
       <EmployeeProfileHero
         meta={meta}
@@ -195,7 +200,7 @@ export function EmployeeDetail(props: Props) {
         description={props.description}
         readiness={readiness}
         target="workforce.employee.hero"
-        eyebrow={props.isAgencyEmployee ? "iAcquire internal profile" : "Retained role profile"}
+        eyebrow={props.isAgencyEmployee ? "iAcquire internal profile" : props.isClientLegacyProfile ? "Previous employee profile" : "Retained role profile"}
         actions={<>{primary}{secondary}{props.adminManageHref && primary && readiness.cta !== "connection" ? <ButtonLink href={props.adminManageHref} variant="ghost">Admin controls <ArrowUpRight className="size-3.5" /></ButtonLink> : null}</>}
         footer={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -1198,13 +1203,13 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
   );
 }
 
-function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, proactiveReports, proactiveMonitoring }: Props) {
+function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, isClientLegacyProfile, proactiveReports, proactiveMonitoring }: Props) {
   const proactive = <EmployeeProactiveActivity meta={meta} reports={proactiveReports} monitoring={proactiveMonitoring} timeZone={timeZone} />;
   if (!runs.length) {
     return (
       <div className="space-y-4">
         {proactive}
-        <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description={`Conversations and tool activity appear here after ${agent.displayName} starts working. This view only shows saved run records.`} action={canUse && agent.enabled && canChat(agent.status) ? <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink> : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>
+        <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description={`Conversations and tool activity appear here after ${agent.displayName} starts working. This view only shows saved run records.`} action={canUse && agent.enabled && canChat(agent.status) ? (isClientLegacyProfile ? <ButtonLink href="/growth-partner/conversation" variant="secondary">Open AI Growth Partner</ButtonLink> : <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink>) : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>
       </div>
     );
   }

@@ -194,6 +194,7 @@ export default async function EmployeePage({ params, searchParams }: { params: P
       canConfigure={canConfigure}
       canChat={ctx.can("agents.use")}
       isAgencyEmployee={internalEmployee}
+      isClientLegacyProfile={ctx.org.kind === "client"}
       paymentCleared={paymentCleared}
       acknowledgementCurrent={internalVerification.acknowledgementCurrent}
       identityCurrent={internalVerification.identityCurrent}

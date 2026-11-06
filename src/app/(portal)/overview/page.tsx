@@ -186,7 +186,7 @@ export default async function OverviewPage() {
                 return (
                   <li key={a.id}>
                     <Link
-                      href={a.enabled ? `/chat/${meta.slug}` : `/employees/${meta.slug}`}
+                      href={a.enabled ? "/growth-partner/conversation" : `/employees/${meta.slug}`}
                       className="group flex h-full items-center gap-3 rounded-xl border border-line bg-surface p-3 transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card"
                     >
                       <AgentAvatar role={meta} size="md" />
