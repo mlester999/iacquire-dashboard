@@ -5,11 +5,12 @@ import { parseResearchAssignment } from "@/lib/research-intent";
 import type { WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
 
 export type WorkforceScheduleCadence = "hourly" | "daily" | "weekly";
+export type WorkforceScheduleWindow = { startTime: string; endTime: string };
 
 export type WorkforceChatScheduleIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
-  | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[] }
+  | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[]; window?: WorkforceScheduleWindow }
   | {
       kind: "proposal";
       capability: CapabilityKey;
@@ -34,10 +35,13 @@ const WEEKDAY_ORDER: Weekday[] = [...WEEKDAYS, "sat", "sun"];
 // mean "all of them": a question to answer now, which used to get "What local time should I use?" because it was read as a recurring request.
 const PERIOD = "(?:weekdays?|days?|weeks?|hours?|mornings?|afternoons?|evenings?|nights?|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?)";
 const RECURRING_SIGNAL = new RegExp(`\\b(?:every|each)\\s+(?:\\d+\\s+)?${PERIOD}\\b|\\b(?:daily|weekly|hourly|recurring)\\b`, "i");
-const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/i;
+const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])/i;
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;
-const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?schedule\s+(?:from\s+.+?\s+)?(?:to|for|at)\s+(.+?)[.!?]*$/i;
+const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?(?:schedule\s+)?(?:(?:from\s+.+?\s+)?(?:to|for|at)\s+)(.+?)[.!?]*$/i;
+const SCHEDULE_WINDOW_TIME = String.raw`(?:\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]\d|2[0-3]):[0-5]\d\b)`;
+const SCHEDULE_WINDOW = new RegExp(`(${SCHEDULE_WINDOW_TIME})\\s*(?:-|–|—|\\bto\\b)\\s*(${SCHEDULE_WINDOW_TIME})`, "i");
+const SCHEDULE_WINDOW_LIKE = /\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:-|–|—|\bto\b)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i;
 
 function weekdaysIn(text: string): Weekday[] {
   return WEEKDAY_ORDER.filter((day) => DAYS.find((entry) => entry.key === day)?.pattern.test(text));
@@ -55,6 +59,23 @@ function parseLocalTime(text: string): { time: string | null; ambiguous: boolean
   if (twentyFourHour) return { time: `${twentyFourHour[1]}:${twentyFourHour[2]}`, ambiguous: false };
   const bareHour = text.match(/\bat\s+(\d{1,2})(?!\d)(?!\s*(?:a\.?m\.?|p\.?m\.?))/i);
   return { time: null, ambiguous: Boolean(bareHour) };
+}
+
+function parseScheduleWindow(text: string): { window: WorkforceScheduleWindow | null; issue: "ambiguous" | "invalid" | null } {
+  const match = text.match(SCHEDULE_WINDOW);
+  if (!match) {
+    const broadMatch = text.match(SCHEDULE_WINDOW_LIKE);
+    if (!broadMatch) return { window: null, issue: null };
+    const unmarkedTwelveHourTime = (value: string) => !value.includes(":") && !/(?:a\.?m\.?|p\.?m\.?)/i.test(value);
+    const ambiguous = unmarkedTwelveHourTime(broadMatch[1]) || unmarkedTwelveHourTime(broadMatch[2]);
+    return { window: null, issue: ambiguous ? "ambiguous" : "invalid" };
+  }
+  const parseEndpoint = (value: string) => parseLocalTime(/^\d{2}:\d{2}$/.test(value.trim()) ? `at ${value.trim()}` : value);
+  const start = parseEndpoint(match[1]);
+  const end = parseEndpoint(match[2]);
+  if (!start.time || !end.time || start.ambiguous || end.ambiguous) return { window: null, issue: "invalid" };
+  if (start.time >= end.time) return { window: null, issue: "invalid" };
+  return { window: { startTime: start.time, endTime: end.time }, issue: null };
 }
 
 function removeScheduleWording(text: string): string {
@@ -165,13 +186,17 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
   const scheduleChange = role === "growth_partner" ? text.match(LEAD_SCHEDULE_CHANGE) : null;
   if (scheduleChange) {
     const requested = scheduleChange[1];
-    if (/\d\s*(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?\s*(?:-|–|—|\bto\b)\s*\d\s*(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)/i.test(requested)) {
-      return { kind: "clarification", message: "A saved lead research schedule runs once at a chosen local time; it can't reserve a continuous work window yet. Tell me the single run time you want, such as 2 PM. No schedule was changed." };
-    }
     if (/\b(?:starting|beginning|effective)\s+(?:tomorrow|next\s+(?:week|month)|\d{4}-\d{2}-\d{2})\b/i.test(requested)) {
       return { kind: "clarification", message: "I can update a saved lead research schedule now, but it can't start on a future date yet. No schedule was changed." };
     }
-    const parsedTime = parseLocalTime(requested);
+    const parsedWindow = parseScheduleWindow(requested);
+    if (parsedWindow.issue === "invalid") {
+      return { kind: "clarification", message: "Give the work window as valid same-day times, such as 2 PM–5 PM or 14:00–17:00, with the end after the start. No schedule was changed." };
+    }
+    if (parsedWindow.issue === "ambiguous") {
+      return { kind: "clarification", message: "Include AM/PM on both work-window times, such as 2 PM–5 PM, or use 24-hour times such as 14:00–17:00. No schedule was changed." };
+    }
+    const parsedTime = parsedWindow.window ? { time: parsedWindow.window.startTime, ambiguous: false } : parseLocalTime(requested);
     if (parsedTime.ambiguous) {
       return { kind: "clarification", message: "What local time should I use? Include AM/PM, such as 2 PM, or use an unambiguous 24-hour time such as 14:00." };
     }
@@ -180,10 +205,11 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
     }
     const everyWeekday = /\b(?:every|each)\s+weekday\b|\bweekdays\b/i.test(requested);
     const weekdays = weekdaysIn(requested);
-    if (everyWeekday) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays: WEEKDAYS };
-    if (weekdays.length) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays };
-    if (/\b(?:daily|every day|each day)\b/i.test(requested)) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "daily" };
-    return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time };
+    const window = parsedWindow.window;
+    if (everyWeekday) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays: WEEKDAYS, ...(window ? { window } : {}) };
+    if (weekdays.length) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays, ...(window ? { window } : {}) };
+    if (/\b(?:daily|every day|each day)\b/i.test(requested)) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "daily", ...(window ? { window } : {}) };
+    return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, ...(window ? { window } : {}) };
   }
 
   if (!RECURRING_SIGNAL.test(text)) return { kind: "none" };

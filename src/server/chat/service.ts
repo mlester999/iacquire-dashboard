@@ -51,9 +51,10 @@ import {
   parseWorkforceChatScheduleIntent,
   type WorkforceChatScheduleIntent,
   type WorkforceScheduleCadence,
+  type WorkforceScheduleWindow,
 } from "@/lib/workforce-chat-schedule-intent";
 import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
-import { validateBusinessHours } from "@/lib/messaging";
+import { validateBusinessHours, type Weekday } from "@/lib/messaging";
 import { formatSlot } from "@/lib/appointments";
 import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
@@ -365,6 +366,31 @@ function scheduleCadenceLabel(cadence: WorkforceScheduleCadence, rule: Workforce
   return `every ${weekdays.map((day) => names[day]).join(" and ")} at ${rule?.localTime ?? "the selected time"}`;
 }
 
+function scheduleWorkWindow(businessHours: unknown, rule: WorkforceScheduleRule | null): WorkforceScheduleWindow | null {
+  if (!rule) return null;
+  const activeDays: Weekday[] = rule.kind === "daily" ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] : rule.weekdays;
+  if (!activeDays.length) return null;
+  const hours = validateBusinessHours(businessHours);
+  if (!hours) return null;
+  const windows = activeDays.map((day) => hours[day] ?? []);
+  if (windows.some((dayWindows) => dayWindows.length !== 1)) return null;
+  const first = windows[0][0];
+  if (!first || windows.some((dayWindows) => dayWindows[0][0] !== first[0] || dayWindows[0][1] !== first[1])) return null;
+  return { startTime: first[0], endTime: first[1] };
+}
+
+function formatScheduleClock(time: string): string {
+  const [hourText, minute] = time.split(":");
+  const hour = Number(hourText);
+  return `${hour % 12 || 12}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
+}
+
+function scheduleWorkWindowNotice(businessHours: unknown, rule: WorkforceScheduleRule | null): string {
+  const window = scheduleWorkWindow(businessHours, rule);
+  if (!window || !rule) return "";
+  return ` The allowed work window is ${formatScheduleClock(window.startTime)}–${formatScheduleClock(window.endTime)} on scheduled days, with one run at ${formatScheduleClock(rule.localTime)}.`;
+}
+
 /**
  * What is stored with a reply the server wrote. A reply nobody marked is a system notice, and a server-composed reply is never a model response whatever a caller passes: only the
  * run's own placeholder row (inserted where the run starts) carries that class.
@@ -483,6 +509,7 @@ async function handleChatScheduleAction(
       let recurrenceRule: WorkforceScheduleRule | null;
       let payload: Record<string, unknown>;
       let enabledAfterSave = false;
+      let proposedBusinessHours: unknown = existingHours ?? {};
       if (action.kind === "update_existing") {
         const currentRule = validateWorkforceScheduleRule(existing?.recurrence_rule);
         if (!currentRule) return reply("The saved lead research schedule doesn't have a valid daily or weekday run time, so I couldn't change it safely. Review it in Work Board → Schedules. No schedule was changed.");
@@ -496,6 +523,12 @@ async function handleChatScheduleAction(
           recurrenceRule = { ...currentRule, localTime: action.localTime };
         }
         cadence = recurrenceRule.kind;
+        if (action.window) {
+          const activeDays: Weekday[] = recurrenceRule.kind === "daily"
+            ? ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+            : recurrenceRule.weekdays;
+          proposedBusinessHours = Object.fromEntries(activeDays.map((day) => [day, [[action.window!.startTime, action.window!.endTime]]]));
+        }
         const storedPayload = typeof existing?.payload === "object" && existing.payload !== null && !Array.isArray(existing.payload)
           ? existing.payload as Record<string, unknown>
           : {};
@@ -540,7 +573,7 @@ async function handleChatScheduleAction(
         recurrenceRule,
         timezone,
         payload,
-        businessHours: (existingHours ?? {}) as unknown as Record<string, unknown>,
+        businessHours: (proposedBusinessHours ?? {}) as Record<string, unknown>,
         updateExisting,
         enabledAfterSave,
         expectedExistingSchedule: existing ? { id: existing.id, updatedAt: existing.updated_at } : null,
@@ -561,7 +594,7 @@ async function handleChatScheduleAction(
         : updateExisting
           ? " It will stay paused after confirmation."
           : " It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled.";
-      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}. The next planned time is ${nextLabel} (${timezone}).${existingNotice}${activationNotice} Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
+      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}.${scheduleWorkWindowNotice(proposal.businessHours, proposal.recurrenceRule)} The next planned time is ${nextLabel} (${timezone}).${existingNotice}${activationNotice} Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
       return reply(content, serverMarker("proposed_change"));
     }
 
@@ -671,7 +704,7 @@ async function handleChatScheduleAction(
       // Saving is already durable in this transaction; the prior preview contains the exact time.
     }
     const content = pending.updateExisting
-      ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}. The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
+      ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}.${scheduleWorkWindowNotice(pending.businessHours, pending.recurrenceRule)} The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
       : `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
     return reply(content, serverMarker("approved_write", { kind: "schedule", id: saved.id }));
   });

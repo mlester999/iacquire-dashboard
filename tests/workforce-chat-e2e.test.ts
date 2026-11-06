@@ -237,22 +237,41 @@ describe("AI Growth Partner chat to native workflow", () => {
 
       const changePreview = await sendChatMessage(ctx, {
         agentRole: "growth_partner",
-        content: "Change my lead-hunting schedule to 2 PM",
+        content: "Move our lead hunting to 2 PM–5 PM",
         clientMessageId: crypto.randomUUID(),
       });
       const changeText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [changePreview.assistantMessageId]))).rows[0].content;
       expect(changeText).toContain("updated in place");
       expect(changeText).toContain("remain enabled");
-      await sendChatMessage(ctx, {
+      expect(changeText).toContain("2:00 PM–5:00 PM");
+      expect(changeText).toContain("one run at 2:00 PM");
+      const changeConfirm = await sendChatMessage(ctx, {
         agentRole: "growth_partner", conversationId: growthPartnerConversationId,
         content: "confirm schedule", clientMessageId: crypto.randomUUID(),
       });
-      const changed = (await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown>; payload: Record<string, unknown>; next_run_at: Date }>(
-        "select id, enabled, recurrence_rule, payload, next_run_at from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+      const changed = (await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown>; business_hours: Record<string, unknown>; payload: Record<string, unknown>; next_run_at: Date }>(
+        "select id, enabled, recurrence_rule, business_hours, payload, next_run_at from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
         [org.id, growthPartnerAgentId],
       ))).rows[0];
-      expect(changed).toMatchObject({ id: created.id, enabled: true, recurrence_rule: { kind: "weekly", localTime: "14:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] }, payload: created.payload });
+      expect(changed).toMatchObject({
+        id: created.id,
+        enabled: true,
+        recurrence_rule: { kind: "weekly", localTime: "14:00", weekdays: ["mon", "tue", "wed", "thu", "fri"] },
+        business_hours: {
+          mon: [["14:00", "17:00"]], tue: [["14:00", "17:00"]], wed: [["14:00", "17:00"]],
+          thu: [["14:00", "17:00"]], fri: [["14:00", "17:00"]],
+        },
+        payload: created.payload,
+      });
       expect(new Date(changed.next_run_at).getTime()).toBeGreaterThan(Date.now());
+      expect((await withSystem((db) => db.query(
+        "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+        [org.id, growthPartnerAgentId],
+      ))).rows).toHaveLength(1);
+      const confirmText = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [changeConfirm.assistantMessageId]))).rows[0].content;
+      expect(confirmText).toContain("Updated Lead research");
+      expect(confirmText).toContain("2:00 PM–5:00 PM");
+      expect(confirmText).toContain("still enabled");
       expect((await withSystem((db) => db.query(
         "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
         [org.id, growthPartnerAgentId],

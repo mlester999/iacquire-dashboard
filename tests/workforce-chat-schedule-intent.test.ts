@@ -38,11 +38,29 @@ describe("AI workforce chat schedule intent", () => {
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule to 2 PM every weekday")).toEqual({
       kind: "update_existing", capability: "lead_research", localTime: "14:00", cadence: "weekly", weekdays: ["mon", "tue", "wed", "thu", "fri"],
     });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 2 PM–5 PM")).toEqual({
+      kind: "update_existing", capability: "lead_research", localTime: "14:00", window: { startTime: "14:00", endTime: "17:00" },
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule from 9 AM–12 PM to 2 PM–5 PM every weekday")).toEqual({
+      kind: "update_existing", capability: "lead_research", localTime: "14:00", cadence: "weekly", weekdays: ["mon", "tue", "wed", "thu", "fri"], window: { startTime: "14:00", endTime: "17:00" },
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 14:00–17:00")).toMatchObject({
+      kind: "update_existing", localTime: "14:00", window: { startTime: "14:00", endTime: "17:00" },
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 2 p.m.–5 p.m.")).toMatchObject({
+      kind: "update_existing", localTime: "14:00", window: { startTime: "14:00", endTime: "17:00" },
+    });
   });
 
-  it("does not invent a work window or future start date the scheduler cannot represent", () => {
+  it("rejects invalid windows and future start dates without changing a schedule", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 5 PM–2 PM")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/end after the start/),
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 2–5 PM")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/Include AM\/PM/),
+    });
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule from 9 AM–12 PM to 2 PM–5 PM starting tomorrow")).toMatchObject({
-      kind: "clarification", message: expect.stringMatching(/continuous work window/),
+      kind: "clarification", message: expect.stringMatching(/future date/),
     });
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my lead-hunting schedule to 2 PM starting tomorrow")).toMatchObject({
       kind: "clarification", message: expect.stringMatching(/future date/),
