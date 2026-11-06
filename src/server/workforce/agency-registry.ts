@@ -86,24 +86,34 @@ export async function listClientWorkforceSummaries(user: SessionUser) {
       name: string;
       industry: string | null;
       status: string;
-      identities: number;
-      mapped: number;
-      credentialed: number;
-      verified: number;
-      issues: number;
-      last_success_at: Date | null;
+      growth_partner_identities: number;
+      growth_partner_mapped: number;
+      growth_partner_credentialed: number;
+      growth_partner_verified: number;
+      growth_partner_issues: number;
+      growth_partner_last_success_at: Date | null;
+      retained_profiles: number;
+      retained_mapped: number;
+      retained_credentialed: number;
+      retained_verified: number;
+      retained_issues: number;
       provisioning_open: number;
       provisioning_failed: number;
       hermes_status: string | null;
       hermes_detail: string | null;
     }>(
       `select o.id, o.name, o.industry, o.status,
-              count(a.id)::int as identities,
-              count(a.id) filter (where a.hermes_profile is not null)::int as mapped,
-              count(a.id) filter (where a.credential_id is not null)::int as credentialed,
-              count(a.id) filter (where ${runtimeReadySql("a")})::int as verified,
-              count(a.id) filter (where a.status in ('offline','error'))::int as issues,
-              max(a.last_health_check_at) filter (where a.last_health_ok is true) as last_success_at,
+              count(a.id) filter (where a.role_key = 'growth_partner')::int as growth_partner_identities,
+              count(a.id) filter (where a.role_key = 'growth_partner' and a.hermes_profile is not null)::int as growth_partner_mapped,
+              count(a.id) filter (where a.role_key = 'growth_partner' and a.credential_id is not null)::int as growth_partner_credentialed,
+              count(a.id) filter (where a.role_key = 'growth_partner' and ${runtimeReadySql("a")})::int as growth_partner_verified,
+              count(a.id) filter (where a.role_key = 'growth_partner' and a.status in ('offline','error'))::int as growth_partner_issues,
+              max(a.last_health_check_at) filter (where a.role_key = 'growth_partner' and a.last_health_ok is true) as growth_partner_last_success_at,
+              count(a.id) filter (where a.role_key <> 'growth_partner')::int as retained_profiles,
+              count(a.id) filter (where a.role_key <> 'growth_partner' and a.hermes_profile is not null)::int as retained_mapped,
+              count(a.id) filter (where a.role_key <> 'growth_partner' and a.credential_id is not null)::int as retained_credentialed,
+              count(a.id) filter (where a.role_key <> 'growth_partner' and ${runtimeReadySql("a")})::int as retained_verified,
+              count(a.id) filter (where a.role_key <> 'growth_partner' and a.status in ('offline','error'))::int as retained_issues,
               (select count(*)::int from agent_provisioning_jobs j where j.org_id=o.id and j.status in ('requested','in_progress','awaiting_health_check')) as provisioning_open,
               (select count(*)::int from agent_provisioning_jobs j where j.org_id=o.id and j.status='failed') as provisioning_failed,
               (select s.status from integration_status s where s.org_id=o.id and s.provider='hermes') as hermes_status,

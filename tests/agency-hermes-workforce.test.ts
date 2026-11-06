@@ -13,7 +13,7 @@ import {
 } from "@/server/workforce/agency";
 import { ensureAgencyWorkforceRegistry, listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
 import { listIntegrationManager, saveIntegrationConnection, testIntegrationConnection } from "@/server/integrations/manager";
-import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
+import { connectHermesProfile, createConfigVersion, ensureGrowthPartnerRuntime, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { listHermesGateways } from "@/server/integrations/hermes/gateways";
 import { acknowledgeInternalFullCapabilities, getHermesToolPolicyView } from "@/server/workforce/tool-policies";
@@ -274,8 +274,17 @@ describe("agency Hermes workforce isolation", () => {
       agencyUserId: admin.id,
     });
 
+    await withSystem((db) => ensureGrowthPartnerRuntime(clientOrg.id, db));
+
     const staffClients = await listClientWorkforceSummaries(staff);
     expect(staffClients.map((client) => client.id)).toEqual([clientOrg.id]);
+    expect(staffClients[0]).toMatchObject({
+      growth_partner_identities: 1,
+      growth_partner_mapped: 0,
+      growth_partner_credentialed: 0,
+      growth_partner_verified: 0,
+      retained_profiles: AGENT_ROLE_KEYS.length,
+    });
     const adminClients = await listClientWorkforceSummaries(admin);
     expect(adminClients.map((client) => client.id).sort()).toEqual([clientOrg.id, otherClientOrg.id].sort());
     const staffManager = await listIntegrationManager(staff, clientOrg.id);
