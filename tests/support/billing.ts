@@ -2,6 +2,7 @@
 // provider; the PayMongo bodies are written by hand (see src/server/billing/paymongo.ts: the contract was never exercised against a live or test account).
 import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { addMember, createOrg, createUser, ctxFor } from "./fixtures";
 
 export const WEBHOOK_SECRET = "whsec_test_only_not_a_real_secret";
@@ -48,10 +49,11 @@ export async function markActivated(orgId: string) {
  * Runs the real questionnaire to its end for a new client (the same answers as tests/client-onboarding-acceptance.test.ts) and submits it, so what the submission does
  * with provisioning is the product's own code. The workspace has a verified owner and an unpaid setup fee unless the caller clears it first.
  */
-export async function submitRealOnboarding(opts: { name: string; clearPayment?: boolean; disableRoles?: string[]; extraAnswers?: Record<string, unknown> }) {
+export async function submitRealOnboarding(opts: { name: string; clearPayment?: boolean; disableRoles?: string[]; extraAnswers?: Record<string, unknown>; withGrowthPartner?: boolean }) {
   const { saveOnboardingStep, submitOnboarding } = await import("@/server/onboarding/service");
   const org = await createOrg({ name: opts.name });
   if (opts.clearPayment) await clearSetupPayment(org.id);
+  if (opts.withGrowthPartner) await withSystem((db) => ensureGrowthPartnerRuntime(org.id, db));
   // A plan that leaves employees out: those employees are switched off before the questionnaire is opened, the way a narrower plan has them.
   if (opts.disableRoles?.length) await withSystem((db) => db.query("update agent_instances set enabled = false where org_id = $1 and role_key = any($2::text[])", [org.id, opts.disableRoles]));
   const owner = await createUser();

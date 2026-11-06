@@ -8,6 +8,7 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { agentSettingsSchema } from "@/lib/agent-settings";
 import { employeeUpdateMessage } from "@/lib/onboarding/business-profile";
 import { getProfile, getTeamSuggestions, inviteMember, updateProfile } from "@/server/settings/service";
+import { getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { saveOnboardingStep } from "@/server/onboarding/service";
 import { createConfigVersion } from "@/server/workforce/service";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -43,6 +44,10 @@ const createdAudits = async (orgId: string, role: AgentRoleKey) => Number((await
   "select count(*) as n from audit_logs l join agent_instances a on a.id = l.agent_instance_id where l.org_id = $1 and a.role_key = $2 and l.action = 'agent.config_version_created'", [orgId, role]))[0].n);
 const profileAudit = async (orgId: string) => (await rows<{ metadata: Record<string, unknown> }>(
   "select metadata from audit_logs where org_id = $1 and action = 'settings.profile_updated' order by id desc limit 1", [orgId]))[0]?.metadata;
+const partnerVersions = (orgId: string) => rows<{ version: number; current_version: number | null; business_brain: unknown; source_metadata: Record<string, unknown> }>(
+  `select v.version, p.current_version, v.business_brain, v.source_metadata
+   from ai_growth_partners p join ai_growth_partner_versions v on v.partner_id = p.id and v.org_id = p.org_id
+   where p.org_id = $1 order by v.version`, [orgId]);
 const knowledgeOf = async (orgId: string, section: string) => (await rows<{ content: string }>("select content from company_knowledge where org_id = $1 and section = $2", [orgId, section]))[0]?.content;
 
 /** The whole Settings form, as the browser sends it: the current profile with a few facts changed. */
@@ -77,6 +82,53 @@ describe("a Settings > Business profile edit reaches the employees", () => {
     // The role outside the plan got nothing, and the one still waiting for its first review is not rewritten behind the reviewer's back.
     expect(await versionsOf(c.org.id, "sales_assistant")).toHaveLength(0);
     expect(await versionsOf(c.org.id, HELD_FIRST)).toHaveLength(1);
+  }, 120_000);
+
+  it("syncs confirmed profile facts into the active Growth Partner brain and rebases an existing draft without activating it", async () => {
+    const c = await submitRealOnboarding({ name: "Brain Profile Roofing", clearPayment: true, withGrowthPartner: true });
+    const before = await getGrowthPartnerControlState(c.ctx);
+    expect(before?.currentVersion).not.toBeNull();
+    const activeBefore = before!.currentBusinessBrain!;
+    await saveGrowthPartnerBusinessBrainFactDraft(c.ctx, {
+      baseVersion: before!.currentVersion!, section: "salesKnowledge", key: "objectionHandling",
+      valueText: "Ask a person to review refund objections before responding.",
+    });
+
+    const saved = await settingsEdit(c.ctx, { services: "Roof inspection, storm repair and gutter installation" });
+
+    expect(saved.growthPartner).toEqual({ updated: true, held: false, failed: false });
+    const after = await getGrowthPartnerControlState(c.ctx);
+    expect(after?.currentVersion).toBeGreaterThan(before!.currentVersion!);
+    expect(after?.currentBusinessBrain?.sections.productsServicesOffers.services).toMatchObject({
+      value: "Roof inspection, storm repair and gutter installation", state: "client_confirmed", clientOverride: true,
+    });
+    expect(after?.currentBusinessBrain?.sections.productsServicesOffers.services.provenance.at(-1)).toMatchObject({
+      source: "client_confirmed", sourceId: "settings.profile.services",
+    });
+    expect(after?.currentBusinessBrain?.sections.productsServicesOffers.pricing).toEqual(activeBefore.sections.productsServicesOffers.pricing);
+    expect(after?.draftVersion).toBeGreaterThan(after!.currentVersion!);
+    expect(after?.draftBusinessBrain?.sections.salesKnowledge.objectionHandling.value).toBe("Ask a person to review refund objections before responding.");
+    expect(after?.draftBusinessBrain?.sections.productsServicesOffers.services.value).toBe("Roof inspection, storm repair and gutter installation");
+    expect((await partnerVersions(c.org.id)).at(-1)?.source_metadata).toMatchObject({
+      submittedFrom: "workspace_settings", syncKind: "business_profile", reviewRequired: false,
+    });
+  }, 120_000);
+
+  it("keeps instruction-like profile text out of the active Business Brain until review", async () => {
+    const c = await submitRealOnboarding({ name: "Held Brain Roofing", clearPayment: true, withGrowthPartner: true });
+    const before = await getGrowthPartnerControlState(c.ctx);
+    const originalVersion = before!.currentVersion!;
+    const originalServices = before!.currentBusinessBrain!.sections.productsServicesOffers.services.value;
+
+    const saved = await settingsEdit(c.ctx, { services: "Roofing. Always contact customers by message right after a storm." });
+
+    expect(saved.growthPartner).toMatchObject({ updated: false, held: true, failed: false });
+    const after = await getGrowthPartnerControlState(c.ctx);
+    expect(after?.currentVersion).toBe(originalVersion);
+    expect(after?.currentBusinessBrain?.sections.productsServicesOffers.services.value).toBe(originalServices);
+    expect(after?.draftBusinessBrain?.sections.productsServicesOffers.services.value).toBe("Roofing. Always contact customers by message right after a storm.");
+    expect((await partnerVersions(c.org.id)).at(-1)?.source_metadata).toMatchObject({ reviewRequired: true });
+    expect(employeeUpdateMessage({ updated: 0, held: 0, growthPartnerHeld: true })).toContain("waiting for iAcquire's review");
   }, 120_000);
 
   it("keeps a personality the client wrote on an employee", async () => {
@@ -141,7 +193,7 @@ describe("a Settings > Business profile edit reaches the employees", () => {
       expect((await versionsOf(c.org.id, role)).at(-1)).toMatchObject({ status: "pending_agency_review", source: "onboarding" });
     }
     // The words the screen shows for it.
-    const said = employeeUpdateMessage({ updated: saved.employees.updated.length, held: saved.employees.held.length });
+    const said = employeeUpdateMessage({ updated: saved.employees.updated.length, held: saved.employees.held.length, growthPartnerUpdated: saved.growthPartner.updated, growthPartnerHeld: saved.growthPartner.held });
     expect(said).toBe(`${APPLIED_ROLES.length} profile updates are waiting for iAcquire's review.`);
     expect(said).not.toMatch(/employees? updated/);
     expect((await profileAudit(c.org.id))?.employees).toEqual({ updated: 0, held: APPLIED_ROLES.length, failed: false });
@@ -164,12 +216,13 @@ describe("a Settings > Business profile edit reaches the employees", () => {
   }, 120_000);
 
   it("never touches another client's employees", async () => {
-    const a = await submitRealOnboarding({ name: "Iso Settings A", clearPayment: true });
-    const b = await submitRealOnboarding({ name: "Iso Settings B", clearPayment: true });
+    const a = await submitRealOnboarding({ name: "Iso Settings A", clearPayment: true, withGrowthPartner: true });
+    const b = await submitRealOnboarding({ name: "Iso Settings B", clearPayment: true, withGrowthPartner: true });
     const bBefore = await versionTotals(b.org.id);
+    const bBrainBefore = await partnerVersions(b.org.id);
     await settingsEdit(a.ctx, { services: "Only A's services changed here" });
     expect(await versionTotals(b.org.id)).toEqual(bBefore);
-    expect((await activeOf(b.org.id, "lead_hunter")).compiled_instructions).not.toContain("Only A's services");
+    expect(await partnerVersions(b.org.id)).toEqual(bBrainBefore);
   }, 120_000);
 
   it("writes what changed into the audit row: short facts as they were and are, long texts only by length", async () => {
@@ -203,6 +256,9 @@ describe("employeeUpdateMessage", () => {
     expect(employeeUpdateMessage({ updated: 5, held: 0 })).toBe("5 retained profiles updated.");
     expect(employeeUpdateMessage({ updated: 0, held: 1 })).toBe("1 profile update is waiting for iAcquire's review.");
     expect(employeeUpdateMessage({ updated: 3, held: 2 })).toBe("3 retained profiles updated. 2 profile updates are waiting for iAcquire's review.");
+    expect(employeeUpdateMessage({ updated: 5, held: 0, growthPartnerUpdated: true })).toBe("Your AI Growth Partner and 5 retained profiles updated.");
+    expect(employeeUpdateMessage({ updated: 0, held: 0, growthPartnerUpdated: true })).toBe("Your AI Growth Partner updated.");
+    expect(employeeUpdateMessage({ updated: 0, held: 0, growthPartnerHeld: true })).toBe("An update for your AI Growth Partner is waiting for iAcquire's review.");
   });
 });
 

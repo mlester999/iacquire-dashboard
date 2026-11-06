@@ -33,8 +33,11 @@ export async function updateProfileAction(input: z.input<typeof profileSchema>) 
     const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
     const data = await updateProfile(ctx, input);
     revalidatePath("/", "layout");
-    // The employees the save reached are said as they are: a version waiting for review is reported as waiting, never as applied.
-    return { ok: true as const, data: { employees: { updated: data.employees.updated.length, held: data.employees.held.length, failed: data.employees.failed } } };
+    // The profiles the save reached are said as they are: a version waiting for review is reported as waiting, never as applied.
+    return { ok: true as const, data: {
+      employees: { updated: data.employees.updated.length, held: data.employees.held.length, failed: data.employees.failed },
+      growthPartner: data.growthPartner,
+    } };
   } catch (err) {
     return zodFail(err);
   }

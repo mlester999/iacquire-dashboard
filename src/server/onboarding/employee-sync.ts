@@ -5,10 +5,10 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { notifyOrgRoles } from "@/server/notifications";
-import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isAgentRoleKey, workforceRoleName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, AGENT_BY_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceRoleName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { agentSettingsSchema, type AgentSettings, type OnboardingData } from "@/lib/agent-settings";
 import { confirmedAnswers, planScope, toKnowledgeSections, toLegacyData } from "@/lib/onboarding/engine";
-import { parseProfileSnapshot, type ProfileKey } from "@/lib/onboarding/business-profile";
+import { parseProfileSnapshot, type ProfileKey, type ProfileValues } from "@/lib/onboarding/business-profile";
 import type { Answers } from "@/lib/onboarding/types";
 import type { SessionUser } from "@/server/auth/service";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -20,6 +20,7 @@ import { revokeClientBusinessCredentialsForAgent } from "@/server/workforce/herm
 import { answerTimes, loadAnswerRows, toStored, type AnswerRow } from "@/server/onboarding/answers";
 import { appliedThrough, lockOnboardingRow, type SnapshotRow } from "@/server/onboarding/profile-sync";
 import { buildEmployeeSettings, manualOverridesFromHistory, mergeBusinessUpdate, type GeneratedSettings } from "@/server/onboarding/employee-generator";
+import { syncGrowthPartnerBusinessBrainFromProfile } from "@/server/ai-growth-partner/service";
 
 // The one place that decides what an AI employee's configuration is, from the client's answers. Four callers share it: a questionnaire submission (applyOnboarding in
 // ./service.ts), an employee added to the plan after the client finished (applyRolePlanChange), a business-information edit made outside the questionnaire
@@ -432,17 +433,19 @@ export interface RefreshResult {
   /** A new version was made but it is waiting for iAcquire's review: it is NOT what the employee runs. */
   held: AgentRoleKey[];
   unchanged: AgentRoleKey[];
+  /** Whether the single partner runtime or its active Business Brain was refreshed. */
+  growthPartner: { updated: boolean; held: boolean };
   knowledge: { written: string[]; kept: string[] };
 }
 
-const EMPTY_REFRESH = (): RefreshResult => ({ updated: [], held: [], unchanged: [], knowledge: { written: [], kept: [] } });
+const EMPTY_REFRESH = (): RefreshResult => ({ updated: [], held: [], unchanged: [], growthPartner: { updated: false, held: false }, knowledge: { written: [], kept: [] } });
 
 /**
  * Recompiles one employee from its current settings and the workspace's live company context, and makes a new attributed version only when the instructions differ. The settings
  * are passed through untouched, so every field the client changed stays theirs.
  */
 async function refreshOneEmployee(db: Queryable, who: EmployeeActor, agent: AgentRef, changeRequest: string, company: Awaited<ReturnType<typeof loadCompanyContext>>): Promise<"updated" | "held" | "unchanged"> {
-  if (!agent.active_config_version_id || !isAgentRoleKey(agent.role_key)) return "unchanged";
+  if (!agent.active_config_version_id || !isWorkforceRoleKey(agent.role_key)) return "unchanged";
   const { rows } = await db.query<{ version: number; settings: unknown; compiled_instructions: string; default_tools: string[] }>(
     `select v.version, v.settings, v.compiled_instructions, r.default_tools
      from agent_config_versions v join agent_instances a on a.id = v.agent_instance_id join agent_roles r on r.key = a.role_key
@@ -476,7 +479,7 @@ async function refreshOneEmployee(db: Queryable, who: EmployeeActor, agent: Agen
 export async function refreshEmployeesFromWorkspace(
   db: Queryable,
   ctx: Pick<OrgContext, "org" | "user">,
-  opts: { reason: string; keys: readonly ProfileKey[] },
+  opts: { reason: string; keys: readonly ProfileKey[]; profile?: ProfileValues },
 ): Promise<RefreshResult> {
   const who = actorOf(ctx);
   const result = EMPTY_REFRESH();
@@ -492,8 +495,49 @@ export async function refreshEmployeesFromWorkspace(
     [who.orgId],
   );
   for (const agent of agents) {
-    if (!isAgentRoleKey(agent.role_key)) continue;
-    result[await refreshOneEmployee(db, who, agent, change, company)].push(agent.role_key);
+    if (!isWorkforceRoleKey(agent.role_key)) continue;
+    const state = await refreshOneEmployee(db, who, agent, change, company);
+    if (agent.role_key === AI_GROWTH_PARTNER_ROLE_KEY) {
+      if (state === "updated") result.growthPartner.updated = true;
+      if (state === "held") result.growthPartner.held = true;
+    } else if (isAgentRoleKey(agent.role_key)) {
+      result[state].push(agent.role_key);
+    }
+  }
+
+  const profileValues = opts.profile ?? await (async (): Promise<ProfileValues | null> => {
+    const { rows } = await db.query<{
+      name: string; industry: string | null; website: string | null; region: string | null; timezone: string;
+      description: string | null; services: string | null; ideal_customers: string | null; brand_color: string | null;
+    }>(
+      `select o.name, o.industry, o.website, o.region, o.timezone,
+              p.description, p.services, p.ideal_customers, p.brand_color
+       from organizations o left join company_profiles p on p.org_id = o.id where o.id = $1`,
+      [who.orgId],
+    );
+    const row = rows[0];
+    return row ? {
+      name: row.name,
+      industry: row.industry ?? "",
+      website: row.website ?? "",
+      region: row.region ?? "",
+      timezone: row.timezone,
+      description: row.description ?? "",
+      services: row.services ?? "",
+      idealCustomers: row.ideal_customers ?? "",
+      brandColor: row.brand_color ?? "",
+    } : null;
+  })();
+  if (profileValues) {
+    const brain = await syncGrowthPartnerBusinessBrainFromProfile(db, {
+      orgId: who.orgId,
+      actorUserId: who.userId,
+      actorKind: who.actorKind,
+      changed: opts.keys,
+      values: profileValues,
+    });
+    if (brain.status === "updated") result.growthPartner.updated = true;
+    if (brain.status === "held") result.growthPartner.held = true;
   }
 
   const row = await readOnboardingRow(db, who.orgId);

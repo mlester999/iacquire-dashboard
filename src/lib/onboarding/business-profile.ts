@@ -336,12 +336,23 @@ export function snapshotWithExtras(
 // What a Settings save says it did to the employees
 // ---------------------------------------------------------------------------
 
-/** The sentence about the employees after a business-information save, never reporting a version that is waiting for review as applied. Empty when nothing was said. */
-export function employeeUpdateMessage(r: { updated: number; held: number; failed?: boolean }): string {
+/** The sentence after a business-information save, never reporting a version that is waiting for review as applied. Empty when nothing was said. */
+export function employeeUpdateMessage(r: {
+  updated: number; held: number; failed?: boolean;
+  growthPartnerUpdated?: boolean; growthPartnerHeld?: boolean; growthPartnerFailed?: boolean;
+}): string {
   const parts: string[] = [];
-  if (r.updated > 0) parts.push(`${r.updated} retained profile${r.updated === 1 ? "" : "s"} updated.`);
+  if (r.updated > 0 || r.growthPartnerUpdated) {
+    const targets = [
+      ...(r.growthPartnerUpdated ? ["Your AI Growth Partner"] : []),
+      ...(r.updated > 0 ? [`${r.updated} retained profile${r.updated === 1 ? "" : "s"}`] : []),
+    ];
+    parts.push(`${targets.join(" and ")} updated.`);
+  }
+  if (r.growthPartnerHeld) parts.push("An update for your AI Growth Partner is waiting for iAcquire's review.");
   if (r.held > 0) parts.push(`${r.held} profile update${r.held === 1 ? " is" : "s are"} waiting for iAcquire's review.`);
   if (r.failed) parts.push("Your retained profiles could not be updated yet. They keep their current settings until the update succeeds.");
+  if (r.growthPartnerFailed) parts.push("Your AI Growth Partner could not be updated yet. Its current settings remain active until the update succeeds.");
   return parts.join(" ");
 }
 

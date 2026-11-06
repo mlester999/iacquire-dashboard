@@ -112,7 +112,7 @@ export type BusinessBrain = z.infer<typeof BusinessBrainSchema>;
 export type BusinessBrainFact = z.infer<typeof BusinessBrainFactSchema>;
 
 const REQUIRED_UNKNOWN_FACTS: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], readonly string[]> = {
-  businessIdentity: ["companyName", "industry", "businessModel", "localBusinessType", "website", "locations", "serviceAreas", "background", "positioning", "differentiators"],
+  businessIdentity: ["companyName", "industry", "businessModel", "localBusinessType", "website", "locations", "serviceAreas", "background", "positioning", "differentiators", "brandColor"],
   productsServicesOffers: ["products", "services", "industrySpecificServices", "engagementTypes", "approvedDescriptions", "pricing", "pricingPolicy", "discountRules", "restrictions", "guarantees", "promotionRules", "consultationOffers", "conversionDestinations"],
   idealCustomers: ["targetTypes", "clientSegments", "propertyTypes", "industries", "companySize", "locations", "decisionMakerRoles", "needs", "painPoints", "qualification", "minimumBudget", "disqualifiers", "excludedProspects"],
   acquisitionStrategy: ["bestFitProspects", "buyingSignals", "discoverySources", "qualificationApproach", "salesFunnel", "salesModel", "outreachMethods", "followUpStrategy", "conversionGoals", "bookingStrategy", "leadPriorities", "otherPriorities"],

@@ -72,10 +72,11 @@ export async function getProfile(ctx: OrgContext) {
   });
 }
 
-/** What a business-profile save did, as far as the person's employees are concerned. `held` are new versions waiting for iAcquire's review: they are NOT what the employee runs. */
+/** What a business-profile save changed. `held` are new versions waiting for iAcquire's review: they are NOT active configuration. */
 export interface ProfileSaveResult {
   changed: ProfileKey[];
-  employees: { updated: AgentRoleKey[]; held: AgentRoleKey[]; /** The profile was saved but the employees could not be brought up to date; they keep what they had. */ failed: boolean };
+  employees: { updated: AgentRoleKey[]; held: AgentRoleKey[]; /** The profile was saved but retained profiles could not be brought up to date; they keep what they had. */ failed: boolean };
+  growthPartner: { updated: boolean; held: boolean; failed: boolean };
 }
 
 /** The facts short enough to be worth keeping, as they were and as they are, in the audit row. The long texts only say how long they became. */
@@ -106,17 +107,23 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
     await syncProfileToAnswers(db, ctx, { changed: res.changed, values: res.values });
     return res;
   });
-  // The edit has committed: the employees now catch up with it, each one on its own terms (a new attributed version only when its instructions differ, every setting the client
-  // changed kept). A problem here never takes the saved profile back; the employees keep what they had and the launch checklist says they are behind.
+  // The edit has committed: the Growth Partner and retained profiles catch up with it, each on its own terms (a new attributed version only when its instructions differ, every
+  // setting the client changed kept). A problem here never takes the saved profile back; their current versions stay active and the result says they are behind.
   const employees: ProfileSaveResult["employees"] = { updated: [], held: [], failed: false };
+  const growthPartner: ProfileSaveResult["growthPartner"] = { updated: false, held: false, failed: false };
   if (written.changed.length) {
     try {
-      const refreshed = await withSystem((db) => refreshEmployeesFromWorkspace(db, ctx, { reason: "Business profile updated in Settings", keys: written.changed }));
+      const refreshed = await withSystem((db) => refreshEmployeesFromWorkspace(db, ctx, { reason: "Business profile updated in Settings", keys: written.changed, profile: written.values }));
       employees.updated = refreshed.updated;
       employees.held = refreshed.held;
+      growthPartner.updated = refreshed.growthPartner.updated;
+      growthPartner.held = refreshed.growthPartner.held;
     } catch (err) {
       employees.failed = true;
-      if (process.env.NODE_ENV !== "test") console.error("[iacquire] bringing the employees up to date after a profile edit failed", (err as { code?: string }).code ?? (err as Error).name);
+      try {
+        growthPartner.failed = (await withSystem((db) => db.query("select 1 from ai_growth_partners where org_id = $1", [ctx.org.orgId]))).rows.length > 0;
+      } catch { /* The saved profile remains authoritative; if the datastore is unavailable, report only the catch-up failure. */ }
+      if (process.env.NODE_ENV !== "test") console.error("[iacquire] bringing the Growth Partner profiles up to date after a business profile edit failed", (err as { code?: string }).code ?? (err as Error).name);
     }
   }
   await recordAudit({
@@ -130,9 +137,10 @@ export async function updateProfile(ctx: OrgContext, input: z.input<typeof profi
       changed: written.changed,
       ...profileChangeAudit(written.changed, written.before, written.values),
       employees: { updated: employees.updated.length, held: employees.held.length, failed: employees.failed },
+      growthPartner,
     },
   });
-  return { changed: written.changed, employees };
+  return { changed: written.changed, employees, growthPartner };
 }
 
 /**

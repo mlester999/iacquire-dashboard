@@ -14,8 +14,10 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { StoredAnswers } from "@/lib/onboarding/types";
+import type { ProfileKey, ProfileValues } from "@/lib/onboarding/business-profile";
 import { isRuntimeOnline } from "@/lib/employee-runtime";
 import type { AgentStatus } from "@/lib/agents";
+import { scanInstructionText } from "@/lib/instruction-risk";
 
 const personaSettingsSchema = z.record(z.string().min(1).max(120), z.unknown());
 const draftInputSchema = z.object({
@@ -31,6 +33,45 @@ const factDraftInputSchema = z.object({
 
 const MAX_BRAIN_BYTES = 1_048_576;
 const MAX_PERSONA_SETTINGS_BYTES = 65_536;
+
+const PROFILE_BRAIN_FACT: Record<ProfileKey, { section: (typeof BUSINESS_BRAIN_SECTIONS)[number]; key: string }> = {
+  name: { section: "businessIdentity", key: "companyName" },
+  industry: { section: "businessIdentity", key: "industry" },
+  website: { section: "businessIdentity", key: "website" },
+  region: { section: "businessIdentity", key: "serviceAreas" },
+  timezone: { section: "businessOperations", key: "timeZone" },
+  description: { section: "businessIdentity", key: "background" },
+  services: { section: "productsServicesOffers", key: "services" },
+  idealCustomers: { section: "idealCustomers", key: "targetTypes" },
+  brandColor: { section: "businessIdentity", key: "brandColor" },
+};
+
+function applyBusinessProfileFacts(brain: BusinessBrain, values: ProfileValues, changed: readonly ProfileKey[], now: string): { brain: BusinessBrain; changed: ProfileKey[] } {
+  const next = structuredClone(brain);
+  const updated: ProfileKey[] = [];
+  for (const profileKey of new Set(changed)) {
+    const target = PROFILE_BRAIN_FACT[profileKey];
+    const value = values[profileKey].trim() || null;
+    const existing = next.sections[target.section][target.key];
+    const state = value === null ? "unknown" : "client_confirmed";
+    if (existing && JSON.stringify(existing.value) === JSON.stringify(value) && existing.state === state && existing.clientOverride === (value !== null)) continue;
+    next.sections[target.section][target.key] = {
+      value,
+      state,
+      provenance: [...(existing?.provenance ?? []), {
+        source: "client_confirmed" as const,
+        sourceId: `settings.profile.${profileKey}`,
+        evidenceUrl: null,
+        observedAt: now,
+      }].slice(-50),
+      updatedAt: now,
+      clientOverride: value !== null,
+    };
+    updated.push(profileKey);
+  }
+  if (updated.length) next.generatedAt = now;
+  return { brain: BusinessBrainSchema.parse(next), changed: updated };
+}
 
 export interface GrowthPartnerControlState {
   id: string;
@@ -406,6 +447,133 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
     metadata: { source: "onboarding", version, questionnaireVersion, factCount, activeVersionChanged },
   }, db);
   return { partnerId: partner.id, id: snapshot.id, version, factCount, activeVersionChanged, reused: false as const };
+}
+
+/**
+ * Carries only the explicitly changed Settings profile facts into the Growth Partner's immutable
+ * Business Brain history. The new active snapshot is based on the current active version. If a
+ * newer draft exists, a rebased copy is kept as a draft so this Settings save cannot activate or
+ * erase unrelated client edits.
+ */
+export async function syncGrowthPartnerBusinessBrainFromProfile(
+  db: Queryable,
+  input: {
+    orgId: string;
+    actorUserId: string;
+    actorKind: "agency" | "user";
+    changed: readonly ProfileKey[];
+    values: ProfileValues;
+  },
+): Promise<{ status: "updated" | "held" | "unchanged" | "not_ready"; draftRebased: boolean }> {
+  if (!input.changed.length) return { status: "unchanged", draftRebased: false };
+  const partner = (await db.query<{ id: string; current_version: number | null }>(
+    `select p.id, p.current_version from ai_growth_partners p
+     join organizations o on o.id = p.org_id
+     where p.org_id = $1 and o.kind = 'client' and not o.is_demo
+     for update of p`,
+    [input.orgId],
+  )).rows[0];
+  if (!partner || partner.current_version === null) return { status: "not_ready", draftRebased: false };
+
+  const active = (await db.query<{ version: number; business_brain: unknown; persona_settings: unknown }>(
+    `select version, business_brain, persona_settings from ai_growth_partner_versions
+     where org_id = $1 and partner_id = $2 and version = $3`,
+    [input.orgId, partner.id, partner.current_version],
+  )).rows[0];
+  if (!active) throw new AppError("conflict", "The active Business Brain version could not be found. Review it before changing the company profile.");
+  const parsedActive = BusinessBrainSchema.safeParse(active.business_brain);
+  if (!parsedActive.success) throw new AppError("conflict", "The active Business Brain needs review before company profile changes can be synchronized.");
+
+  const latest = (await db.query<{
+    version: number;
+    business_brain: unknown;
+    persona_settings: unknown;
+    source: string;
+    source_metadata: unknown;
+  }>(
+    `select version, business_brain, persona_settings, source, source_metadata
+     from ai_growth_partner_versions where org_id = $1 and partner_id = $2
+     order by version desc limit 1`,
+    [input.orgId, partner.id],
+  )).rows[0];
+  const hasDraft = Boolean(latest && Number(latest.version) > Number(partner.current_version));
+  const parsedDraft = hasDraft ? BusinessBrainSchema.safeParse(latest!.business_brain) : null;
+  if (hasDraft && !parsedDraft?.success) throw new AppError("conflict", "The saved Business Brain draft needs review before company profile changes can be synchronized.");
+
+  const now = new Date().toISOString();
+  const reviewRequired = input.changed.some((key) => scanInstructionText(input.values[key]).length > 0);
+  const activeUpdate = applyBusinessProfileFacts(parsedActive.data, input.values, input.changed, now);
+  const maxVersion = Number((await db.query<{ next: number }>(
+    "select coalesce(max(version), 0)::int + 1 as next from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
+    [input.orgId, partner.id],
+  )).rows[0].next);
+  let nextVersion = maxVersion;
+  let activeVersion: number | null = null;
+
+  if (!reviewRequired && activeUpdate.changed.length) {
+    activeVersion = nextVersion++;
+    const snapshot = (await db.query<{ id: string }>(
+      `insert into ai_growth_partner_versions
+         (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, 'client_edit', $6::jsonb, $7)
+       returning id`,
+      [partner.id, input.orgId, activeVersion, JSON.stringify(activeUpdate.brain), JSON.stringify(active.persona_settings ?? {}), JSON.stringify({
+        submittedFrom: "workspace_settings",
+        syncKind: "business_profile",
+        basedOnVersion: Number(active.version),
+        changedProfileFields: activeUpdate.changed,
+      }), input.actorUserId],
+    )).rows[0];
+    const pointer = await db.query(
+      "update ai_growth_partners set current_version = $3 where id = $1 and org_id = $2 and current_version = $4 returning id",
+      [partner.id, input.orgId, activeVersion, partner.current_version],
+    );
+    if (!pointer.rowCount) throw new AppError("conflict", "The active Business Brain changed while the company profile was being saved. Refresh and try again.");
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      action: "ai_growth_partner.business_brain_profile_synced",
+      targetType: "ai_growth_partner_version",
+      targetId: snapshot.id,
+      result: "success",
+      metadata: { version: activeVersion, basedOnVersion: Number(active.version), changedProfileFields: activeUpdate.changed, activeVersionChanged: true },
+    }, db);
+  }
+
+  const keepDraft = hasDraft || reviewRequired;
+  if (keepDraft) {
+    const draftBase = parsedDraft?.success ? parsedDraft.data : parsedActive.data;
+    const draftUpdate = applyBusinessProfileFacts(draftBase, input.values, input.changed, now);
+    const draftVersion = nextVersion;
+    const basedOnVersion = hasDraft ? Number(latest!.version) : Number(active.version);
+    const draft = (await db.query<{ id: string }>(
+      `insert into ai_growth_partner_versions
+         (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7::jsonb, $8)
+       returning id`,
+      [partner.id, input.orgId, draftVersion, JSON.stringify(draftUpdate.brain), JSON.stringify((hasDraft ? latest!.persona_settings : active.persona_settings) ?? {}), hasDraft ? latest!.source : "client_edit", JSON.stringify({
+        submittedFrom: "workspace_settings",
+        syncKind: "business_profile",
+        basedOnVersion,
+        changedProfileFields: [...new Set(input.changed)],
+        rebasedAt: now,
+        reviewRequired,
+      }), input.actorUserId],
+    )).rows[0];
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      action: "ai_growth_partner.business_brain_draft_rebased",
+      targetType: "ai_growth_partner_version",
+      targetId: draft.id,
+      result: "success",
+      metadata: { version: draftVersion, basedOnVersion, changedProfileFields: [...new Set(input.changed)], activeVersionChanged: false, reviewRequired },
+    }, db);
+  }
+
+  return { status: reviewRequired ? "held" : activeVersion ? "updated" : "unchanged", draftRebased: keepDraft };
 }
 
 export interface GrowthPartnerConversationMessage {

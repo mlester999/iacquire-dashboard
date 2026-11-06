@@ -119,9 +119,12 @@ export function ProfileForms({
                 const res = await updateProfileAction(p);
                 setPending(null);
                 if (!res.ok) return toast.error(res.error);
-                // What reached the employees is said as it is: a version waiting for review is never reported as applied.
-                const said = employeeUpdateMessage(res.data.employees);
-                if (res.data.employees.failed) toast.warning("Business profile saved", { description: said });
+                // What reached the Growth Partner and retained profiles is reported as applied only after persistence.
+                const growthPartner = res.data.growthPartner;
+                const said = growthPartner
+                  ? employeeUpdateMessage({ ...res.data.employees, growthPartnerUpdated: growthPartner.updated, growthPartnerHeld: growthPartner.held, growthPartnerFailed: growthPartner.failed })
+                  : employeeUpdateMessage(res.data.employees);
+                if (res.data.employees.failed || growthPartner?.failed) toast.warning("Business profile saved", { description: said });
                 else toast.success("Business profile saved", said ? { description: said } : undefined);
                 router.refresh();
               }}
