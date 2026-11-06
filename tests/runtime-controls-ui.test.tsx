@@ -61,11 +61,11 @@ const data = (over: Partial<RuntimeControlsData> = {}): RuntimeControlsData => (
   orgId: ORG,
   flags: { provisioner: true, deprovision: true, clientTools: true },
   tiers: { tools: false, proposals: false },
-  employees: [
-    { id: "a1", name: "Lead Hunter", enabled: true, hasProfile: true },
-    { id: "a2", name: "Sales Assistant", enabled: true, hasProfile: true },
-    { id: "a3", name: "CRM Manager", enabled: true, hasProfile: false },
-    { id: "a4", name: "Performance Analyst", enabled: false, hasProfile: false },
+  profiles: [
+    { id: "a1", name: "AI Growth Partner", enabled: true, hasProfile: true },
+    { id: "a2", name: "Previous profile · Lead Hunter", enabled: true, hasProfile: true },
+    { id: "a3", name: "Previous profile · Sales Assistant", enabled: true, hasProfile: false },
+    { id: "a4", name: "Previous profile · CRM Manager", enabled: false, hasProfile: false },
   ],
   ...over,
 });
@@ -88,10 +88,10 @@ describe("who sees the controls", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("lists a retry for every employee in the plan, and a containment control only for an employee that has a runtime profile", () => {
+  it("lists a retry for every runtime profile in the plan, and containment only for a profile that has a runtime connection", () => {
     render(<RuntimeControls data={data()} />);
-    expect(screen.getAllByRole("button", { name: /^Retry setup:/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Retry setup: Lead Hunter", "Retry setup: Sales Assistant", "Retry setup: CRM Manager"]);
-    expect(screen.getAllByRole("button", { name: /^Contain:/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Contain: Lead Hunter", "Contain: Sales Assistant"]);
+    expect(screen.getAllByRole("button", { name: /^Retry setup:/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Retry setup: AI Growth Partner", "Retry setup: Previous profile · Lead Hunter", "Retry setup: Previous profile · Sales Assistant"]);
+    expect(screen.getAllByRole("button", { name: /^Contain:/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Contain: AI Growth Partner", "Contain: Previous profile · Lead Hunter"]);
     expect(screen.getByRole("button", { name: "Synchronize: The whole client runtime" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "End access: All business-tool access" })).toBeTruthy();
   });
@@ -100,7 +100,7 @@ describe("who sees the controls", () => {
 describe("a control behind a switch that is off", () => {
   it("is disabled with the reason beside it and cannot be pressed", () => {
     render(<RuntimeControls data={data({ flags: { provisioner: false, deprovision: false, clientTools: false } })} />);
-    for (const name of ["Contain: Lead Hunter", "Contain: Sales Assistant", "Synchronize: The whole client runtime", "Turn on: Business tools (reads)", "Turn on: Change proposals"]) {
+    for (const name of ["Contain: AI Growth Partner", "Contain: Previous profile · Lead Hunter", "Synchronize: The whole client runtime", "Turn on: Business tools (reads)", "Turn on: Change proposals"]) {
       const button = screen.getByRole("button", { name }) as HTMLButtonElement;
       expect(button.disabled, name).toBe(true);
       fireEvent.click(button);
@@ -113,15 +113,15 @@ describe("a control behind a switch that is off", () => {
   it("leaves the controls that do not depend on a switch usable", () => {
     render(<RuntimeControls data={data({ flags: { provisioner: false, deprovision: false, clientTools: false } })} />);
     expect((screen.getByRole("button", { name: "End access: All business-tool access" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "Retry setup: Lead Hunter" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Retry setup: AI Growth Partner" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
 describe("pressing a control", () => {
   it("shows a confirmation that says containment is not deletion, and will not go ahead without a reason of five characters", async () => {
     render(<RuntimeControls data={data()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Contain: Lead Hunter" }));
-    const dialog = await screen.findByRole("dialog", { name: "Contain Lead Hunter's runtime profile?" });
+    fireEvent.click(screen.getByRole("button", { name: "Contain: AI Growth Partner" }));
+    const dialog = await screen.findByRole("dialog", { name: "Contain AI Growth Partner's runtime profile?" });
     expect(dialog.textContent).toMatch(/containment, not deletion/i);
     expect(dialog.textContent).toMatch(/key is replaced/i);
     expect(dialog.textContent).toMatch(/profile, its history and its settings stay/i);
@@ -134,10 +134,10 @@ describe("pressing a control", () => {
     expect(mocks.deprovision).not.toHaveBeenCalled();
   });
 
-  it("calls the server action once with the workspace, the employee and the reason, and shows the server's own success", async () => {
+  it("calls the server action once with the workspace, runtime profile and reason, and shows the server's own success", async () => {
     mocks.deprovision.mockResolvedValue({ ok: true, data: { jobId: "j1", alreadyOpen: false, replaced: 0 } });
     render(<RuntimeControls data={data()} />);
-    await press("Contain: Lead Hunter", "  The client left the programme.  ", "Contain");
+    await press("Contain: AI Growth Partner", "  The client left the programme.  ", "Contain");
     await waitFor(() => expect(mocks.deprovision).toHaveBeenCalledTimes(1));
     expect(mocks.deprovision).toHaveBeenCalledWith(ORG, "a1", "The client left the programme.");
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Containment was requested\. Nothing is changed until the worker proves it/)));
@@ -149,14 +149,14 @@ describe("pressing a control", () => {
   it("says so when the server reports that the request was already open, rather than claiming a new one", async () => {
     mocks.deprovision.mockResolvedValue({ ok: true, data: { jobId: "j1", alreadyOpen: true, replaced: 0 } });
     render(<RuntimeControls data={data()} />);
-    await press("Contain: Lead Hunter", "Pressed twice by mistake.", "Contain");
+    await press("Contain: AI Growth Partner", "Pressed twice by mistake.", "Contain");
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/already open.*nothing new was requested/)));
   });
 
   it("shows the server's refusal in its own words, changes nothing on the page, and does not refresh", async () => {
     mocks.deprovision.mockResolvedValue({ ok: false, error: "Containment is turned off in this deployment." });
     render(<RuntimeControls data={data()} />);
-    await press("Contain: Lead Hunter", "Trying anyway for the audit.", "Contain");
+    await press("Contain: AI Growth Partner", "Trying anyway for the audit.", "Contain");
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Containment is turned off in this deployment."));
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -178,7 +178,7 @@ describe("the other controls", () => {
   it("retries a setup through the existing action with the reason", async () => {
     mocks.requeue.mockResolvedValue({ ok: true });
     render(<RuntimeControls data={data()} />);
-    await press("Retry setup: CRM Manager", "The first attempt timed out.", "Retry setup");
+    await press("Retry setup: Previous profile · Sales Assistant", "The first attempt timed out.", "Retry setup");
     await waitFor(() => expect(mocks.requeue).toHaveBeenCalledWith(ORG, "a3", "The first attempt timed out."));
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/new setup request was opened/)));
   });
@@ -188,7 +188,7 @@ describe("the other controls", () => {
     render(<RuntimeControls data={data()} />);
     await press("Synchronize: The whole client runtime", "Runtime updated today.", "Synchronize");
     await waitFor(() => expect(mocks.fleet).toHaveBeenCalledWith("Runtime updated today."));
-    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Asked for 3 synchronizations; 2 employees were already waiting and 1 had nothing to synchronize\. More employees qualify.*press it again/)));
+    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith(expect.stringMatching(/Asked for 3 synchronizations; 2 profiles were already waiting and 1 had nothing to synchronize\. More profiles qualify.*press it again/)));
   });
 
   it("ends business-tool access with the reason and reports how many credentials the server ended", async () => {
@@ -221,7 +221,7 @@ describe("the other controls", () => {
     let dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toMatch(/only when it starts/);
     expect(dialog.textContent).toMatch(/restarted in an approved window/);
-    expect(dialog.textContent).toMatch(/stays not online/);
+    expect(dialog.textContent).toMatch(/profile stays offline/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Turn off: Business tools (reads)" }));

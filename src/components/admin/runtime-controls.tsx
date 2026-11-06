@@ -11,7 +11,7 @@ import { requestDeprovisionAction, requestFleetSyncAction } from "@/app/(admin)/
 import { revokeClientBusinessAccess, setClientBusinessToolsAction } from "@/app/actions/client-business-access";
 
 /**
- * The agency's one calm place for the runtime controls of a client workspace: ask for a setup to be retried, contain one employee's runtime profile, synchronize the client runtime, end
+ * The agency's one calm place for the runtime controls of a client workspace: ask for a setup to be retried, contain one runtime profile, synchronize the client runtime, end
  * the workspace's business-tool access, and switch its business-tool tiers. Nothing here decides anything. Each button opens a confirmation that says plainly what will happen, asks
  * for a reason of at least five characters, calls the server action (which checks the permission again and refuses an agency's or a demo's workspace), and then shows what the SERVER
  * said: a success only when the server reports one, the server's own words when it refuses. A control whose deployment switch is off is shown disabled with the reason, never hidden.
@@ -25,7 +25,7 @@ export interface RuntimeControlsData {
   flags: { provisioner: boolean; deprovision: boolean; clientTools: boolean };
   /** The workspace's own business-tool tiers. */
   tiers: { tools: boolean; proposals: boolean };
-  employees: Array<{ id: string; name: string; enabled: boolean; hasProfile: boolean }>;
+  profiles: Array<{ id: string; name: string; enabled: boolean; hasProfile: boolean }>;
 }
 
 /** The words shown beside a control whose deployment switch is off. */
@@ -35,7 +35,7 @@ export const SWITCHED_OFF_REASON = "Turned off in this deployment";
  * MCP servers when IT starts, so a tool entry added to a profile (a new one too) is not loaded until the gateway restarts; one removed from a profile is dropped at the gateway's next
  * rescan of it (about thirty seconds), with no restart.
  */
-const RESTART_NOTE_ON = " On the current runtime the gateway connects a profile's tools only when it starts, so until the client gateway has been restarted in an approved window each synchronization ends in a failed check and the employee stays not online.";
+const RESTART_NOTE_ON = " On the current runtime the gateway connects a profile's tools only when it starts, so until the client gateway has been restarted in an approved window each synchronization ends in a failed check and the profile stays offline.";
 const NO_RESTART_NOTE_OFF = " The running gateway drops the tools when it next rescans each profile, about a minute at most, so no restart is needed.";
 const MIN_REASON = 5;
 
@@ -64,30 +64,30 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: Control[]; fleet: Control; access: Control[]; tiers: Control[] } {
   const { orgId, flags, tiers } = data;
   const provisionerOff = flags.provisioner ? null : SWITCHED_OFF_REASON;
-  const setup = data.employees.filter((e) => e.enabled).map<Control>((e) => ({
+  const setup = data.profiles.filter((e) => e.enabled).map<Control>((e) => ({
     key: `setup-${e.id}`,
     label: e.name,
     buttonLabel: "Retry setup",
     title: `Retry ${e.name}'s setup?`,
-    confirm: "Opens one new setup request for this employee, in place of one that failed or was cancelled. Nothing happens to a request that is still running or will retry by itself, and the client's owners are told.",
+    confirm: "Opens one new setup request for this runtime profile, in place of one that failed or was cancelled. Nothing happens to a request that is still running or will retry by itself, and the client's owners are told.",
     tone: "brand",
     // A retry only opens a request that waits for the worker, so it does not depend on any deployment switch.
     disabled: null,
     run: (reason) => requeueProvisioningAction(orgId, e.id, reason),
     done: () => "A new setup request was opened. It waits for the restricted worker.",
   }));
-  const contain = data.employees.filter((e) => e.hasProfile).map<Control>((e) => ({
+  const contain = data.profiles.filter((e) => e.hasProfile).map<Control>((e) => ({
     key: `contain-${e.id}`,
     label: e.name,
     buttonLabel: "Contain",
     title: `Contain ${e.name}'s runtime profile?`,
-    confirm: "This is containment, not deletion. The profile's key is replaced with one nobody is given and its tools are switched off, and the worker proves both before anything is recorded. The profile, its history and its settings stay. The employee stops working until its setup is run again, and the client's access to it ends.",
+    confirm: "This is containment, not deletion. The profile's key is replaced with one nobody is given and its tools are switched off, and the worker proves both before anything is recorded. The profile, its history and its settings stay. It remains unavailable until setup runs again, and the client's access to it ends.",
     tone: "danger",
     disabled: flags.deprovision ? null : SWITCHED_OFF_REASON,
     run: (reason) => requestDeprovisionAction(orgId, e.id, reason),
     done: (d) => (asRecord(d).alreadyOpen === true
-      ? "A containment request was already open for this employee, so nothing new was requested."
-      : "Containment was requested. Nothing is changed until the worker proves it; the employee is marked not set up only then."),
+      ? "A containment request was already open for this profile, so nothing new was requested."
+      : "Containment was requested. Nothing is changed until the worker proves it; the profile is marked not set up only then."),
   }));
   const fleet: Control = {
     key: "fleet",
@@ -101,7 +101,7 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     done: (d) => {
       const r = asRecord(d);
       const queued = Array.isArray(r.queued) ? r.queued.length : 0;
-      return `Asked for ${plural(queued, "synchronization", "synchronizations")}; ${plural(count(r.alreadyOpen), "employee was", "employees were")} already waiting and ${count(r.skipped)} had nothing to synchronize.${r.truncated === true ? " More employees qualify than one request takes: press it again." : ""}`;
+      return `Asked for ${plural(queued, "synchronization", "synchronizations")}; ${plural(count(r.alreadyOpen), "profile was", "profiles were")} already waiting and ${count(r.skipped)} had nothing to synchronize.${r.truncated === true ? " More profiles qualify than one request takes: press it again." : ""}`;
     },
   };
   const toolsOff = flags.clientTools ? null : SWITCHED_OFF_REASON;
@@ -110,7 +110,7 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     label: "All business-tool access",
     buttonLabel: "End access",
     title: "End this workspace's business-tool access?",
-    confirm: "Ends every business-tool credential of this workspace at once: its employees can no longer read the client's records through the business tools. This is the emergency lever. The employees are not deleted, and access can be issued again by synchronizing their profiles.",
+    confirm: "Ends every business-tool credential of this workspace at once, so no client runtime profile can read the client's records through these tools. This is the emergency lever. Profiles are not deleted; access can be issued again by synchronizing their configuration.",
     tone: "danger",
     disabled: null,
     run: (reason) => revokeClientBusinessAccess({ orgId, reason }),
@@ -125,8 +125,8 @@ function buildControls(data: RuntimeControlsData): { setup: Control[]; contain: 
     buttonLabel: on ? "Turn off" : "Turn on",
     title: `Turn ${label.toLowerCase()} ${on ? "off" : "on"} for this workspace?`,
     confirm: on
-      ? `The workspace's employees stop being able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.${NO_RESTART_NOTE_OFF}`
-      : `The workspace's employees will be able to ${what}. Their profiles are synchronized to match, and each reads as not online until that has been done and checked.${RESTART_NOTE_ON}`,
+      ? `The workspace's client runtime profiles stop being able to ${what}. Their configurations are synchronized to match, and each reports offline until that has been done and checked.${NO_RESTART_NOTE_OFF}`
+      : `The workspace's client runtime profiles will be able to ${what}. Their configurations are synchronized to match, and each reports offline until that has been done and checked.${RESTART_NOTE_ON}`,
     tone: on ? "danger" : "brand",
     disabled: toolsOff,
     run: (reason) => setClientBusinessToolsAction({ orgId, [name]: !on, reason }),
@@ -194,8 +194,8 @@ export function RuntimeControls({ data }: { data: RuntimeControlsData | null }) 
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {group("Setup", "Retry an employee's setup after it failed or was cancelled.", controls.setup, "No employee of this workspace is in its plan.")}
-        {group("Containment", "Replace a runtime profile's key and switch its tools off. Nothing is deleted.", controls.contain, "No employee of this workspace has a runtime profile.")}
+        {group("Setup", "Retry setup for a runtime profile after it failed or was cancelled.", controls.setup, "No runtime profile of this workspace is in its plan.")}
+        {group("Containment", "Replace a runtime profile's key and switch its tools off. Nothing is deleted.", controls.contain, "No client runtime profile has a connected profile key.")}
         {group("Client runtime", "Bring every provisioned profile in line again.", [controls.fleet], "")}
         {group("Business tools", "Switch the workspace's tiers on or off, or end its access.", [...controls.tiers, ...controls.access], "")}
         <div aria-live="polite" role="status" className="min-h-5 text-[13px]">

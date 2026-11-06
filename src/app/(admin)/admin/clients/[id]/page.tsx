@@ -9,7 +9,7 @@ import Link from "next/link";
 import { Contact } from "lucide-react";
 import { ClientBlueprintCard } from "@/components/crm/blueprints/client-blueprint-card";
 import type { RuntimeControlsData } from "@/components/admin/runtime-controls";
-import { AGENT_BY_KEY } from "@/lib/agents";
+import { workforceIdentityLabel } from "@/lib/agents";
 import { env } from "@/server/env";
 
 export const metadata = { title: "Client" };
@@ -40,7 +40,7 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       orgId: id,
       flags: { provisioner: config.HERMES_PROVISIONER_ENABLED, deprovision: config.HERMES_PROVISIONER_DEPROVISION_ENABLED, clientTools: config.HERMES_CLIENT_BUSINESS_MCP_ENABLED },
       tiers: { tools: on("client_business_tools"), proposals: on("client_business_proposals") },
-      employees: data.agents.map((agent) => ({ id: agent.id, name: AGENT_BY_KEY[agent.role_key].shortName, enabled: agent.enabled, hasProfile: Boolean(agent.hermes_profile) })),
+      profiles: data.agents.map((agent) => ({ id: agent.id, name: workforceIdentityLabel(agent.role_key, agent.display_name), enabled: agent.enabled, hasProfile: Boolean(agent.hermes_profile) })),
     };
   }
   return (
