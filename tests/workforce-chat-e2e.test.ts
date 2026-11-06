@@ -5,8 +5,6 @@ import { RATE_LIMITS } from "@/server/security/rate-limit";
 import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
 import { decideApproval } from "@/server/approvals/service";
-import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
-import { parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
@@ -163,7 +161,38 @@ afterAll(async () => {
   await mock.close();
 });
 
-describe("six employee chat to native workflow", () => {
+describe("AI Growth Partner chat to native workflow", () => {
+  it("routes direct client requests for retained roles through the permanent Growth Partner conversation", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const ctx = ctxFor(owner, org, "owner");
+    const previousTargeting = await getTargeting(ctx);
+    const before = Number((await withSystem((db) => db.query<{ count: number }>(
+      `select count(*)::int as count from chat_conversations
+       where org_id = $1 and agent_instance_id = $2 and growth_partner_id is null and deleted_at is null`,
+      [org.id, agents.lead_hunter],
+    ))).rows[0].count);
+    const requestStart = mock.requests.length;
+    try {
+      const result = await sendChatMessage(ctx, {
+        agentRole: "lead_hunter",
+        content: "Only look for synthetic cabinet makers in Winter Park.",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect(result).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+      expect(await getTargeting(ctx)).toMatchObject({ industries: ["synthetic cabinet makers"], regions: ["Winter Park"] });
+      const after = Number((await withSystem((db) => db.query<{ count: number }>(
+        `select count(*)::int as count from chat_conversations
+         where org_id = $1 and agent_instance_id = $2 and growth_partner_id is null and deleted_at is null`,
+        [org.id, agents.lead_hunter],
+      ))).rows[0].count);
+      expect(after).toBe(before);
+      expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    } finally {
+      await saveTargeting(ctx, previousTargeting);
+      await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
   it("saves lead targeting and updates one real Growth Partner schedule through the permanent chat", async () => {
     await resetAgentMessageRateLimit(owner.id);
     const ctx = ctxFor(owner, org, "owner");
@@ -384,7 +413,7 @@ describe("six employee chat to native workflow", () => {
     ["sales_assistant", "Review our opportunities and prepare follow-ups for deals needing attention", "pipeline_followup_drafts"],
     ["crm_manager", "Check our CRM for incomplete records and possible duplicates", "crm_quality_review"],
     ["performance_analyst", "Analyze our business performance this month compared with last month", "performance_snapshot"],
-  ] as const)("persists and completes %s work through chat and its role-scoped handler", async (role, content, capability) => {
+  ] as const)("persists and completes the %s capability through the single Partner identity", async (role, content, capability) => {
     const requestStart = mock.requests.length;
     const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: role,
@@ -402,11 +431,12 @@ describe("six employee chat to native workflow", () => {
 
     expect(await waitForWorkJob(sent.jobId!)).toMatchObject({ status: "completed", stage: "completed" });
     const job = (await withSystem((db) => db.query<{
-      capability: string; result: Record<string, unknown>; result_count: number; started_at: Date; finished_at: Date;
+      agent_instance_id: string; capability: string; result: Record<string, unknown>; result_count: number; started_at: Date; finished_at: Date;
     }>(
-      "select capability, result, result_count, started_at, finished_at from ai_work_jobs where id = $1 and org_id = $2",
+      "select agent_instance_id, capability, result, result_count, started_at, finished_at from ai_work_jobs where id = $1 and org_id = $2",
       [sent.jobId, org.id],
     ))).rows[0];
+    expect(job.agent_instance_id).toBe(growthPartnerAgentId);
     expect(job.capability).toBe(capability);
     expect(job.result).toBeTruthy();
     expect(new Date(job.finished_at).getTime()).toBeGreaterThanOrEqual(new Date(job.started_at).getTime());
@@ -453,12 +483,13 @@ describe("six employee chat to native workflow", () => {
     await resetAgentMessageRateLimit(owner.id);
   });
 
-  it("hands explicitly named work to the correct employee with durable provenance", async () => {
+  it("routes explicitly named capabilities through the permanent Partner conversation", async () => {
     const requestStart = mock.requests.length;
+    const clientMessageId = crypto.randomUUID();
     const sent = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "lead_hunter",
       content: "CRM Manager, check our CRM for duplicates and incomplete records.",
-      clientMessageId: crypto.randomUUID(),
+      clientMessageId,
     });
     expect(sent).toMatchObject({ runId: null, jobId: expect.any(String) });
 
@@ -467,7 +498,8 @@ describe("six employee chat to native workflow", () => {
       [sent.assistantMessageId, org.id],
     ))).rows[0];
     expect(sourceReply.work_job_id).toBe(sent.jobId);
-    expect(sourceReply.content).toContain("/chat/crm-manager?c=");
+    expect(sourceReply.content).toContain("permanent conversation");
+    expect(sourceReply.content).not.toContain("/chat/crm-manager");
     expect(sourceReply.content).toContain(`/work?job=${sent.jobId}`);
 
     const job = (await withSystem((db) => db.query<{
@@ -476,72 +508,49 @@ describe("six employee chat to native workflow", () => {
       "select agent_instance_id, capability, input, conversation_id from ai_work_jobs where id = $1 and org_id = $2",
       [sent.jobId, org.id],
     ))).rows[0];
-    expect(job.agent_instance_id).toBe(agents.crm_manager);
+    expect(job.agent_instance_id).toBe(growthPartnerAgentId);
     expect(job.capability).toBe("crm_quality_review");
-    expect(job.input.handoff).toMatchObject({
-      sourceRole: "lead_hunter",
-      sourceAgentId: agents.lead_hunter,
-      sourceConversationId: sent.conversationId,
-      sourceMessageId: sent.userMessageId,
+    expect(job.input.capabilityRoute).toMatchObject({
+      requestedRole: "crm_manager",
+      requestedByMessageId: sent.userMessageId,
     });
-    expect(job.conversation_id).toEqual(expect.any(String));
+    expect(job.conversation_id).toBe(growthPartnerConversationId);
 
-    const target = (await withSystem((db) => db.query<{
-      role: string; content: string; work_job_id: string; user_id: string; agent_instance_id: string;
+    const partnerMessage = (await withSystem((db) => db.query<{
+      role: string; content: string; work_job_id: string; agent_instance_id: string;
     }>(
-      `select m.role, m.content, m.work_job_id, c.user_id, c.agent_instance_id
+      `select m.role, m.content, m.work_job_id, c.agent_instance_id
          from chat_messages m join chat_conversations c on c.id = m.conversation_id and c.org_id = m.org_id
         where m.org_id = $1 and c.id = $2 and m.work_job_id = $3`,
       [org.id, job.conversation_id, sent.jobId],
     ))).rows[0];
-    expect(target).toMatchObject({
-      role: "notice",
+    expect(partnerMessage).toMatchObject({
+      role: "assistant",
       work_job_id: sent.jobId,
-      user_id: owner.id,
-      agent_instance_id: agents.crm_manager,
+      agent_instance_id: growthPartnerAgentId,
     });
-    expect(target.content).toContain("Task routed from Lead Hunter to CRM Manager");
+    expect(partnerMessage.content).toContain("AI Work Board");
     expect((await withSystem((db) => db.query(
-      "select id from chat_messages where conversation_id = $1 and org_id = $2 and role = 'user'",
-      [job.conversation_id, org.id],
+      "select id from chat_conversations where org_id = $1 and growth_partner_id is null and agent_instance_id = $2 and created_at > now() - interval '2 minutes'",
+      [org.id, agents.crm_manager],
     ))).rows).toHaveLength(0);
-
-    const handoffEvent = (await withSystem((db) => db.query<{ data: Record<string, unknown> }>(
-      "select data from ai_work_events where org_id = $1 and job_id = $2 and kind = 'notice' and data->>'handoff' = 'true'",
-      [org.id, sent.jobId],
-    ))).rows[0];
-    expect(handoffEvent.data).toMatchObject({
-      sourceRole: "lead_hunter",
-      sourceConversationId: sent.conversationId,
-      targetRole: "crm_manager",
-      targetConversationId: job.conversation_id,
-    });
     expect((await withSystem((db) => db.query(
-      "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.employee_handoff_created'",
+      "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.capability_dispatched'",
       [org.id, sent.jobId],
     ))).rows).toHaveLength(1);
 
     expect(await waitForWorkJob(sent.jobId!)).toMatchObject({ status: "completed", stage: "completed" });
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
 
-    const route = parseNamedWorkforceHandoff("lead_hunter", "CRM Manager, check our CRM for duplicates and incomplete records.");
-    expect(route).not.toBeNull();
-    const repeated = await createWorkforceChatHandoff(ctxFor(owner, org, "owner"), {
-      sourceRole: "lead_hunter",
-      sourceAgentId: agents.lead_hunter,
-      sourceConversationId: sent.conversationId!,
-      sourceMessageId: sent.userMessageId!,
-      targetRole: "crm_manager",
-      assignment: route!.assignment,
-    });
-    expect(repeated).toMatchObject({ jobId: sent.jobId, targetConversationId: job.conversation_id, targetRole: "crm_manager" });
+    await expect(sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: sent.conversationId,
+      content: "CRM Manager, check our CRM for duplicates and incomplete records.",
+      clientMessageId,
+    })).rejects.toThrow("This message was already sent.");
     expect((await withSystem((db) => db.query(
-      "select id from ai_work_events where org_id = $1 and job_id = $2 and kind = 'notice' and data->>'handoff' = 'true'",
-      [org.id, sent.jobId],
-    ))).rows).toHaveLength(1);
-    expect((await withSystem((db) => db.query(
-      "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.employee_handoff_created'",
-      [org.id, sent.jobId],
+      "select id from ai_work_jobs where org_id = $1 and idempotency_key = $2",
+      [org.id, `chat-capability-route:${sent.userMessageId}`],
     ))).rows).toHaveLength(1);
   });
 
@@ -561,7 +570,7 @@ describe("six employee chat to native workflow", () => {
       [sent.assistantMessageId, org.id],
     ))).rows[0];
     expect(reply.content).toContain("does not have permission");
-    expect(reply.content).toContain("No handoff or work job was created");
+    expect(reply.content).toContain("No work job was created");
     expect(reply.work_job_id).toBeNull();
     const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
@@ -570,7 +579,7 @@ describe("six employee chat to native workflow", () => {
     expect(afterJobs).toBe(beforeJobs);
   });
 
-  it("keeps named recurring requests in the target employee's confirmed schedule flow", async () => {
+  it("keeps named recurring requests in the permanent Growth Partner schedule flow", async () => {
     const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],
@@ -580,14 +589,36 @@ describe("six employee chat to native workflow", () => {
       content: "Performance Analyst, prepare our weekly performance report every Friday at 9 AM.",
       clientMessageId: crypto.randomUUID(),
     });
-    expect(sent).toMatchObject({ runId: null, jobId: null });
+    expect(sent).toMatchObject({ runId: null, jobId: null, conversationId: growthPartnerConversationId });
     const reply = (await withSystem((db) => db.query<{ content: string }>(
       "select content from chat_messages where id = $1 and org_id = $2",
       [sent.assistantMessageId, org.id],
     ))).rows[0].content;
-    expect(reply).toContain("employee-specific permissions");
-    expect(reply).toContain("No handoff, schedule, or work job was created");
-    expect(reply).toContain("/chat/performance-analyst");
+    expect(reply).toContain("Schedule preview");
+    expect(reply).toContain("confirm schedule");
+    expect(reply).not.toContain("/chat/performance-analyst");
+    expect((await withSystem((db) => db.query(
+      "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'",
+      [org.id, growthPartnerAgentId],
+    ))).rows).toHaveLength(0);
+
+    const confirmed = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "confirm schedule",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const saved = (await withSystem((db) => db.query<{ enabled: boolean; cadence: string; recurrence_rule: Record<string, unknown> }>(
+      "select enabled, cadence, recurrence_rule from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'",
+      [org.id, growthPartnerAgentId],
+    ))).rows;
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ enabled: false, cadence: "weekly", recurrence_rule: { kind: "weekly", localTime: "09:00", weekdays: ["fri"] } });
+    expect((await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2",
+      [confirmed.assistantMessageId, org.id],
+    ))).rows[0].content).toContain("paused");
+    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, growthPartnerAgentId]));
     const afterJobs = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],
@@ -595,7 +626,7 @@ describe("six employee chat to native workflow", () => {
     expect(afterJobs).toBe(beforeJobs);
     expect((await withSystem((db) => db.query(
       "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'",
-      [org.id, agents.performance_analyst],
+      [org.id, growthPartnerAgentId],
     ))).rows).toHaveLength(0);
   });
 
@@ -651,7 +682,7 @@ describe("six employee chat to native workflow", () => {
     expect(persisted).toEqual({ jobs: [], events: [], audits: [] });
   });
 
-  it("prepares only a Sales Assistant-owned stale deal draft, and reuses it on retry", async () => {
+  it("prepares one draft in a retained Sales Assistant conversation, and reuses it on retry", async () => {
     const ids = await withSystem(async (db) => {
       const goodContact = await db.query<{ id: string }>(
         "insert into contacts (org_id, display_name, first_name, email) values ($1, 'Amira Test', 'Amira', 'amira@example.test') returning id",
@@ -721,16 +752,17 @@ describe("six employee chat to native workflow", () => {
     }]);
     expect(firstDrafts[0].opportunityId).not.toBe(ids.otherOpportunityId);
 
-    const saved = (await withSystem((db) => db.query<{ conversation_id: string; body: string; status: string; status_detail: string; blocked_reason: string; scope: string; sent_at: Date | null }>(
-      "select conversation_id, body, status, status_detail, blocked_reason, scope, sent_at from conversation_messages where org_id = $1 and dedupe_key like 'workforce-sales-followup:%'",
+    const saved = (await withSystem((db) => db.query<{ conversation_id: string; agent_id: string; body: string; status: string; status_detail: string; blocked_reason: string; scope: string; sent_at: Date | null }>(
+      "select conversation_id, agent_id, body, status, status_detail, blocked_reason, scope, sent_at from conversation_messages where org_id = $1 and dedupe_key like 'workforce-sales-followup:%'",
       [org.id],
     ))).rows;
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({
       conversation_id: firstDrafts[0].conversationId,
+      agent_id: growthPartnerAgentId,
       body: expect.stringContaining("Hi Amira"),
       status: "draft",
-      status_detail: "Prepared by Sales Assistant for review. Not sent.",
+      status_detail: "Prepared by AI Growth Partner for review. Not sent.",
       blocked_reason: "needs_approval",
       scope: "followup",
       sent_at: null,
@@ -771,7 +803,7 @@ describe("six employee chat to native workflow", () => {
     expect(previewReply).toContain("Schedule preview");
     expect(previewReply).toContain("paused");
     expect(previewReply).toContain("confirm schedule");
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
 
     const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "operations_manager",
@@ -783,7 +815,7 @@ describe("six employee chat to native workflow", () => {
       id: string; enabled: boolean; timezone: string; cadence: string; recurrence_rule: Record<string, unknown>; business_hours: Record<string, unknown>;
     }>(
       "select id, enabled, timezone, cadence, recurrence_rule, business_hours from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
-      [org.id, agents.operations_manager],
+      [org.id, growthPartnerAgentId],
     ))).rows;
     expect(savedRows).toHaveLength(1);
     expect(savedRows[0]).toMatchObject({ enabled: false, timezone: "UTC", cadence: "weekly" });
@@ -806,7 +838,7 @@ describe("six employee chat to native workflow", () => {
       content: "confirm schedule",
       clientMessageId: crypto.randomUUID(),
     });
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(1);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(1);
     const audits = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_saved'",
       [org.id, savedRows[0].id],
@@ -839,7 +871,7 @@ describe("six employee chat to native workflow", () => {
       [preview.conversationId, org.id],
     ))).rows[0].pending_workforce_schedule;
     expect(cancelled).toMatchObject({ status: "cancelled" });
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, agents.sales_assistant]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
 
     const write = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "sales_assistant",
@@ -851,7 +883,7 @@ describe("six employee chat to native workflow", () => {
       [write.assistantMessageId, org.id],
     ))).rows[0].content;
     expect(writeReply).toMatch(/schedule messages|approved outbound/i);
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, agents.sales_assistant]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'pipeline_review'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
 
     const memberPreview = await sendChatMessage(ctxFor(member, org, "member"), {
       agentRole: "operations_manager",
@@ -958,7 +990,7 @@ describe("six employee chat to native workflow", () => {
     const appeared = await withSystem((db) => db.query<{ id: string }>(
       `insert into ai_work_schedules (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, enabled, next_run_at)
        values ($1, $2, $3, 'proactive_review', 'hourly', 60, 'UTC', false, now()) returning id`,
-      [org.id, agents.operations_manager, owner.id],
+      [org.id, growthPartnerAgentId, owner.id],
     ));
     const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "operations_manager",
@@ -1002,7 +1034,7 @@ describe("six employee chat to native workflow", () => {
       });
       const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
       expect(reply).toContain("timezone changed after this preview");
-      expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, agents.operations_manager]))).rows).toHaveLength(0);
+      expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
     } finally {
       await withSystem((db) => db.query("update organizations set timezone = $2 where id = $1", [org.id, originalTimezone]));
     }
@@ -1014,7 +1046,7 @@ describe("six employee chat to native workflow", () => {
       content: "Research 10 dental clinics in Austin every weekday at 9 AM",
       clientMessageId: crypto.randomUUID(),
     });
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, agents.lead_hunter]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
     await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "lead_hunter",
       conversationId: leadPreview.conversationId,
@@ -1023,14 +1055,14 @@ describe("six employee chat to native workflow", () => {
     });
     const leadSchedule = (await withSystem((db) => db.query<{ enabled: boolean; payload: Record<string, unknown> }>(
       "select enabled, payload from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
-      [org.id, agents.lead_hunter],
+      [org.id, growthPartnerAgentId],
     ))).rows[0];
     expect(leadSchedule).toMatchObject({
       enabled: false,
       payload: { target: "dental clinics", location: "Austin", quantity: 10 },
     });
     expect(leadSchedule.payload.prompt).toContain("Research 10 dental clinics in Austin");
-    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, agents.lead_hunter]));
+    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, growthPartnerAgentId]));
 
     const appointmentPreview = await sendChatMessage(ctxFor(owner, org, "owner"), {
       agentRole: "appointment_setter",
@@ -1050,13 +1082,13 @@ describe("six employee chat to native workflow", () => {
     });
     const appointmentSchedule = (await withSystem((db) => db.query<{ enabled: boolean; recurrence_rule: Record<string, unknown> }>(
       "select enabled, recurrence_rule from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'",
-      [org.id, agents.appointment_setter],
+      [org.id, growthPartnerAgentId],
     ))).rows[0];
     expect(appointmentSchedule).toMatchObject({
       enabled: false,
       recurrence_rule: { kind: "weekly", weekdays: ["fri"], localTime: "09:00" },
     });
-    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'", [org.id, agents.appointment_setter]));
+    await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'appointment_review'", [org.id, growthPartnerAgentId]));
   });
 
   it("previews an exact appointment, submits only after chat confirmation, and leaves the approval gate intact", async () => {
@@ -1084,7 +1116,7 @@ describe("six employee chat to native workflow", () => {
       "select pending_workforce_booking from chat_conversations where id = $1 and org_id = $2",
       [preview.conversationId, org.id],
     ))).rows[0].pending_workforce_booking;
-    expect(proposal).toMatchObject({ status: "pending", contactId: contact.rows[0].id, requestedBy: owner.id, agentInstanceId: agents.appointment_setter });
+    expect(proposal).toMatchObject({ status: "pending", contactId: contact.rows[0].id, requestedBy: owner.id, agentInstanceId: growthPartnerAgentId });
     expect((await withSystem((db) => db.query("select id from appointment_bookings where org_id = $1 and contact_id = $2", [org.id, contact.rows[0].id]))).rows).toHaveLength(0);
 
     const confirm = await sendChatMessage(ctxFor(owner, org, "owner"), {
@@ -1099,7 +1131,7 @@ describe("six employee chat to native workflow", () => {
       "select id, status, requested_by_kind, requested_by_user, agent_id, conversation_id from appointment_bookings where org_id = $1 and contact_id = $2",
       [org.id, contact.rows[0].id],
     ))).rows[0];
-    expect(booking).toMatchObject({ status: "awaiting_approval", requested_by_kind: "ai", requested_by_user: owner.id, agent_id: agents.appointment_setter, conversation_id: null });
+    expect(booking).toMatchObject({ status: "awaiting_approval", requested_by_kind: "ai", requested_by_user: owner.id, agent_id: growthPartnerAgentId, conversation_id: null });
     const confirmationReply = (await withSystem((db) => db.query<{ content: string }>(
       "select content from chat_messages where id = $1 and org_id = $2",
       [confirm.assistantMessageId, org.id],
@@ -1273,7 +1305,7 @@ describe("six employee chat to native workflow", () => {
     });
     const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
     expect(reply).toContain("preview has expired");
-    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, agents.performance_analyst]))).rows).toHaveLength(0);
+    expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
   });
 
   it("saves bounded persistent preferences from the permanent chat on the Growth Partner only", async () => {

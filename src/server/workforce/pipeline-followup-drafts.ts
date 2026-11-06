@@ -44,7 +44,7 @@ function buildFollowUpDraft(candidate: PipelineDraftCandidate): string {
   return `${greeting ? `Hi ${greeting}` : "Hello"}, I’m checking in to see whether you have any questions or would like to discuss a next step. No pressure—let me know what would be helpful.`;
 }
 
-async function loadCandidates(orgId: string, agentId: string, limit: number): Promise<{ candidates: PipelineDraftCandidate[]; truncated: boolean }> {
+async function loadCandidates(orgId: string, agentId: string, limit: number, includePreviousSalesAssistantConversations: boolean): Promise<{ candidates: PipelineDraftCandidate[]; truncated: boolean }> {
   return withSystem(async (db) => {
     const { rows } = await db.query<PipelineDraftCandidate>(
       `with ranked as (
@@ -59,7 +59,10 @@ async function loadCandidates(orgId: string, agentId: string, limit: number): Pr
            join lateral (
              select c.id
                from conversations c
-              where c.org_id = o.org_id and c.contact_id = k.id and c.ai_agent_id = $2
+              where c.org_id = o.org_id and c.contact_id = k.id
+                and (c.ai_agent_id = $2 or ($4::boolean and c.ai_agent_id in (
+                  select a.id from agent_instances a where a.org_id = $1 and a.role_key = 'sales_assistant'
+                )))
                 and c.owner_kind = 'ai' and c.status = 'open'
               order by c.last_message_at desc nulls last, c.created_at desc, c.id
               limit 1
@@ -95,7 +98,7 @@ async function loadCandidates(orgId: string, agentId: string, limit: number): Pr
             order by m.created_at desc, m.id desc limit 1
          ) existing on true
         order by chosen.stale_at asc, chosen.opportunity_id`,
-      [orgId, agentId, limit + 1],
+      [orgId, agentId, limit + 1, includePreviousSalesAssistantConversations],
     );
     return { candidates: rows.slice(0, limit), truncated: rows.length > limit };
   });
@@ -142,9 +145,13 @@ async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDr
       `insert into conversation_messages
          (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail, blocked_reason, scope, dedupe_key)
        select $1, c.id, 'outbound', 'ai', $3, $4, 'draft',
-              'Prepared by Sales Assistant for review. Not sent.', 'needs_approval', 'followup', $5
+              $8, 'needs_approval', 'followup', $5
          from conversations c
-        where c.id = $2 and c.org_id = $1 and c.ai_agent_id = $3 and c.owner_kind = 'ai' and c.status = 'open'
+        where c.id = $2 and c.org_id = $1
+          and (c.ai_agent_id = $3 or ($9::boolean and c.ai_agent_id in (
+            select a.id from agent_instances a where a.org_id = $1 and a.role_key = 'sales_assistant'
+          )))
+          and c.owner_kind = 'ai' and c.status = 'open'
           and exists (
             select 1 from crm_opportunities o
              where o.id = $6 and o.org_id = $1 and o.contact_id = c.contact_id and o.status = 'open' and o.archived_at is null
@@ -164,7 +171,9 @@ async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDr
           )
        on conflict (org_id, dedupe_key) do nothing
        returning id`,
-      [job.org_id, candidate.conversationId, agent.id, body, dedupeKey, candidate.opportunityId, candidate.lastInboundId],
+      [job.org_id, candidate.conversationId, agent.id, body, dedupeKey, candidate.opportunityId, candidate.lastInboundId,
+        `Prepared by ${agent.role_key === "growth_partner" ? "AI Growth Partner" : "Sales Assistant"} for review. Not sent.`,
+        agent.role_key === "growth_partner"],
     );
     if (inserted.rows[0]) {
       await recordAudit({
@@ -183,8 +192,12 @@ async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDr
     const existing = await db.query<{ id: string; status: string }>(
       `select m.id, m.status from conversation_messages m
         join conversations c on c.id = m.conversation_id and c.org_id = m.org_id
-       where m.org_id = $1 and m.dedupe_key = $2 and c.ai_agent_id = $3 and c.owner_kind = 'ai' and c.status = 'open'`,
-      [job.org_id, dedupeKey, agent.id],
+       where m.org_id = $1 and m.dedupe_key = $2
+         and (c.ai_agent_id = $3 or ($4::boolean and c.ai_agent_id in (
+           select a.id from agent_instances a where a.org_id = $1 and a.role_key = 'sales_assistant'
+         )))
+         and c.owner_kind = 'ai' and c.status = 'open'`,
+      [job.org_id, dedupeKey, agent.id, agent.role_key === "growth_partner"],
     );
     return existing.rows[0]
       ? { id: existing.rows[0].id, status: existing.rows[0].status, created: false }
@@ -218,7 +231,8 @@ export async function runPipelineFollowUpDraftsJob(
   }
 
   const limit = requestedLimit(job.input);
-  const { candidates, truncated } = await loadCandidates(job.org_id, agent.id, limit);
+  const includePreviousSalesAssistantConversations = agent.role_key === "growth_partner";
+  const { candidates, truncated } = await loadCandidates(job.org_id, agent.id, limit, includePreviousSalesAssistantConversations);
   const eligible = candidates.filter((candidate) => !candidate.existingMessageId);
   const reused = candidates.filter((candidate) => candidate.existingMessageId && candidate.existingMessageStatus === "draft");
   const handled = candidates.filter((candidate) => candidate.existingMessageId && candidate.existingMessageStatus !== "draft");
@@ -293,8 +307,11 @@ export async function runPipelineFollowUpDraftsJob(
   const draftCount = prepared.filter((item) => !item.reused).length;
   const summary = candidates.length
     ? `Sales pipeline review recorded ${staleSignals} other finding${staleSignals === 1 ? "" : "s"}; ${draftCount} new follow-up draft${draftCount === 1 ? " was" : "s were"} saved for review. No message was sent.${truncated ? ` Showing the first ${limit} matching opportunities.` : ""}`
-    : "Sales pipeline review completed. No stale open opportunity had a current conversation this Sales Assistant handles, so no follow-up draft was created.";
-  const limitations = "Only this workspace's persisted open opportunities and current Sales Assistant conversations were used. Draft wording is a neutral template with only a simple CRM first name; it does not infer or claim conversation facts. Drafts are saved unsent; a person must review and approve them, and the existing messaging service rechecks consent, channel status, quiet hours, ownership, credits and policy before sending. No customer was contacted.";
+    : "Sales pipeline review completed. No stale open opportunity had an eligible AI-owned conversation, so no follow-up draft was created.";
+  const conversationScope = includePreviousSalesAssistantConversations
+    ? "current AI Growth Partner conversations and retained Sales Assistant conversations"
+    : "current Sales Assistant conversations";
+  const limitations = `Only this workspace's persisted open opportunities and ${conversationScope} were used. Draft wording is a neutral template with only a simple CRM first name; it does not infer or claim conversation facts. Drafts are saved unsent; a person must review and approve them, and the existing messaging service rechecks consent, channel status, quiet hours, ownership, credits and policy before sending. No customer was contacted.`;
 
   await withSystem(async (db) => {
     await recordWorkStage(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId, stage: "preparing_results", message: "The pipeline findings and unsent Inbox drafts are ready for review." });

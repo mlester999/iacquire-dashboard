@@ -1259,7 +1259,7 @@ async function handleChatBookingIntent(
     const stored = await withSystem(async (db) => {
       const { rows } = await db.query<{ id: string; pending_workforce_booking: unknown }>(
         `select id, pending_workforce_booking from chat_conversations
-          where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+          where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null
           for update`,
         [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
       );
@@ -1288,7 +1288,7 @@ async function handleChatBookingIntent(
   const initial = await withSystem(async (db) => {
     const { rows } = await db.query<{ pending_workforce_booking: unknown }>(
       `select pending_workforce_booking from chat_conversations
-        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null`,
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null`,
       [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
     );
     return rows[0]?.pending_workforce_booking ?? null;
@@ -1304,7 +1304,7 @@ async function handleChatBookingIntent(
   if (!pending) return reply(input.intent.kind === "confirm"
     ? "There is no pending appointment preview to confirm. No booking was made."
     : "There is no pending appointment preview to discard. No appointment was changed.");
-  if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || input.agentRole !== "appointment_setter") {
+  if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || (input.agentRole !== "appointment_setter" && input.agentRole !== "growth_partner")) {
     return reply("I couldn't match this preview to the current employee and requester. No booking was made; request a fresh preview.");
   }
 
@@ -1390,7 +1390,7 @@ async function handleChatBookingIntent(
   const claimed = await withSystem(async (db) => {
     const { rows } = await db.query<{ pending_workforce_booking: unknown }>(
       `select pending_workforce_booking from chat_conversations
-        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null
         for update`,
       [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
     );
@@ -1561,7 +1561,7 @@ async function handleChatAppointmentChangeIntent(
     const stored = await withSystem(async (db) => {
       const { rows } = await db.query<{ pending_workforce_appointment_change: unknown }>(
         `select pending_workforce_appointment_change from chat_conversations
-          where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null for update`,
+          where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null for update`,
         [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
       );
       if (!rows[0]) throw new AppError("not_found", "Conversation not found.");
@@ -1584,7 +1584,7 @@ async function handleChatAppointmentChangeIntent(
   const initial = await withSystem(async (db) => {
     const { rows } = await db.query<{ pending_workforce_appointment_change: unknown }>(
       `select pending_workforce_appointment_change from chat_conversations
-        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null`,
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null`,
       [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
     );
     return rows[0]?.pending_workforce_appointment_change ?? null;
@@ -1595,7 +1595,7 @@ async function handleChatAppointmentChangeIntent(
     return reply("I couldn't verify the saved appointment change preview, so I discarded it. No appointment was changed. Prepare a fresh request.");
   }
   if (!pending) return reply(input.intent.kind === "confirm" ? "There is no appointment change preview to confirm. No appointment was changed." : "There is no appointment change preview to discard. No appointment was changed.");
-  if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || input.agentRole !== "appointment_setter") {
+  if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId || (input.agentRole !== "appointment_setter" && input.agentRole !== "growth_partner")) {
     return reply("I couldn't match this preview to the current employee and requester. No appointment was changed; prepare a fresh request.");
   }
   if (input.intent.kind === "discard") {
@@ -1664,7 +1664,7 @@ async function handleChatAppointmentChangeIntent(
   const request = await withSystem(async (db) => {
     const { rows } = await db.query<{ pending_workforce_appointment_change: unknown }>(
       `select pending_workforce_appointment_change from chat_conversations
-        where id = $1 and org_id = $2 and agent_instance_id = $3 and user_id = $4 and deleted_at is null for update`,
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and (growth_partner_id is not null or user_id = $4) and deleted_at is null for update`,
       [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id],
     );
     const current = parsePendingChatAppointmentChange(rows[0]?.pending_workforce_appointment_change);
@@ -2036,6 +2036,21 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
 
 export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promise<SendResult> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't chat with AI employees.");
+  if (ctx.org.kind === "client" && input.agentRole !== "growth_partner") {
+    // Once a tenant has its provisioned Partner identity, compatibility calls from retained-role
+    // controls must use that one runtime and its permanent conversation. Tenants that have not
+    // completed Partner provisioning yet keep their current role path until onboarding migrates
+    // them; a missing Partner conversation after provisioning still fails closed below.
+    const { rows } = await withSystem((db) => db.query<{ id: string }>(
+      `select p.id
+         from ai_growth_partners p
+         join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
+        where p.org_id = $1 and a.role_key = 'growth_partner'
+        limit 1`,
+      [ctx.org.orgId],
+    ));
+    if (rows[0]) input = { ...input, agentRole: "growth_partner" };
+  }
   const inferenceOnly = input.inferenceOnly === true;
   if (input.agentRole === "growth_partner" && inferenceOnly) {
     throw new AppError("forbidden", "Restricted employee inference is available to internal Super Admins only.");
@@ -2295,7 +2310,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   const refusal = !input.regenerateMessageId && input.content
     ? workforceChatRefusal(input.agentRole, input.content, agent.display_name)
     : null;
-  const namedOtherRole = !input.regenerateMessageId
+  const namedOtherRole = (ctx.org.kind !== "client" || input.agentRole !== "growth_partner") && !input.regenerateMessageId
     ? explicitlyAddressedWorkforceRole(input.agentRole, prepared.userContent)
     : null;
   const calendarCreateIntent = !input.regenerateMessageId && !namedOtherRole
@@ -2421,9 +2436,48 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
           userId: ctx.user.id,
           agentId: agent.id,
           conversationId: prepared.conversationId,
-          content: `Your workspace role does not have permission to start this ${definition.label.toLowerCase()} with ${AGENT_BY_KEY[handoff.targetRole].shortName}. No handoff or work job was created.`,
+          content: ctx.org.kind === "client"
+            ? `Your workspace role does not have permission to start this ${definition.label.toLocaleLowerCase("en-US")} with the AI Growth Partner. No work job was created.`
+            : `Your workspace role does not have permission to start this ${definition.label.toLocaleLowerCase("en-US")} with ${AGENT_BY_KEY[handoff.targetRole].shortName}. No handoff or work job was created.`,
         });
         return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+      }
+
+      if (ctx.org.kind === "client" && input.agentRole === "growth_partner") {
+        if (!definition.allowedRoles.includes("growth_partner")) {
+          throw new AppError("forbidden", "The AI Growth Partner cannot perform that capability.");
+        }
+        const routed = await dispatchCapabilityJob(ctx, {
+          agentRole: "growth_partner",
+          capability: handoff.assignment.capability,
+          title: handoff.assignment.title,
+          input: {
+            ...handoff.assignment.input,
+            capabilityRoute: {
+              requestedRole: handoff.targetRole,
+              requestedByMessageId: prepared.userMessageId,
+            },
+          },
+          idempotencyKey: `chat-capability-route:${prepared.userMessageId}`,
+          conversationId: prepared.conversationId,
+          deferKick: true,
+        });
+        const assistantMessageId = await persistChatAssistantMessage({
+          orgId: ctx.org.orgId,
+          userId: ctx.user.id,
+          agentId: routed.agentId,
+          conversationId: prepared.conversationId,
+          content: `I’ve queued ${definition.label.toLocaleLowerCase("en-US")} in our permanent conversation. [Track it on the AI Work Board](/work?job=${encodeURIComponent(routed.jobId)}). The usual permissions and approval steps still apply.`,
+          workJobId: routed.jobId,
+        });
+        kickWorkJob(routed.jobId);
+        return {
+          conversationId: prepared.conversationId,
+          userMessageId: prepared.userMessageId,
+          assistantMessageId,
+          runId: null,
+          jobId: routed.jobId,
+        };
       }
 
       let created: Awaited<ReturnType<typeof createWorkforceChatHandoff>> | null = null;

@@ -140,13 +140,13 @@ export async function executeApprovedAppointmentChange(
 ): Promise<{ status: "succeeded" | "failed" | "blocked"; detail: string }> {
   const action = parseAction(rawAction);
   if (!action) return { status: "failed", detail: "The appointment change request could not be verified. No calendar change was made." };
-  const setter = agentInstanceId
+  const partner = agentInstanceId
     ? await withSystem(async (db) => (await db.query<{ id: string }>(
-      "select id from agent_instances where id = $1 and org_id = $2 and role_key = 'appointment_setter'",
+      "select id from agent_instances where id = $1 and org_id = $2 and role_key in ('appointment_setter', 'growth_partner')",
       [agentInstanceId, orgId],
     )).rows[0] ?? null)
     : null;
-  if (!setter) return { status: "blocked", detail: "The Appointment Setter identity for this request is no longer available. No calendar change was made." };
+  if (!partner) return { status: "blocked", detail: "The AI identity for this request is no longer available. No calendar change was made." };
   const row = await loadAppointment(orgId, action.appointmentId);
   if (!expectedMatches(row, action.expected)) return { status: "blocked", detail: "This appointment changed after the request was prepared. Review the current appointment and submit a fresh request." };
   if (!row || !["new", "confirmed"].includes(row.status) || row.start_at.getTime() <= Date.now()) {

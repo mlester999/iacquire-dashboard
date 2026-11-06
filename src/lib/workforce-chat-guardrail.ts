@@ -32,7 +32,7 @@ export function workforceChatRefusal(role: WorkforceRoleKey, content: string, em
   const text = normalize(content);
   if (!text) return null;
 
-  const bookingReadRequest = role === "appointment_setter"
+  const bookingReadRequest = (role === "appointment_setter" || role === "growth_partner")
     && /\b(?:check|find|show|list|review)\b.{0,60}\b(?:calendar|availability|available slots|appointment slots)\b/.test(text);
 
   if (role !== "lead_hunter" && role !== "growth_partner" && follows(
