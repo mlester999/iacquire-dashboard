@@ -14,6 +14,7 @@ import { PROVISIONERS } from "@/server/setup/provisioning-contract";
 import { CONNECTORS, GHL_CONNECTORS } from "@/server/setup/connectors";
 import { CHECK_KEYS } from "@/lib/setup";
 import { recordLaunchSnapshot } from "@/server/setup/launch-ledger";
+import { ensureGrowthPartnerIdentity } from "@/server/ai-growth-partner/service";
 import { addMember, agencyUser, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { draftClient } from "./support/launch";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -113,6 +114,24 @@ describe("checklist creation", () => {
     expect(await task(org.id, "ai_employees")).toMatchObject({
       title: "Six client-specific Hermes AI employees configured",
       client_title: "Your six AI employees are configured",
+    });
+  });
+
+  it("uses unified Partner setup copy as soon as the logical identity exists, before runtime linking", async () => {
+    const org = await createOrg({ name: "Partner Setup Copy Co" });
+    const owner = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    const ownerCtx = ctxFor(owner, org, "owner");
+    await ensureGrowthPartnerIdentity(ownerCtx);
+    const runtimeId = (await withSystem((db) => db.query<{ runtime_agent_instance_id: string | null }>(
+      "select runtime_agent_instance_id from ai_growth_partners where org_id = $1", [org.id],
+    ))).rows[0].runtime_agent_instance_id;
+    expect(runtimeId).toBeNull();
+
+    await withSystem((db) => ensureSetupInstance(db, org.id));
+    expect(await task(org.id, "ai_employees")).toMatchObject({
+      title: "AI Growth Partner runtime and safety checks passed",
+      client_title: "Your AI Growth Partner is ready",
     });
   });
 

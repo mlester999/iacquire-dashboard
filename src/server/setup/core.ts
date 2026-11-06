@@ -75,9 +75,7 @@ export const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toI
 export async function ensureSetupInstance(db: Queryable, orgId: string, actorUserId: string | null = null): Promise<{ id: string; created: boolean } | null> {
   const { rows: org } = await db.query<{ kind: string; growth_partner: boolean }>(
     `select o.kind,
-            exists(select 1 from ai_growth_partners p join agent_instances a
-                     on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id
-                    where p.org_id = o.id and a.role_key = 'growth_partner' and a.enabled) as growth_partner
+            exists(select 1 from ai_growth_partners p where p.org_id = o.id) as growth_partner
        from organizations o where o.id = $1`,
     [orgId],
   );
