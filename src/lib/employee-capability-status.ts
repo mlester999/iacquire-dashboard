@@ -77,8 +77,8 @@ export function deriveCapabilityChecks(input: CapabilityInput): CapabilityCheck[
         key: "read_only",
         label: "Can read your records",
         state: "not_verified",
-        customer: "Not checked yet. Ask this employee a question about your business to confirm it can read your records.",
-        admin: read ? `The last successful read was more than ${days} days ago (${read.at}).` : "No workspace read has been recorded for this employee yet.",
+        customer: "Not checked yet. Ask the AI Growth Partner a question about your business to confirm it can read your records.",
+        admin: read ? `The last successful read was more than ${days} days ago (${read.at}).` : "No workspace read has been recorded for this profile yet.",
       }
     : read.ok
       ? {
@@ -110,7 +110,7 @@ export function deriveCapabilityChecks(input: CapabilityInput): CapabilityCheck[
         label: "Has answered a real question",
         state: "not_verified",
         customer: "Not yet. Send it a question to confirm it works for you.",
-        admin: a && a.completedChatRuns > 0 ? `The latest completed chat run (${a.lastCompletedChatAt}) is older than ${days} days.` : "No completed chat run is recorded for this employee.",
+        admin: a && a.completedChatRuns > 0 ? `The latest completed chat run (${a.lastCompletedChatAt}) is older than ${days} days.` : "No completed chat run is recorded for this profile.",
       };
 
   const auto = a?.scheduledJobsOn ?? 0;
@@ -138,7 +138,7 @@ export function deriveCapabilityChecks(input: CapabilityInput): CapabilityCheck[
       ? { key: "connected", label: "Connected", state: "yes", customer: "Yes. It is switched on and reachable.", admin: `Runtime status ${input.runtimeStatus}.` }
       : { key: "connected", label: "Connected", state: "no", customer: input.enabled ? "Not reachable right now." : "It is switched off.", admin: `Enabled ${input.enabled}; runtime status ${input.runtimeStatus}; connected ${input.connected}.` },
     input.inventoryVerified
-      ? { key: "tools", label: "Safe tools confirmed", state: "yes", customer: "Yes. The tools it can use have been checked and limited.", admin: `Runtime tool inventory verified${input.inventoryToolCount !== null ? ` (${input.inventoryToolCount} tools)` : ""}. Business data is not a runtime tool: the server reads it for the employee.` }
+      ? { key: "tools", label: "Safe tools confirmed", state: "yes", customer: "Yes. The tools it can use have been checked and limited.", admin: `Runtime tool inventory verified${input.inventoryToolCount !== null ? ` (${input.inventoryToolCount} tools)` : ""}. Business data is not a runtime tool: the server reads it for this profile.` }
       : { key: "tools", label: "Safe tools confirmed", state: "not_verified", customer: "Not confirmed yet. It cannot take on work until its tools are checked.", admin: "No current, complete runtime tool inventory on record." },
     input.prerequisitesMet === null
       ? { key: "business_setup", label: "Your business setup is ready", state: "not_verified", customer: "We could not check your setup just now.", admin: "Workspace facts could not be read." }
@@ -151,7 +151,7 @@ export function deriveCapabilityChecks(input: CapabilityInput): CapabilityCheck[
       label: "Changes need your approval",
       state: "yes",
       customer: "Yes. It prepares proposals. A person approves anything that changes a record, books a meeting or reaches a customer.",
-      admin: `Chat gives the employee read-only facts and no write path. Mode ${input.mode}; a drafted change or booking is created only as an approval request.`,
+      admin: `This profile's chat gets read-only facts and no write path. Mode ${input.mode}; a drafted change or booking is created only as an approval request.`,
     },
     realChat,
     automatic,

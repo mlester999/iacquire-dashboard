@@ -13,7 +13,7 @@ describe("capability checklist", () => {
 
   it("shows customers one plain sentence per fact and no diagnostics", () => {
     const html = renderToStaticMarkup(<CapabilityChecklist checks={checks} audience="customer" />);
-    expect(html).toContain("What this employee can do right now");
+    expect(html).toContain("What this profile can do right now");
     expect(html).toContain("3 of 6 confirmed");
     for (const label of ["Set up", "Connected", "Safe tools confirmed", "Your business setup is ready", "Can read your records", "Changes need your approval", "Has answered a real question", "Allowed to work on its own"]) expect(html).toContain(label);
     expect(html).toContain("Still needed: A booking calendar.");
@@ -26,7 +26,7 @@ describe("capability checklist", () => {
     const html = renderToStaticMarkup(<CapabilityChecklist checks={checks} audience="admin" />);
     expect(html).toContain("Configuration version 2 is applied.");
     expect(html).toContain("Runtime status online.");
-    expect(html).toContain("No workspace read has been recorded for this employee yet.");
+    expect(html).toContain("No workspace read has been recorded for this profile yet.");
   });
 
   it("marks only recorded facts as yes and says so for the rest", () => {

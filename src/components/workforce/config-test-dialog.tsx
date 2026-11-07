@@ -228,7 +228,7 @@ export function ConfigTestDialog({
       open={open}
       onOpenChange={handleOpenChange}
       title={`Test ${agentName}'s draft`}
-      description="A real provider test with the draft configuration. It never changes the live employee, saves a conversation or applies a version."
+      description="A real provider test with the draft configuration. It never changes the live profile, saves a conversation or applies a version."
       size="lg"
       footer={
         <>
@@ -251,7 +251,7 @@ export function ConfigTestDialog({
             </span>
           </div>
           <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-            The draft is compiled with the protected iAcquire policy and the employee&apos;s approved knowledge. A unique test session and memory scope keep the test out of production history and long-term memory. Nothing is written to the employee&apos;s saved configuration or chat.
+            The draft is compiled with the protected iAcquire policy and the profile&apos;s approved knowledge. A unique test session and memory scope keep the test out of production history and long-term memory. Nothing is written to the profile&apos;s saved configuration or chat.
           </p>
         </div>
 
@@ -378,7 +378,7 @@ export function ConfigTestDialog({
                 if (!running) void send();
               }
             }}
-            placeholder={summary?.connectionConfigured ? "Ask the draft employee something…" : "Connect the employee to run a live test."}
+            placeholder={summary?.connectionConfigured ? "Ask the draft something…" : "Connect the profile to run a live test."}
             className="border-0 bg-transparent focus:ring-0"
           />
           <div className="flex items-center justify-between gap-2 px-1 pt-1">
@@ -395,7 +395,7 @@ export function ConfigTestDialog({
           </div>
         </div>
         <p className="text-[12px] leading-relaxed text-faint">
-          A test does not prove that a production employee is online. Connection health is checked separately, and live use stays gated by the employee&apos;s verified provider permissions.
+          A test does not prove that a production profile is online. Connection health is checked separately, and live use stays gated by verified provider permissions.
         </p>
       </div>
     </Dialog>

@@ -129,5 +129,6 @@ describe("guided employee field coverage", () => {
       expect(fix.length, code).toBeGreaterThan(30);
       expect(fix.toLowerCase(), code).not.toMatch(/approved anyway|disable the (check|rule)/);
     }
+    expect(changeFixForReason("role_hijack", "")).toBe("Keep this profile within its saved role. Ask the AI Growth Partner for different work.");
   });
 });

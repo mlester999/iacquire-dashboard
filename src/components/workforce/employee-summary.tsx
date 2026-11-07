@@ -178,7 +178,7 @@ export function EmployeeProfileHero({
 export function ReadinessChecklist({
   readiness,
   title = "Activation readiness",
-  description = "Every item comes from the saved employee record. Nothing is marked complete until the backend confirms it.",
+  description = "Every item comes from the saved profile record. Nothing is marked complete until the backend confirms it.",
   action,
   className,
 }: {

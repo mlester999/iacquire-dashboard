@@ -18,12 +18,14 @@ export function EmployeeInstructions({
   agentName,
   role,
   timeZone,
+  isClientPreviousProfile,
   onOpenKnowledge,
 }: {
   overview: EmployeeInstructionOverview;
   agentName: string;
   role: AgentRoleKey;
   timeZone: string;
+  isClientPreviousProfile: boolean;
   onOpenKnowledge: () => void;
 }) {
   const [testing, setTesting] = React.useState(false);
@@ -57,7 +59,7 @@ export function EmployeeInstructions({
           </div>
           <div>
             <p className="text-[12px] font-semibold text-ink">Managed in Knowledge</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted">Approved employee notes and reference documents that the employee may use.</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">Approved profile notes and reference documents available as business context.</p>
             <Button size="sm" variant="secondary" className="mt-1.5" onClick={onOpenKnowledge}><BookOpen className="size-3.5" aria-hidden /> Open Knowledge</Button>
           </div>
           <div>
@@ -149,8 +151,9 @@ export function EmployeeInstructions({
                 <div><dt className="text-[12px] uppercase tracking-wide text-muted">Chat retention</dt><dd className="mt-1">{overview.memory.retentionDays ? `${overview.memory.retentionDays} days` : "Workspace default"}</dd></div>
               </dl>
               <p className="rounded-xl bg-surface-2 p-3 leading-relaxed text-muted">
-                Each conversation has its own saved history. Long-term memory is kept by Hermes inside this employee&apos;s own profile and is scoped to this workspace and role, so two clients never share it.
+                Saved conversations remain linked to this profile. Hermes-native memory has not passed the pinned-runtime acceptance and cannot be inspected or edited here; this page shows recorded tool activity only.
               </p>
+              {isClientPreviousProfile && <p className="rounded-xl border border-primary/15 bg-primary-soft/30 p-3 leading-relaxed text-primary-ink">This history belongs to a previous role profile. New client requests belong in the permanent AI Growth Partner conversation. <Link href="/growth-partner/conversation" className="font-semibold underline underline-offset-2">Open the conversation</Link>.</p>}
               <p className="rounded-xl border border-line p-3 leading-relaxed">
                 <span className="font-medium">Inspection and editing: unavailable.</span> The verified Hermes API exposes no read or edit endpoint for profile memory, so this page does not offer a memory editor. It shows only recorded evidence.
               </p>
@@ -192,7 +195,7 @@ export function EmployeeInstructions({
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={onOpenKnowledge}><BookOpen className="size-3.5" aria-hidden /> Manage knowledge</Button>
                 <span className={cn("rounded-full border px-2 py-0.5 text-[12px]", overview.knowledge.truncated ? "border-warning/30 bg-warning-soft text-warning-ink" : "border-line bg-surface-2 text-muted")}>
-                  {overview.knowledge.employeeNotes} employee notes · {overview.knowledge.companySections} company sections · {overview.knowledge.referenceDocuments} references
+                  {overview.knowledge.employeeNotes} profile notes · {overview.knowledge.companySections} company sections · {overview.knowledge.referenceDocuments} references
                 </span>
               </div>
             </CardContent>

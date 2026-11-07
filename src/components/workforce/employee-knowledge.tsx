@@ -41,7 +41,7 @@ function documentState(doc: EmployeeKnowledgeDocument) {
   if (doc.status === "failed") return { label: "Could not read", tone: "danger" as const, detail: doc.processing_detail ?? "Text extraction failed. Upload a text version or try again." };
   if (doc.status === "unsupported") return { label: "Not searchable", tone: "warning" as const, detail: doc.processing_detail ?? "This file type or document can't be read automatically. OCR isn't supported." };
   if (doc.searchable) return { label: "Ready to use", tone: "success" as const, detail: doc.last_used_at ? `Last used ${relativeTime(doc.last_used_at)}` : "Included in the next conversation" };
-  if (doc.risk_flags.length) return { label: "Held for review", tone: "warning" as const, detail: "May conflict with AI safety policy. It is not given to the employee until iAcquire reviews it." };
+  if (doc.risk_flags.length) return { label: "Held for review", tone: "warning" as const, detail: "May conflict with AI safety policy. It is not given to the profile until iAcquire reviews it." };
   if (doc.status !== "ready") return { label: "Not ready", tone: "neutral" as const, detail: "This file is still being processed." };
   return { label: "Stored only", tone: "neutral" as const, detail: "No readable text could be extracted, so it is stored securely for your team but not used in conversations." };
 }
@@ -79,10 +79,10 @@ export function EmployeeKnowledge({
         <div className="rounded-2xl border border-line bg-surface p-4">
           <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Included next conversation</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{data.retrieval.includedEntryIds.length + data.retrieval.includedDocumentIds.length}</p>
-          <p className="mt-0.5 text-[12px] text-muted">employee notes and reference files</p>
+          <p className="mt-0.5 text-[12px] text-muted">profile notes and reference files</p>
         </div>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Employee notes</p>
+          <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Profile notes</p>
           <p className="mt-1 text-[22px] font-semibold tracking-tight">{data.entries.filter((e) => e.status === "approved").length}</p>
           <p className="mt-0.5 text-[12px] text-muted">approved and versioned</p>
         </div>
@@ -103,7 +103,7 @@ export function EmployeeKnowledge({
         <Card>
           <CardHeader>
             <div>
-              <CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> Employee notes</CardTitle>
+              <CardTitle className="flex items-center gap-2"><BookOpen className="size-4" /> Profile notes</CardTitle>
               <CardDescription>Facts, preferences and rules that only {agentName} should use. Each edit keeps its previous version.</CardDescription>
             </div>
             {canEdit && (
@@ -115,8 +115,8 @@ export function EmployeeKnowledge({
           <CardContent>
             {data.entries.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line-strong p-6 text-center">
-                <p className="text-[14px] font-medium">No employee notes yet</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-muted">Add a short, specific note such as approved service areas or how this employee should handle a particular request.</p>
+                <p className="text-[14px] font-medium">No profile notes yet</p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted">Add a short, specific note such as approved service areas or how this profile should handle a particular request.</p>
               </div>
             ) : (
               <ul className="divide-y divide-line">
@@ -161,7 +161,7 @@ export function EmployeeKnowledge({
           <CardHeader>
             <div>
               <CardTitle className="flex items-center gap-2"><FileText className="size-4" /> Reference documents</CardTitle>
-              <CardDescription>Upload a file for this employee, or use a shared document from the Knowledge Center. Text is extracted before use.</CardDescription>
+              <CardDescription>Upload a file for this profile, or use a shared document from the Knowledge Center. Text is extracted before use.</CardDescription>
             </div>
             {canEdit && (
               <label className={cn("inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-surface-2", uploading && "pointer-events-none opacity-60")}>
@@ -189,7 +189,7 @@ export function EmployeeKnowledge({
                       } else if (body.held) {
                         toast.warning("Uploaded, but held for review", { description: "It may conflict with AI safety policy, so it is not used until iAcquire reviews it." });
                       } else {
-                        toast.success("Document added", { description: "Its extracted text is now available to this employee." });
+                        toast.success("Document added", { description: "Its extracted text is now available to this profile." });
                       }
                       router.refresh();
                     } catch (err) {
@@ -212,15 +212,15 @@ export function EmployeeKnowledge({
               </p>
             )}
             <div>
-              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted">For this employee</p>
-              {assigned.length === 0 ? <p className="text-[13px] text-muted">No documents assigned only to this employee.</p> : (
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted">For this profile</p>
+              {assigned.length === 0 ? <p className="text-[13px] text-muted">No documents assigned only to this profile.</p> : (
                 <ul className="divide-y divide-line">
                   {assigned.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} />)}
                 </ul>
               )}
             </div>
             <div>
-              <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared with every employee</p>
+              <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted"><Users className="size-3" aria-hidden /> Shared across profiles in this workspace</p>
               {shared.length === 0 ? <p className="text-[13px] text-muted">No shared documents yet. <Link href="/knowledge" className="font-medium text-primary-ink underline underline-offset-2 hover:no-underline">Open Knowledge Center</Link>.</p> : (
                 <ul className="divide-y divide-line">
                   {shared.map((doc) => <DocumentRow key={doc.id} doc={doc} included={includedDocuments.has(doc.id)} canEdit={canEdit} agentId={agentId} timeZone={timeZone} onChanged={() => router.refresh()} shared />)}
@@ -273,7 +273,7 @@ export function EmployeeKnowledge({
           </>
         }
       >
-        <p className="text-[14px] leading-relaxed text-muted">This does not delete the employee, its conversations or any other knowledge.</p>
+        <p className="text-[14px] leading-relaxed text-muted">This does not delete the profile, its saved conversations or any other knowledge.</p>
       </Dialog>
     </div>
   );
@@ -344,7 +344,7 @@ function DocumentRow({
               const res = shared ? await assignKnowledgeDocumentAction(agentId, doc.id) : await unassignKnowledgeDocumentAction(agentId, doc.id);
               setBusy(false);
               if (!res.ok) return toast.error(res.error);
-              toast.success(shared ? "Document assigned to this employee" : "Document returned to the shared library");
+              toast.success(shared ? "Document assigned to this profile" : "Document returned to the shared library");
               onChanged();
             }}
             className="flex min-h-8 items-center rounded-lg px-2 text-[12px] font-medium text-primary hover:bg-surface-2 disabled:opacity-50"
@@ -385,7 +385,7 @@ function NoteDialog({
       return;
     }
     if (res.data.status === "pending_agency_review") toast.warning("Saved for iAcquire review", { description: "It is not used until the safety review clears it." });
-    else toast.success(entry ? "Note updated" : "Note added", { description: "It is included in the employee's next conversation, if the knowledge budget allows." });
+    else toast.success(entry ? "Note updated" : "Note added", { description: "It is included in this profile's next conversation, if the knowledge budget allows." });
     onSaved();
   };
 
@@ -393,8 +393,8 @@ function NoteDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={entry ? "Edit employee note" : "Add employee knowledge"}
-      description="Write facts or preferences this employee should know. Do not paste passwords, API keys or another company's data."
+      title={entry ? "Edit profile note" : "Add profile knowledge"}
+      description="Write facts or preferences this profile should know. Do not paste passwords, API keys or another company's data."
       size="md"
       footer={
         <>
@@ -408,11 +408,11 @@ function NoteDialog({
           <GuidedField id="knowledge-title" label="Title" guidance={KNOWLEDGE_GUIDANCE.title} required charLimit={160} valueLength={title.length}>
             <Input maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
           </GuidedField>
-          <GuidedField id="knowledge-content" label="What should the employee know?" guidance={KNOWLEDGE_GUIDANCE.content} required charLimit={40000} valueLength={content.length}>
+          <GuidedField id="knowledge-content" label="What should this profile know?" guidance={KNOWLEDGE_GUIDANCE.content} required charLimit={40000} valueLength={content.length}>
             <Textarea rows={7} maxLength={40000} value={content} onChange={(event) => setContent(event.target.value)} />
           </GuidedField>
           <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted">
-            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden /> This knowledge is scoped to this employee in this workspace. It is never shared with another client.
+            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-success" aria-hidden /> This knowledge is scoped to this profile in this workspace. It is never shared with another client.
           </p>
         </div>
     </Dialog>

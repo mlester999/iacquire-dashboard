@@ -233,7 +233,7 @@ export function EmployeeDetail(props: Props) {
             )}
             {tab === "change" && <ChangeTab {...props} onApplied={() => setTab("history")} />}
             {tab === "instructions" && props.instructionOverview && (
-              <EmployeeInstructions overview={props.instructionOverview} agentName={agent.displayName} role={meta.key} timeZone={props.timeZone} onOpenKnowledge={() => setTab("knowledge")} />
+              <EmployeeInstructions overview={props.instructionOverview} agentName={agent.displayName} role={meta.key} timeZone={props.timeZone} isClientPreviousProfile={props.isClientLegacyProfile} onOpenKnowledge={() => setTab("knowledge")} />
             )}
             {tab === "knowledge" && props.knowledgeView && (
               <EmployeeKnowledge agentId={agent.id} agentName={agent.displayName} data={props.knowledgeView} canEdit={props.canEditKnowledge} accept={props.uploadAccept} timeZone={props.timeZone} />
@@ -404,7 +404,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
     setCheck({ state: "checking" });
   };
   const dirty = !justSaved && JSON.stringify(s) !== JSON.stringify(settings);
-  const nameError = s.displayName.trim().length === 0 ? "Enter a name for this employee." : null;
+  const nameError = s.displayName.trim().length === 0 ? "Enter a name for this profile." : null;
   const showNameError = Boolean(nameError) && (nameTouched || saveAttempted);
   const configAudit = React.useMemo(
     () => auditRoleConfiguration(meta.key, s, companyContext ?? { description: "", services: "", idealCustomers: "", operatingArea: "", industry: "" }),
@@ -681,10 +681,10 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             <div className="rounded-2xl border border-line bg-surface-2/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="max-w-lg text-[12px] leading-relaxed text-muted">Generate role suggestions from this workspace&apos;s confirmed company information. Nothing is saved until you accept the preview; existing non-default values are preserved.</p>
-                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateEmployeeSettings()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : preparingFirstInternalConfig ? "Generate employee setup" : "Regenerate employee setup"}</Button>
+                <Button type="button" size="sm" variant="secondary" disabled={regenerating} onClick={() => void regenerateEmployeeSettings()}><Wand2 className="size-3.5" /> {regenerating ? "Generating…" : preparingFirstInternalConfig ? "Generate profile setup" : "Regenerate profile setup"}</Button>
               </div>
               {employeeSuggestion && <div className="mt-3 space-y-2 border-t border-line pt-3 text-[12px] text-ink-2">
-                <p className="font-semibold">Suggested employee setup {employeeSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
+                <p className="font-semibold">Suggested profile setup {employeeSuggestion.source === "safe_defaults" ? "· safe role defaults" : "· AI draft"}</p>
                 {EMPLOYEE_GENERATED_FIELDS.map(([key, label]) => <p key={key}><strong>{label}:</strong> {employeeSuggestion[key]}</p>)}
                 {employeeSuggestion.fallbackFields.length > 0 && <p className="text-warning-ink">Safe role defaults were used for: {employeeSuggestion.fallbackFields.map((field) => EMPLOYEE_GENERATED_FIELDS.find(([key]) => key === field)?.[1] ?? field).join(", ")}.</p>}
                 <div className="flex gap-2 pt-1"><Button type="button" size="sm" variant="brand" onClick={acceptEmployeeSettings}>Fill blank and default fields</Button><Button type="button" size="sm" variant="ghost" onClick={() => setEmployeeSuggestion(null)}>Dismiss</Button></div>
@@ -692,7 +692,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             </div>
             <GuidedField
               id="cfg-name"
-              label="Employee name"
+              label="Profile name"
               guidance={employeeFieldGuidance(meta.key, "displayName")}
               required
               error={showNameError ? nameError : null}
@@ -702,7 +702,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             >
               <Input value={s.displayName} maxLength={40} onBlur={() => setNameTouched(true)} onChange={(e) => set("displayName", e.target.value)} />
             </GuidedField>
-            <p className="-mt-3 text-[12px] leading-relaxed text-muted">Your employee&apos;s role is shown alongside this name throughout the workspace.</p>
+            <p className="-mt-3 text-[12px] leading-relaxed text-muted">The saved role is shown alongside this name throughout the workspace.</p>
 
             <GuidedChoiceField id="cfg-tone" label="Personality" guidance={employeeFieldGuidance(meta.key, "tone")} optional issues={fieldIssues("tone")}>
               <div role="radiogroup" aria-label="Personality" className="grid gap-2 sm:grid-cols-2">
@@ -733,14 +733,14 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             </GuidedChoiceField>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <GuidedField id="cfg-personality" label="Personality" guidance={{ description: "The employee's distinct professional character." }} optional issues={fieldIssues("personality")} charLimit={500} valueLength={s.personality.length}>
+              <GuidedField id="cfg-personality" label="Personality" guidance={{ description: "The profile's distinct professional character." }} optional issues={fieldIssues("personality")} charLimit={500} valueLength={s.personality.length}>
                 <Textarea rows={3} maxLength={500} value={s.personality} onChange={(e) => set("personality", e.target.value)} />
               </GuidedField>
-              <GuidedField id="cfg-traits" label="Character traits" guidance={{ description: "Qualities the employee should show while working." }} optional issues={fieldIssues("characterTraits")} charLimit={400} valueLength={s.characterTraits.length}>
+              <GuidedField id="cfg-traits" label="Character traits" guidance={{ description: "Qualities the profile should show while working." }} optional issues={fieldIssues("characterTraits")} charLimit={400} valueLength={s.characterTraits.length}>
                 <Textarea rows={3} maxLength={400} value={s.characterTraits} onChange={(e) => set("characterTraits", e.target.value)} />
               </GuidedField>
             </div>
-            <GuidedField id="cfg-style" label="Communication style" guidance={{ description: "How this employee should explain its work." }} optional issues={fieldIssues("communicationStyle")} charLimit={500} valueLength={s.communicationStyle.length}>
+            <GuidedField id="cfg-style" label="Communication style" guidance={{ description: "How this profile should explain its work." }} optional issues={fieldIssues("communicationStyle")} charLimit={500} valueLength={s.communicationStyle.length}>
               <Textarea rows={2} maxLength={500} value={s.communicationStyle} onChange={(e) => set("communicationStyle", e.target.value)} />
             </GuidedField>
             <GuidedField id="cfg-response" label="Response behavior" guidance={{ description: "How it should respond when facts are missing or a decision is needed." }} optional issues={fieldIssues("responseBehavior")} charLimit={700} valueLength={s.responseBehavior.length}>
@@ -790,11 +790,11 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                   <p className="flex items-center gap-1.5 text-[14px] font-medium"><Sparkles className="size-3.5 text-primary" aria-hidden /> Role setup check</p>
                   <p className="mt-1 text-[12px] leading-relaxed text-muted">
                     {configAudit.employeeComplete}/{configAudit.employeeTotal} role fields and {configAudit.companyComplete}/{configAudit.companyTotal} company facts are filled.
-                    Readiness proves this employee may run; this check shows whether its configuration contains enough specific information to do useful work.
+                    Readiness proves this profile may run; this check shows whether its configuration contains enough specific information to do useful work.
                   </p>
                   {configAudit.missingCompanyFacts.length > 0 && (
                     <p className="mt-1.5 text-[12px] leading-relaxed text-warning-ink">
-                      Still needed from your company profile: {configAudit.missingCompanyFacts.join(", ")}. The employee must not invent these.
+                      Still needed from your company profile: {configAudit.missingCompanyFacts.join(", ")}. The profile must not invent these.
                     </p>
                   )}
                 </div>
@@ -823,7 +823,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 key={q.id}
                 id={`cfg-q-${q.id}`}
                 label={q.label}
-                guidance={{ description: q.help ?? "Describe what this employee should do in this situation.", example: q.placeholder }}
+                guidance={{ description: q.help ?? "Describe what this profile should do in this situation.", example: q.placeholder }}
                 optional
                 issues={fieldIssues(`roleAnswers.${q.id}`)}
                 charLimit={1000}
@@ -835,13 +835,13 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             <GuidedField id="cfg-resp" label="Main responsibilities" guidance={employeeFieldGuidance(meta.key, "responsibilities")} optional issues={fieldIssues("responsibilities")} charLimit={1000} valueLength={s.responsibilities.length}>
               <Textarea rows={3} maxLength={1000} value={s.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
             </GuidedField>
-            <GuidedField id="cfg-goals" label="Goals for this employee" guidance={employeeFieldGuidance(meta.key, "goals")} optional issues={fieldIssues("goals")} charLimit={1000} valueLength={s.goals.length}>
+            <GuidedField id="cfg-goals" label="Goals for this profile" guidance={employeeFieldGuidance(meta.key, "goals")} optional issues={fieldIssues("goals")} charLimit={1000} valueLength={s.goals.length}>
               <Textarea rows={3} maxLength={1000} value={s.goals} onChange={(e) => set("goals", e.target.value)} />
             </GuidedField>
             <GuidedField id="cfg-target" label="Target audience" guidance={employeeFieldGuidance(meta.key, "targetCustomers")} optional issues={fieldIssues("targetCustomers")} charLimit={1000} valueLength={s.targetCustomers.length}>
               <Textarea rows={3} maxLength={1000} value={s.targetCustomers} onChange={(e) => set("targetCustomers", e.target.value)} />
             </GuidedField>
-            <GuidedField id="cfg-procedures" label="Operating procedures" guidance={{ description: "The steps this employee should follow within its existing permissions." }} optional issues={fieldIssues("operatingProcedures")} charLimit={1000} valueLength={s.operatingProcedures.length}>
+            <GuidedField id="cfg-procedures" label="Operating procedures" guidance={{ description: "The steps this profile should follow within its existing permissions." }} optional issues={fieldIssues("operatingProcedures")} charLimit={1000} valueLength={s.operatingProcedures.length}>
               <Textarea rows={3} maxLength={1000} value={s.operatingProcedures} onChange={(e) => set("operatingProcedures", e.target.value)} />
             </GuidedField>
             <GuidedField id="cfg-proactive" label="Proactive responsibilities" guidance={{ description: "Work to surface when a real authorized schedule or trigger is active." }} optional issues={fieldIssues("proactiveResponsibilities")} charLimit={700} valueLength={s.proactiveResponsibilities.length}>
@@ -876,15 +876,15 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 <Badge tone="neutral">Fixed by iAcquire policy</Badge>
               </div>
               <p className="mt-2.5 border-t border-line pt-2.5 text-[12px] leading-relaxed text-faint">
-                This preference is recorded for compatibility but is not currently read by the runtime approval gate. Your employee&apos;s
+                This preference is recorded for compatibility but is not currently read by the runtime approval gate. This profile&apos;s
                 operating mode and the platform&apos;s tool policy remain the enforced approval boundary. Editing the instructions cannot grant
                 new permissions.
               </p>
             </div>
           </ConfigSection>
 
-          <ConfigSection id="config-instructions" step="04" title="Additional instructions" description="One short, plain-English instruction specific to this employee.">
-            <GuidedField id="cfg-custom" label="Employee-specific instruction" guidance={employeeFieldGuidance(meta.key, "customInstruction")} optional issues={fieldIssues("customInstruction")} charLimit={500} valueLength={s.customInstruction.length}>
+          <ConfigSection id="config-instructions" step="04" title="Additional instructions" description="One short, plain-English instruction specific to this profile.">
+            <GuidedField id="cfg-custom" label="Profile-specific instruction" guidance={employeeFieldGuidance(meta.key, "customInstruction")} optional issues={fieldIssues("customInstruction")} charLimit={500} valueLength={s.customInstruction.length}>
               <Textarea rows={3} maxLength={500} value={s.customInstruction} onChange={(e) => set("customInstruction", e.target.value)} />
             </GuidedField>
           </ConfigSection>
@@ -896,7 +896,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                 const wasOff = settings.disabledTools.includes(t);
                 const toolGuidance = ROLE_TOOL_GUIDANCE[t] ?? {
                   description: `${agentToolLabel(t)} is granted for this role by iAcquire.`,
-                  off: "The employee will not be given this tool in its instructions.",
+                  off: "This profile will not be given this tool in its instructions.",
                 };
                 return (
                   <GuidedSwitch
@@ -908,7 +908,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
                     onCheckedChange={(next) => set("disabledTools", next ? s.disabledTools.filter((x) => x !== t) : [...s.disabledTools, t])}
                     issues={on && wasOff ? fieldIssues("disabledTools") : []}
                     offLabel={toolGuidance.off}
-                    onLabel="Included in this employee's instructions."
+                    onLabel="Included in this profile's instructions."
                   />
                 );
               })}
@@ -957,7 +957,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
               <Button variant="secondary" className="w-full" onClick={() => setTesting(true)}><Sparkles className="size-4" /> Test this draft</Button>
               <Button variant="ghost" className="w-full" disabled={!dirty || saving} onClick={() => { setS(settings); setJustSaved(true); setResult(null); setCheck({ state: "idle" }); }}>Discard changes</Button>
               <Button variant="ghost" className="w-full justify-start" onClick={onOpenHistory}><History className="size-4" /> Version history</Button>
-              <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active employee.</p>
+              <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[12px] leading-relaxed text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /> Test draft uses the real provider in an isolated session. It does not save or change the active profile.</p>
               <a href="#employee-readiness" className="inline-flex text-[12px] font-medium text-primary hover:underline">Review activation requirements</a>
             </CardContent>
           </Card>
@@ -1062,7 +1062,7 @@ function ChangeTab({ meta, agent, settings, onApplied }: Props & { onApplied: ()
             guidance={{
               description: "Describe the outcome you want in one or two sentences. The request is interpreted against the active configuration, and you see the exact fields before anything is saved.",
               example: `e.g. ${examples[0]}`,
-              info: "Instructions can refine tone, wording and routine work. They cannot add tools, change the employee's role or relax iAcquire's approval policy.",
+              info: "Instructions can refine tone, wording and routine work. They cannot add tools, change the profile's role or relax iAcquire's approval policy.",
             }}
             required
             charLimit={1000}
@@ -1175,7 +1175,7 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
           <p className="mt-2 text-[12px] leading-relaxed text-muted">{duty.approvalBoundary}</p>
         </div>
         {reports.length === 0 ? (
-          <p className="text-[13px] text-muted">No verified proactive report has been recorded for this employee yet. This view never fabricates one.</p>
+          <p className="text-[13px] text-muted">No verified proactive report has been recorded for this profile yet. This view never fabricates one.</p>
         ) : (
           <ul className="divide-y divide-line rounded-xl border border-line">
             {reports.map((report) => (
@@ -1194,8 +1194,8 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
         )}
         <p className="text-[12px] leading-relaxed text-muted">
           {watching
-            ? "An authorized schedule or trigger is enabled for this employee. Reports appear only after a real job completes."
-            : "No recurring job is authorized for this employee here. You can inspect or authorize monitoring on the AI Work Board."}
+            ? "An authorized schedule or trigger is enabled for this profile. Reports appear only after a real job completes."
+            : "No recurring job is authorized for this profile here. You can inspect or authorize monitoring on the AI Work Board."}
         </p>
         <ButtonLink href="/work" variant="secondary">Open the AI Work Board</ButtonLink>
       </CardContent>
@@ -1209,7 +1209,7 @@ function ActivityTab({ runs, timeZone, meta, agent, canChat: canUse, isClientLeg
     return (
       <div className="space-y-4">
         {proactive}
-        <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description={`Conversations and tool activity appear here after ${agent.displayName} starts working. This view only shows saved run records.`} action={canUse && agent.enabled && canChat(agent.status) ? (isClientLegacyProfile ? <ButtonLink href="/growth-partner/conversation" variant="secondary">Open AI Growth Partner</ButtonLink> : <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink>) : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>
+        <Card><EmptyState icon={<Activity className="size-5" />} title="No recorded runs yet" description="Saved conversations and recorded tool activity will appear here when available." action={canUse && agent.enabled && canChat(agent.status) ? (isClientLegacyProfile ? <ButtonLink href="/growth-partner/conversation" variant="secondary">Open AI Growth Partner</ButtonLink> : <ButtonLink href={`/chat/${meta.slug}`} variant="secondary">Open chat</ButtonLink>) : <ButtonLink href="#employee-readiness" variant="secondary">Review setup requirements</ButtonLink>} /></Card>
       </div>
     );
   }

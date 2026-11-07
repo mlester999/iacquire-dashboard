@@ -341,7 +341,7 @@ export function ConfigVersionHistory({
                             {comparison && <span className="text-[12px] text-faint">{comparison}</span>}
                           </div>
                           {isInitial ? (
-                            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">Initial configuration for this employee.</p>
+                            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">Initial configuration for this profile.</p>
                           ) : diffs.length > 0 ? (
                             <>
                               <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">

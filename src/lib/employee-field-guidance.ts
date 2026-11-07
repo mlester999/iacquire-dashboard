@@ -1,7 +1,7 @@
 import type { AgentRoleKey } from "@/lib/agents";
 
 /**
- * Client-safe, role-aware guidance for every editable AI-employee field.
+ * Client-safe, role-aware guidance for every editable AI-profile field.
  *
  * The copy here is deliberately tied to real backend behaviour: tools can only be switched off
  * (never added), the approval preference is fixed by policy, and instructions cannot grant
@@ -27,36 +27,36 @@ interface RoleGuidance {
 const ROLE_GUIDANCE: Record<AgentRoleKey, RoleGuidance> = {
   operations_manager: {
     responsibilities: {
-      description: "Describe the operational work this employee should own. Focus on outcomes rather than technical instructions.",
+      description: "Describe the operational work this profile should own. Focus on outcomes rather than technical instructions.",
       example: "Monitor operational tasks, identify blockers, coordinate internal work, and prepare progress reports.",
       info: "The Operations Manager works on internal coordination. It does not contact customers unless its approved tools and your rules explicitly allow it.",
     },
     goals: {
-      description: "Describe what a good week looks like for this employee. Goals help it prioritise its work.",
+      description: "Describe what a good week looks like for this profile. Goals help it prioritise its work.",
       example: "Help the agency meet deadlines and reduce unresolved operational issues.",
       info: "Goals guide prioritisation and reporting. They do not grant new tools or permissions.",
     },
     targetCustomers: {
-      description: "Who relies on this employee's work? Describe the internal teams or client contacts it supports.",
+      description: "Who relies on this profile's work? Describe the internal teams or client contacts it supports.",
       example: "Agency account managers and client owners who need weekly operational updates.",
-      info: "This is internal context. It helps the employee decide what to summarise and who the work is for.",
+      info: "This is internal context. It helps the profile decide what to summarise and who the work is for.",
     },
     customInstruction: {
-      description: "Add one specific operating preference for this employee. Keep it factual and within its role.",
+      description: "Add one specific operating preference for this profile. Keep it factual and within its role.",
       example: "Always flag unresolved blockers that are more than two days old.",
-      info: "Instructions refine behaviour. They cannot add tools, change the employee's role or relax iAcquire's safety rules.",
+      info: "Instructions refine behaviour. They cannot add tools, change the profile's role or relax iAcquire's safety rules.",
     },
   },
   lead_hunter: {
     responsibilities: {
-      description: "Describe the research work this employee should own. Focus on the leads you want prepared for review.",
+      description: "Describe the research work this profile should own. Focus on the leads you want prepared for review.",
       example: "Research businesses that match our ideal customer profile and prepare qualified lead records.",
       info: "The Lead Hunter researches and prepares records. Contacting leads is not part of this role.",
     },
     goals: {
       description: "Describe the result you want from lead research. Specific goals make prioritisation clearer.",
       example: "Identify relevant prospects with accurate business information.",
-      info: "Goals guide which prospects are prioritised. They do not expand the data the employee can access.",
+      info: "Goals guide which prospects are prioritised. They do not expand the data the profile can access.",
     },
     targetCustomers: {
       description: "Describe the businesses or people that fit your ideal customer profile.",
@@ -64,95 +64,95 @@ const ROLE_GUIDANCE: Record<AgentRoleKey, RoleGuidance> = {
       info: "This narrows research. Do not include another company's private or customer data.",
     },
     customInstruction: {
-      description: "Add one specific research preference for this employee.",
+      description: "Add one specific research preference for this profile.",
       example: "Include the source URL and a one-line reason for every lead.",
       info: "Instructions refine how research is presented. They cannot grant access to private sources or contacts.",
     },
   },
   appointment_setter: {
     responsibilities: {
-      description: "Describe the scheduling work this employee should handle. It prepares bookings; a person still approves customer-facing changes.",
+      description: "Describe the scheduling work this profile should handle. It prepares bookings; a person still approves customer-facing changes.",
       example: "Help qualified customers find available appointment times and manage booking requests.",
       info: "The Appointment Setter works within your connected calendar and approved meeting types. It cannot create times that are not available.",
     },
     goals: {
       description: "Describe what better scheduling looks like for your business.",
       example: "Improve scheduling efficiency and reduce missed appointments.",
-      info: "Goals guide how the employee prioritises requests. Real availability still comes from your calendar.",
+      info: "Goals guide how the profile prioritises requests. Real availability still comes from your calendar.",
     },
     targetCustomers: {
       description: "Describe the qualified prospects who should be offered an appointment.",
       example: "Homeowners who have requested a quote and confirmed their service area.",
-      info: "This helps the employee decide who is ready to book. It does not change who can be contacted.",
+      info: "This helps the profile decide who is ready to book. It does not change who can be contacted.",
     },
     customInstruction: {
-      description: "Add one specific booking preference for this employee.",
+      description: "Add one specific booking preference for this profile.",
       example: "Always confirm the appointment type before offering a time.",
       info: "Instructions refine scheduling behaviour. They cannot override calendar availability or approval requirements.",
     },
   },
   sales_assistant: {
     responsibilities: {
-      description: "Describe the sales support work this employee should handle. It drafts and answers within approved information.",
+      description: "Describe the sales support work this profile should handle. It drafts and answers within approved information.",
       example: "Answer approved sales questions, explain services, and prepare follow-up drafts.",
       info: "The Sales Assistant drafts messages but does not send them without the tools and approval rules you have configured.",
     },
     goals: {
-      description: "Describe what progress you want this employee to support.",
+      description: "Describe what progress you want this profile to support.",
       example: "Help qualified prospects move through the sales process.",
       info: "Goals guide follow-up priorities. They do not change prices, offers or approval rules.",
     },
     targetCustomers: {
       description: "Describe the qualified prospects your sales assistant should support.",
       example: "Prospects evaluating a website redesign with a budget above $3,000.",
-      info: "This helps the employee tailor its support. Do not include sensitive personal data or another company's information.",
+      info: "This helps the profile tailor its support. Do not include sensitive personal data or another company's information.",
     },
     customInstruction: {
-      description: "Add one specific sales preference for this employee.",
+      description: "Add one specific sales preference for this profile.",
       example: "Always mention the free consultation in follow-ups.",
       info: "Instructions refine wording and follow-up style. They cannot create new offers or relax approval rules.",
     },
   },
   crm_manager: {
     responsibilities: {
-      description: "Describe the record-keeping work this employee should own. Focus on accuracy and visibility.",
+      description: "Describe the record-keeping work this profile should own. Focus on accuracy and visibility.",
       example: "Maintain accurate CRM records, identify incomplete data, and organize pipeline information.",
       info: "The CRM Manager proposes updates. Direct edits still depend on its approved tools and your approval rules.",
     },
     goals: {
       description: "Describe what better CRM data looks like for your team.",
       example: "Improve CRM data quality and visibility.",
-      info: "Goals guide which records and fields the employee focuses on. They do not grant access to other workspaces.",
+      info: "Goals guide which records and fields the profile focuses on. They do not grant access to other workspaces.",
     },
     targetCustomers: {
-      description: "Describe whose records this employee maintains.",
+      description: "Describe whose records this profile maintains.",
       example: "All active clients and open opportunities in the agency CRM.",
-      info: "This scopes the employee's reporting context. It cannot expand the records it is authorised to read.",
+      info: "This scopes the profile's reporting context. It cannot expand the records it is authorised to read.",
     },
     customInstruction: {
-      description: "Add one specific CRM preference for this employee.",
+      description: "Add one specific CRM preference for this profile.",
       example: "Flag records that have no owner or next step.",
       info: "Instructions refine how records are reviewed. They cannot grant access to records outside the workspace.",
     },
   },
   performance_analyst: {
     responsibilities: {
-      description: "Describe the analysis and reporting work this employee should own.",
+      description: "Describe the analysis and reporting work this profile should own.",
       example: "Analyze authorized business metrics and create performance reports.",
       info: "The Performance Analyst reads only the data it is authorised to access. It does not change business records.",
     },
     goals: {
       description: "Describe the improvements you want the reports to surface.",
       example: "Identify trends, operational improvements, and opportunities.",
-      info: "Goals shape what the employee highlights. They do not expand the underlying data set.",
+      info: "Goals shape what the profile highlights. They do not expand the underlying data set.",
     },
     targetCustomers: {
       description: "Describe who uses the reports and which part of the business they cover.",
       example: "Agency leadership reviewing lead response and conversion.",
-      info: "Audience context helps the employee choose the right level of detail. It does not change access.",
+      info: "Audience context helps the profile choose the right level of detail. It does not change access.",
     },
     customInstruction: {
-      description: "Add one specific reporting preference for this employee.",
+      description: "Add one specific reporting preference for this profile.",
       example: "Compare this week with the previous four weeks.",
       info: "Instructions refine reporting style. They cannot grant access to new data sources.",
     },
@@ -162,39 +162,39 @@ const ROLE_GUIDANCE: Record<AgentRoleKey, RoleGuidance> = {
 const SHARED_GUIDANCE = {  displayName: {
     description: "The name your team sees in chat, the workforce directory and notifications.",
     example: "e.g. Ava, Operations Manager",
-    info: "The name does not change the employee's role, tools or permissions. Names that could be mistaken for iAcquire support or an administrator need review.",
+    info: "The name does not change the profile's role, tools or permissions. Names that could be mistaken for iAcquire support or an administrator need review.",
   },
   tone: {
-    description: "Choose how this employee should sound when it replies.",
-    info: "Tone changes wording only. It cannot change what the employee is allowed to do or when a person must approve an action.",
+    description: "Choose how this profile should sound when it replies.",
+    info: "Tone changes wording only. It cannot change what the profile is allowed to do or when a person must approve an action.",
   },
   replyLength: {
     description: "Choose how much detail replies should include by default.",
-    info: "Reply length is a default. The employee can still be brief when a short answer is clearer.",
+    info: "Reply length is a default. The profile can still be brief when a short answer is clearer.",
   },
   language: {
-    description: "The language this employee writes its replies in.",
+    description: "The language this profile writes its replies in.",
     info: "Company knowledge and instructions are stored as written. They are not translated in storage.",
   },
   companyRules: {
-    description: "Add standing rules this employee must follow. Use this to add restrictions, not to grant access.",
+    description: "Add standing rules this profile must follow. Use this to add restrictions, not to grant access.",
     example: "e.g. Never discuss competitor pricing. Always offer the free inspection first.",
-    info: "Rules are added to the employee's instructions and combined with iAcquire's protected policy. They cannot override it or grant tools.",
+    info: "Rules are added to the profile's instructions and combined with iAcquire's protected policy. They cannot override it or grant tools.",
   },
   neverPromise: {
-    description: "Tell the employee which commitments it must never make without authorization.",
+    description: "Tell the profile which commitments it must never make without authorization.",
     example: "e.g. Guaranteed results, discounts, refunds, or exact delivery dates.",
-    info: "This protects you from commitments the employee cannot keep. Mandatory platform restrictions still apply.",
+    info: "This protects you from commitments the profile cannot keep. Mandatory platform restrictions still apply.",
   },
   escalateWhen: {
-    description: "When should this employee stop and ask a human for help?",
+    description: "When should this profile stop and ask a human for help?",
     example: "e.g. When a customer requests a refund, pricing exception, or contract change.",
-    info: "Use concrete triggers. The employee hands the conversation to a person instead of guessing.",
+    info: "Use concrete triggers. The profile hands the conversation to a person instead of guessing.",
   },
   escalationContact: {
     description: "Who should receive escalations? Add a name and a monitored email address.",
     example: "e.g. Dana Ruiz, operations@yourcompany.com",
-    info: "This contact is used when the employee hands work to a person. Make sure the inbox is monitored. Changing it can require review.",
+    info: "This contact is used when the profile hands work to a person. Make sure the inbox is monitored. Changing it can require review.",
   },
 } satisfies Record<string, FieldGuidance>;
 
@@ -222,31 +222,31 @@ export const ROLE_TOOL_GUIDANCE: Record<string, { description: string; off: stri
   },
   "approvals.create": {
     description: "Instruction-level guidance only; no callable approval creation service is available. Authorized internal Operations Manager runs may include pending and blocked approvals as read-only context.",
-    off: "The employee cannot create or decide approval requests. The internal read-only approval snapshot is governed separately by server authorization.",
+    off: "The profile cannot create or decide approval requests. The internal read-only approval snapshot is governed separately by server authorization.",
   },
   "summaries.write": {
-    description: "The employee can draft a response summary from authorized read-only context, but no supported workspace service saves operational summaries.",
-    off: "No summary save action is available; instructions will not ask the employee to save one.",
+    description: "The profile can draft a response summary from authorized read-only context, but no supported workspace service saves operational summaries.",
+    off: "No summary save action is available; instructions will not ask the profile to save one.",
   },
   "research.public_web": {
-    description: "Lets the employee research approved public web sources. It cannot sign in to private sites or use another workspace's data.",
-    off: "The employee will not research public web sources.",
+    description: "Lets the profile research approved public web sources. It cannot sign in to private sites or use another workspace's data.",
+    off: "The profile will not research public web sources.",
   },
   "leads.stage_for_review": {
-    description: "Lets the employee prepare lead records for your review. It cannot contact the lead or change existing records.",
-    off: "The employee will not add researched leads to your review queue.",
+    description: "Lets the profile prepare lead records for your review. It cannot contact the lead or change existing records.",
+    off: "The profile will not add researched leads to your review queue.",
   },
   "calendar.read_availability": {
-    description: "Lets the employee read free and busy times from a connected calendar. It cannot create or move events with this permission alone.",
-    off: "The employee will not be given calendar availability.",
+    description: "Lets the profile read free and busy times from a connected calendar. It cannot create or move events with this permission alone.",
+    off: "The profile will not be given calendar availability.",
   },
   "appointments.read": {
-    description: "Lets the employee look up existing appointments in this workspace.",
-    off: "The employee will not look up existing appointments.",
+    description: "Lets the profile look up existing appointments in this workspace.",
+    off: "The profile will not look up existing appointments.",
   },
   "appointments.request_change": {
-    description: "Lets the employee prepare a booking or change request for your team to review. It cannot change the calendar directly with this permission alone.",
-    off: "The employee cannot prepare booking or change requests.",
+    description: "Lets the profile prepare a booking or change request for your team to review. It cannot change the calendar directly with this permission alone.",
+    off: "The profile cannot prepare booking or change requests.",
   },
   "calendar.create": {
     description: "Lets AI Growth Partner create a private calendar and a non-public appointment type after you provide an exact name and host. It does not publish a booking page or change host availability.",
@@ -261,29 +261,29 @@ export const ROLE_TOOL_GUIDANCE: Record<string, { description: string; off: stri
     off: "AI Growth Partner cannot create CRM contacts.",
   },
   "crm.read_opportunities": {
-    description: "Lets the employee read sales opportunities in your CRM. It cannot edit them.",
-    off: "The employee will not read CRM opportunities.",
+    description: "Lets the profile read sales opportunities in your CRM. It cannot edit them.",
+    off: "The profile will not read CRM opportunities.",
   },
   "drafts.create": {
-    description: "Lets the employee prepare message drafts for your team. It never sends them.",
-    off: "The employee will not prepare message drafts.",
+    description: "Lets the profile prepare message drafts for your team. It never sends them.",
+    off: "The profile will not prepare message drafts.",
   },
   "crm.read": {
-    description: "Lets the employee read customer records in your CRM.",
-    off: "The employee will not read CRM records.",
+    description: "Lets the profile read customer records in your CRM.",
+    off: "The profile will not read CRM records.",
   },
   "crm.request_update": {
-    description: "Lets the employee propose a CRM change for your team to review. It cannot edit the record directly with this permission alone.",
-    off: "The employee cannot propose CRM updates.",
+    description: "Lets the profile propose a CRM change for your team to review. It cannot edit the record directly with this permission alone.",
+    off: "The profile cannot propose CRM updates.",
   },
   "analytics.read": {
-    description: "Lets the employee read the workspace analytics it is authorised to see for reporting.",
-    off: "The employee will not read workspace analytics.",
+    description: "Lets the profile read the workspace analytics it is authorised to see for reporting.",
+    off: "The profile will not read workspace analytics.",
   },
 };
 
 export const TOOL_BOUNDARY_NOTE =
-  "These switches remove entries from the employee's instructions. They do not connect a runtime tool or grant a server-side action; only verified provider tools and connected server-side adapters can perform actions.";
+  "These switches remove entries from the profile's instructions. They do not connect a runtime tool or grant a server-side action; only verified provider tools and connected server-side adapters can perform actions.";
 
 export const COMPANY_FIELD_GUIDANCE = {
   companyName: {
@@ -337,9 +337,9 @@ export const KNOWLEDGE_GUIDANCE = {
     info: "The title is for your team. Keep it specific so the right note is easy to find.",
   },
   content: {
-    description: "Write short, factual reference notes. The employee treats this as information, never as instructions that can override safety rules.",
+    description: "Write short, factual reference notes. The profile treats this as information, never as instructions that can override safety rules.",
     example: "e.g. We serve Austin, Round Rock and Cedar Park. We do not serve San Antonio.",
-    info: "Keep it factual and concise. Instructions and permissions belong in the employee's configuration, not in knowledge notes.",
+    info: "Keep it factual and concise. Instructions and permissions belong in the profile's configuration, not in knowledge notes.",
   },
 } satisfies Record<string, FieldGuidance>;
 
@@ -384,21 +384,21 @@ export function configFieldElementId(field: string): string | null {
 export function changeFixForReason(code: string, field: string): string {
   switch (code) {
     case "override_attempt":
-      return "Remove the request to ignore or replace the employee's rules. Describe the task you want it to do instead.";
+      return "Remove the request to ignore or replace the profile's rules. Describe the task you want it to do instead.";
     case "prompt_probe":
-      return "Remove the request to reveal hidden instructions. You can ask the employee what it can help with instead.";
+      return "Remove the request to reveal hidden instructions. You can ask the AI Growth Partner what it can help with instead.";
     case "role_hijack":
-      return "Keep the employee in its assigned role. Choose a different AI employee if you need different work.";
+      return "Keep this profile within its saved role. Ask the AI Growth Partner for different work.";
     case "permission_grant":
       return "Remove the permission request. Tools are fixed to the role and can only be switched off in the Tools section.";
     case "secret_request":
-      return "Remove any request for passwords, keys or credentials. Never share secrets with an AI employee.";
+      return "Remove any request for passwords, keys or credentials. Never share secrets with an AI profile.";
     case "cross_tenant":
-      return "Refer only to your own company's information. This employee cannot access another workspace.";
+      return "Refer only to your own company's information. This profile cannot access another workspace.";
     case "approval_bypass":
       return "Keep a human approval step, or describe only the internal work that may proceed without one. Customer-facing actions always need approval.";
     case "ambiguous_instruction":
-      return "Make the instruction specific. Name the situation and the action the employee should take.";
+      return "Make the instruction specific. Name the situation and the action the profile should take.";
     case "markup_injection":
       return "Remove tags, code or formatting that look like instructions.";
     case "guardrail_removed":
@@ -414,7 +414,7 @@ export function changeFixForReason(code: string, field: string): string {
     case "impersonation_risk":
       return "Choose a name that cannot be mistaken for iAcquire support, an administrator or another authority.";
     default:
-      if (field === "displayName") return "Use a clear employee name that describes the role.";
+      if (field === "displayName") return "Use a clear profile name that describes the role.";
       return "Adjust this field to remove the flagged wording, then check the change again.";
   }
 }

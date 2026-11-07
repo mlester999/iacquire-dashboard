@@ -34,7 +34,7 @@ const MODES: Array<{ value: AgentMode; label: string; icon: React.ReactNode; sum
     label: "Paused",
     icon: <PauseCircle className="size-4" />,
     summary: "Stops new work and customer contact.",
-    detail: "No new autonomous jobs or customer messages. Work already queued re-checks this setting before it runs. You can still chat privately with this employee.",
+    detail: "No new autonomous jobs or customer messages. Work already queued re-checks this setting before it runs. Saved history remains attached to this profile.",
   },
 ];
 
@@ -95,7 +95,7 @@ export function OperatingModeCard({
           </IconTile>
           <div className="min-w-0">
             <CardTitle>How {displayName} works</CardTitle>
-            <CardDescription>Choose how much freedom this employee has. You can change it at any time and the change takes effect on queued work too.</CardDescription>
+            <CardDescription>Choose how much freedom this profile has. You can change it at any time and the change takes effect on queued work too.</CardDescription>
           </div>
         </div>
         <StatusPill tone={mode === "autonomous" ? "primary" : mode === "paused" ? "warning" : "neutral"}>{MODES.find((m) => m.value === mode)?.label}</StatusPill>
@@ -153,7 +153,7 @@ export function OperatingModeCard({
         </div>
         {!canPause && (
           <p className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[13px] text-muted ring-1 ring-inset ring-line">
-            <Lock className="size-3.5 shrink-0" aria-hidden /> Only owners and managers can change how an employee works.
+            <Lock className="size-3.5 shrink-0" aria-hidden /> Only owners and managers can change how this profile works.
           </p>
         )}
       </CardContent>
@@ -164,7 +164,7 @@ export function OperatingModeCard({
           if (!open) setAcknowledged(false);
         }}
         title={`Let ${displayName} work autonomously?`}
-        description="This employee will act on its own within your rules. You stay in control and can pause it instantly."
+        description="This profile will act on its own within your rules. You stay in control and can pause it instantly."
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirming(false)}>Keep approval required</Button>

@@ -144,7 +144,7 @@ export async function getEmployeeInstructionOverview(input: {
     const layers: InstructionLayer[] = [
       {
         key: "identity",
-        label: "Employee identity and personality",
+        label: "Profile identity and personality",
         body: settingsView
           ? `${settingsView.displayName} · ${settingsView.tone} tone · ${settingsView.replyLength} replies · ${settingsView.language}`
           : `${meta.shortName} · default identity`,
@@ -163,7 +163,7 @@ export async function getEmployeeInstructionOverview(input: {
       {
         key: "organization",
         label: "Organization knowledge and rules",
-        body: `${companyKnowledge[0]?.n ?? 0} approved company knowledge section${companyKnowledge[0]?.n === 1 ? "" : "s"} plus this employee's own notes and reference documents.`,
+        body: `${companyKnowledge[0]?.n ?? 0} approved company knowledge section${companyKnowledge[0]?.n === 1 ? "" : "s"} plus this profile's own notes and reference documents.`,
         managedBy: "Your workspace",
         editable: true,
       },
@@ -177,7 +177,7 @@ export async function getEmployeeInstructionOverview(input: {
       {
         key: "memory",
         label: "Conversation memory",
-        body: "Each conversation keeps its own history. Long-term memory lives inside the employee's own Hermes profile and is scoped to this workspace and employee.",
+        body: "Saved conversations remain linked to this profile. Hermes-native memory has not passed the pinned-runtime acceptance and cannot be inspected or edited here; this view shows recorded tool activity only.",
         managedBy: "iAcquire",
         editable: false,
       },

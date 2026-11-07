@@ -20,7 +20,7 @@ export function CapabilityChecklist({ checks, audience }: { checks: CapabilityCh
     <Card id="employee-capabilities">
       <CardHeader>
         <div>
-          <CardTitle>What this employee can do right now</CardTitle>
+          <CardTitle>What this profile can do right now</CardTitle>
           <CardDescription>{proved} of {total} confirmed. Only what has actually been recorded is marked Yes.</CardDescription>
         </div>
       </CardHeader>

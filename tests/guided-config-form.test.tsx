@@ -127,7 +127,7 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-describe("guided AI employee configuration", () => {
+describe("guided AI profile configuration", () => {
   it("shows role-specific guidance, required/optional state and preserves existing values", () => {
     renderForm();
 
@@ -136,11 +136,11 @@ describe("guided AI employee configuration", () => {
     expect((responsibilities as HTMLTextAreaElement).placeholder).toBe(
       "Monitor operational tasks, identify blockers, coordinate internal work, and prepare progress reports.",
     );
-    expect(screen.getByText(/Describe the operational work this employee should own/i)).toBeTruthy();
+    expect(screen.getByText(/Describe the operational work this profile should own/i)).toBeTruthy();
     expect(screen.getByText("Required")).toBeTruthy();
     expect(screen.getAllByText("Optional").length).toBeGreaterThan(4);
 
-    const goals = screen.getByRole("textbox", { name: /Goals for this employee/i });
+    const goals = screen.getByRole("textbox", { name: /Goals for this profile/i });
     expect((goals as HTMLTextAreaElement).placeholder).toBe("Help the agency meet deadlines and reduce unresolved operational issues.");
   });
 
@@ -185,9 +185,9 @@ describe("guided AI employee configuration", () => {
 
     const originalResponsibilities = screen.getByRole("textbox", { name: /Main responsibilities/i }) as HTMLTextAreaElement;
     expect(originalResponsibilities.value).toBe("Existing responsibility");
-    await user.click(screen.getByRole("button", { name: "Regenerate employee setup" }));
+    await user.click(screen.getByRole("button", { name: "Regenerate profile setup" }));
 
-    expect(await screen.findByText("Suggested employee setup · AI draft")).toBeTruthy();
+    expect(await screen.findByText("Suggested profile setup · AI draft")).toBeTruthy();
     expect(screen.getByText(/Operating procedures:/)).toBeTruthy();
     expect(screen.getByText(/Proactive work:/)).toBeTruthy();
     expect(screen.getByText(/Reporting:/)).toBeTruthy();
@@ -196,7 +196,7 @@ describe("guided AI employee configuration", () => {
 
     await user.click(screen.getByRole("button", { name: "Fill blank and default fields" }));
     expect(originalResponsibilities.value).toBe("Existing responsibility");
-    expect((screen.getByRole("textbox", { name: /Goals for this employee/i }) as HTMLTextAreaElement).value)
+    expect((screen.getByRole("textbox", { name: /Goals for this profile/i }) as HTMLTextAreaElement).value)
       .toBe("Help the team meet confirmed commitments with clear ownership.");
     expect(mocks.save).not.toHaveBeenCalled();
   });
@@ -222,8 +222,8 @@ describe("guided AI employee configuration", () => {
     renderForm({ responsibilities: "Owner-written responsibility" }, { internal: true, configVersion: null });
 
     await user.click(screen.getByRole("button", { name: "Prepare first config" }));
-    await user.click(screen.getByRole("button", { name: "Generate employee setup" }));
-    expect(await screen.findByText("Suggested employee setup · AI draft")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Generate profile setup" }));
+    expect(await screen.findByText("Suggested profile setup · AI draft")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Fill blank and default fields" }));
 
     expect((screen.getByRole("textbox", { name: "Personality" }) as HTMLTextAreaElement).value)
@@ -280,14 +280,14 @@ describe("guided AI employee configuration", () => {
     await waitFor(() => expect(screen.queryByText(/The Operations Manager works on internal coordination/i)).toBeNull());
   });
 
-  it("announces a missing employee name and associates the error with the input", async () => {
+  it("announces a missing profile name and associates the error with the input", async () => {
     renderForm();
-    const name = screen.getByRole("textbox", { name: /Employee name/i });
+    const name = screen.getByRole("textbox", { name: /Profile name/i });
     fireEvent.change(name, { target: { value: "" } });
     fireEvent.blur(name);
 
     const error = await screen.findByRole("alert");
-    expect(error.textContent).toMatch(/Enter a name for this employee/i);
+    expect(error.textContent).toMatch(/Enter a name for this profile/i);
     expect(name.getAttribute("aria-invalid")).toBe("true");
     expect(name.getAttribute("aria-describedby")).toContain("cfg-name-error");
 

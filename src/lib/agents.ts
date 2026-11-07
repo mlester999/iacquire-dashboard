@@ -129,7 +129,7 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
         id: "qualification",
         label: "What locations, industries and qualification rules matter?",
         placeholder: "e.g. Texas and Florida only; must have an online booking page",
-        help: "Add the locations, industries and must-have signals that make a lead worth pursuing. The employee cannot contact leads from this setting.",
+        help: "Add the locations, industries and must-have signals that make a lead worth pursuing. This profile cannot contact leads from this setting.",
       },
     ],
     suggestedPrompts: [
@@ -153,7 +153,7 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
         id: "meeting_types",
         label: "What type of meetings do you offer?",
         placeholder: "e.g. 30-minute discovery call over video",
-        help: "List each meeting type and how long it lasts. The employee only offers the types you list here.",
+        help: "List each meeting type and how long it lasts. This profile only offers the types you list here.",
       },
       {
         id: "hours",
@@ -183,7 +183,7 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
         id: "offers",
         label: "What are your main offers?",
         placeholder: "e.g. Website redesign from $3,000; monthly SEO from $800",
-        help: "Summarise what you sell and any approved prices or limits. The employee must not invent figures you have not provided.",
+        help: "Summarise what you sell and any approved prices or limits. The profile must not invent figures you have not provided.",
       },
       {
         id: "approach",
@@ -219,7 +219,7 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
         id: "stages",
         label: "What sales stages does your business use?",
         placeholder: "e.g. New inquiry → Qualified → Proposal → Won/Lost",
-        help: "Name your pipeline stages in order, from first contact to closed. The employee uses this to organise records consistently.",
+        help: "Name your pipeline stages in order, from first contact to closed. This profile uses them to organise records consistently.",
       },
     ],
     suggestedPrompts: [
@@ -243,13 +243,13 @@ export const AGENT_ROLES: AgentRoleMeta[] = [
         id: "results",
         label: "Which results matter most to you?",
         placeholder: "e.g. Booked calls per week and close rate",
-        help: "Describe the outcomes you want to improve. Clear business results help the employee choose what to report on.",
+        help: "Describe the outcomes you want to improve. Clear business results help the AI Growth Partner choose what to report on.",
       },
       {
         id: "metrics",
         label: "What metrics should we prioritise?",
         placeholder: "e.g. Response time, cost per lead, show-up rate",
-        help: "Name the measures the employee should watch. It can only analyse data it is authorised to access.",
+        help: "Name the measures the AI Growth Partner should watch. It can only analyse data it is authorised to access.",
       },
     ],
     suggestedPrompts: [
