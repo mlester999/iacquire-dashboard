@@ -11,7 +11,7 @@ import { defaultSettings } from "@/server/workforce/compiler";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { activateGrowthPartnerBusinessBrainVersion, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
-import { setScheduleEnabled } from "@/server/workforce/schedules";
+import { runDueSchedules, setScheduleEnabled } from "@/server/workforce/schedules";
 import { getControlState } from "@/server/automation/controls";
 import { memberActor } from "@/server/crm/actor";
 import { updateAppointmentType } from "@/server/calendars/setup";
@@ -199,6 +199,8 @@ describe("AI Growth Partner chat to native workflow", () => {
     await resetAgentMessageRateLimit(owner.id);
     const ctx = ctxFor(owner, org, "owner");
     const previousTargeting = await getTargeting(ctx);
+    const scheduleSwitchBefore = process.env.WORKFORCE_SCHEDULES_ENABLED;
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "false";
     try {
       const targetingUpdate = await sendChatMessage(ctx, {
         agentRole: "growth_partner",
@@ -277,7 +279,110 @@ describe("AI Growth Partner chat to native workflow", () => {
         "select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
         [org.id, growthPartnerAgentId],
       ))).rows).toHaveLength(1);
+
+      const stalePausePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Pause my lead research schedule", clientMessageId: crypto.randomUUID(),
+      });
+      await setScheduleEnabled(ctx, created.id, false);
+      const stalePauseConfirm = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "confirm schedule", clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [stalePauseConfirm.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("schedule changed after this preview");
+      expect((await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown>; enabled: boolean }>(
+        `select c.pending_workforce_schedule, s.enabled
+           from chat_conversations c join ai_work_schedules s on s.org_id = c.org_id
+          where c.id = $1 and s.id = $2`, [stalePausePreview.conversationId, created.id],
+      ))).rows[0]).toMatchObject({ pending_workforce_schedule: { status: "expired" }, enabled: false });
+      await setScheduleEnabled(ctx, created.id, true);
+
+      const pauseAuditBefore = Number((await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_disabled'",
+        [org.id, created.id],
+      ))).rows[0].count);
+      const pausePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Pause my lead research schedule", clientMessageId: crypto.randomUUID(),
+      });
+      const pausePreviewText = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [pausePreview.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(pausePreviewText).toMatch(/Pause preview.*currently enabled.*paused/i);
+      expect((await withSystem((db) => db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2", [created.id, org.id],
+      ))).rows[0].enabled).toBe(true);
+      const pauseState = (await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown> }>(
+        "select pending_workforce_schedule from chat_conversations where id = $1 and org_id = $2", [growthPartnerConversationId, org.id],
+      ))).rows[0].pending_workforce_schedule;
+      expect(pauseState).toMatchObject({ status: "pending", setEnabledOnly: true, enabledAfterSave: false, expectedExistingSchedule: { id: created.id } });
+
+      const memberPause = await sendChatMessage(ctxFor(member, org, "member"), {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Pause my lead research schedule", clientMessageId: crypto.randomUUID(),
+      });
+      const memberPauseText = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [memberPause.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(memberPauseText).toContain("can't manage this AI schedule");
+      expect((await withSystem((db) => db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2", [created.id, org.id],
+      ))).rows[0].enabled).toBe(true);
+
+      const pauseConfirm = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "confirm schedule", clientMessageId: crypto.randomUUID(),
+      });
+      const pauseResult = (await withSystem((db) => db.query<{ id: string; enabled: boolean; payload: Record<string, unknown> }>(
+        "select id, enabled, payload from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'",
+        [org.id, growthPartnerAgentId],
+      ))).rows[0];
+      expect(pauseResult).toMatchObject({ id: created.id, enabled: false, payload: created.payload });
+      const pauseReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [pauseConfirm.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(pauseReply).toMatch(/Paused Lead research.*No future scheduled jobs.*already created remains on the Work Board/i);
+      const pauseAuditCount = (await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_disabled'",
+        [org.id, created.id],
+      ))).rows[0].count;
+      expect(Number(pauseAuditCount)).toBe(pauseAuditBefore + 1);
+
+      const resumePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "Resume my lead research schedule", clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [resumePreview.assistantMessageId, org.id],
+      ))).rows[0].content).toMatch(/Resume preview.*currently paused.*workspace schedule automation/i);
+      const resumeConfirm = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", conversationId: growthPartnerConversationId,
+        content: "confirm schedule", clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ enabled: boolean; payload: Record<string, unknown> }>(
+        "select enabled, payload from ai_work_schedules where id = $1 and org_id = $2", [created.id, org.id],
+      ))).rows[0]).toMatchObject({ enabled: true, payload: created.payload });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [resumeConfirm.assistantMessageId, org.id],
+      ))).rows[0].content).toMatch(/Resumed Lead research.*next planned time/i);
+
+      await withSystem((db) => db.query(
+        "update ai_work_schedules set next_run_at = now() - interval '1 minute' where id = $1 and org_id = $2", [created.id, org.id],
+      ));
+      const jobsBeforeBlockedTick = (await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from ai_work_jobs where org_id = $1 and capability = 'lead_research'", [org.id],
+      ))).rows[0].count;
+      expect(await runDueSchedules()).toMatchObject({ operatorEnabled: false, created: 0 });
+      const jobsAfterBlockedTick = (await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from ai_work_jobs where org_id = $1 and capability = 'lead_research'", [org.id],
+      ))).rows[0].count;
+      expect(jobsAfterBlockedTick).toBe(jobsBeforeBlockedTick);
+      expect(process.env.WORKFORCE_SCHEDULES_ENABLED).toBe("false");
     } finally {
+      if (scheduleSwitchBefore === undefined) delete process.env.WORKFORCE_SCHEDULES_ENABLED;
+      else process.env.WORKFORCE_SCHEDULES_ENABLED = scheduleSwitchBefore;
       await saveTargeting(ctx, previousTargeting);
       await withSystem((db) => db.query("delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'lead_research'", [org.id, growthPartnerAgentId]));
       await resetAgentMessageRateLimit(owner.id);

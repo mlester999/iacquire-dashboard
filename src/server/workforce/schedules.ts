@@ -314,44 +314,70 @@ export async function saveScheduleInTransaction(
 
 export async function setScheduleEnabled(ctx: OrgContext, scheduleId: string, enabled: boolean): Promise<void> {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
-  await withSystem(async (db) => {
-    const { rows } = await db.query<{ cadence: string; interval_minutes: number; timezone: string; recurrence_rule: unknown }>(
-      "select cadence, interval_minutes, timezone, recurrence_rule from ai_work_schedules where id = $1 and org_id = $2 for update",
-      [scheduleId, ctx.org.orgId],
-    );
-    const schedule = rows[0];
-    if (!schedule) throw new AppError("not_found", "Schedule not found.");
-    let nextRunAt = new Date();
-    if (enabled) {
-      const rule = validateWorkforceScheduleRule(schedule.recurrence_rule);
-      if (schedule.recurrence_rule !== null && schedule.recurrence_rule !== undefined && !rule) {
-        throw new AppError("invalid_input", "This saved recurrence needs correction before it can be enabled.");
-      }
-      try {
-        nextRunAt = rule
-          ? nextWorkforceScheduleOccurrence(rule, schedule.timezone, new Date())
-          : new Date(Date.now() + schedule.interval_minutes * 60_000);
-      } catch {
-        throw new AppError("invalid_input", "Check the saved schedule time and timezone before enabling it.");
-      }
+  await withSystem((db) => setScheduleEnabledInTransaction(db, ctx, scheduleId, enabled));
+}
+
+/** Shared schedule switch used by Work Board and chat. An expected version makes chat previews safe against concurrent edits. */
+export async function setScheduleEnabledInTransaction(
+  db: Queryable,
+  ctx: OrgContext,
+  scheduleId: string,
+  enabled: boolean,
+  expected?: { id: string; updatedAt: string },
+): Promise<{ id: string; enabled: boolean }> {
+  if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only owners and admins can manage AI schedules.");
+  const { rows } = await db.query<{
+    id: string;
+    cadence: string;
+    interval_minutes: number;
+    timezone: string;
+    recurrence_rule: unknown;
+    enabled: boolean;
+    updated_at: string;
+  }>(
+    `select id, cadence, interval_minutes, timezone, recurrence_rule, enabled, updated_at::text as updated_at
+       from ai_work_schedules where id = $1 and org_id = $2 for update`,
+    [scheduleId, ctx.org.orgId],
+  );
+  const schedule = rows[0];
+  if (!schedule) throw new AppError("not_found", "Schedule not found.");
+  if (expected && (expected.id !== schedule.id || expected.updatedAt !== schedule.updated_at)) {
+    throw new AppError("conflict", "The saved schedule changed after this preview. Review the current schedule and request a fresh preview.");
+  }
+  let nextRunAt = new Date();
+  if (enabled) {
+    const rule = validateWorkforceScheduleRule(schedule.recurrence_rule);
+    if (schedule.recurrence_rule !== null && schedule.recurrence_rule !== undefined && !rule) {
+      throw new AppError("invalid_input", "This saved recurrence needs correction before it can be enabled.");
     }
-    await db.query(
-      `update ai_work_schedules
-          set enabled = $3, next_run_at = $4::timestamptz, last_skipped_reason = null, last_skipped_at = null
-        where id = $1 and org_id = $2`,
-      [scheduleId, ctx.org.orgId, enabled, nextRunAt.toISOString()],
-    );
-    await recordAudit({
-      orgId: ctx.org.orgId,
-      actorUserId: ctx.user.id,
-      actorKind: "user",
-      action: enabled ? "workforce.schedule_enabled" : "workforce.schedule_disabled",
-      targetType: "ai_work_schedule",
-      targetId: scheduleId,
-      result: "success",
-      metadata: { operatorEnabled: schedulesOperatorEnabled() },
-    }, db);
-  });
+    try {
+      nextRunAt = rule
+        ? nextWorkforceScheduleOccurrence(rule, schedule.timezone, new Date())
+        : new Date(Date.now() + schedule.interval_minutes * 60_000);
+    } catch {
+      throw new AppError("invalid_input", "Check the saved schedule time and timezone before enabling it.");
+    }
+  }
+  const { rows: updatedRows } = await db.query<{ id: string; enabled: boolean }>(
+    `update ai_work_schedules
+        set enabled = $3, next_run_at = $4::timestamptz, last_skipped_reason = null, last_skipped_at = null, updated_at = now()
+      where id = $1 and org_id = $2 and updated_at = $5::timestamptz
+      returning id, enabled`,
+    [scheduleId, ctx.org.orgId, enabled, nextRunAt.toISOString(), schedule.updated_at],
+  );
+  const updated = updatedRows[0];
+  if (!updated) throw new AppError("conflict", "The saved schedule changed after this preview. Review the current schedule and request a fresh preview.");
+  await recordAudit({
+    orgId: ctx.org.orgId,
+    actorUserId: ctx.user.id,
+    actorKind: "user",
+    action: enabled ? "workforce.schedule_enabled" : "workforce.schedule_disabled",
+    targetType: "ai_work_schedule",
+    targetId: scheduleId,
+    result: "success",
+    metadata: { operatorEnabled: schedulesOperatorEnabled(), enabled },
+  }, db);
+  return updated;
 }
 
 export async function deleteSchedule(ctx: OrgContext, scheduleId: string): Promise<void> {

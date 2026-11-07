@@ -52,6 +52,19 @@ describe("AI workforce chat schedule intent", () => {
     });
   });
 
+  it("previews only an explicit pause or resume of the named Growth Partner research schedule", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Pause my lead research schedule")).toEqual({
+      kind: "set_existing_enabled", capability: "lead_research", enabled: false,
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Resume our lead hunting schedule")).toEqual({
+      kind: "set_existing_enabled", capability: "lead_research", enabled: true,
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Pause my schedule")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/Name the saved lead research schedule/),
+    });
+    expect(parseWorkforceChatScheduleIntent("operations_manager", "Pause my lead research schedule")).toEqual({ kind: "none" });
+  });
+
   it("rejects invalid windows and future start dates without changing a schedule", () => {
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 5 PM–2 PM")).toMatchObject({
       kind: "clarification", message: expect.stringMatching(/end after the start/),

@@ -56,7 +56,7 @@ import {
 import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
 import { validateBusinessHours, type Weekday } from "@/lib/messaging";
 import { formatSlot } from "@/lib/appointments";
-import { saveScheduleInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
+import { saveScheduleInTransaction, setScheduleEnabledInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { getAvailability } from "@/server/appointments/availability";
 import { requestBooking, type BookingResult } from "@/server/appointments/booking";
@@ -105,6 +105,7 @@ type PendingChatSchedule = {
   payload: Record<string, unknown>;
   businessHours: Record<string, unknown>;
   updateExisting: boolean;
+  setEnabledOnly: boolean;
   enabledAfterSave: boolean;
   expectedExistingSchedule: { id: string; updatedAt: string } | null;
   expiresAt: string;
@@ -180,12 +181,15 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     || item.payload === null
     || Array.isArray(item.payload)
     || (item.updateExisting !== undefined && typeof item.updateExisting !== "boolean")
+    || (item.setEnabledOnly !== undefined && typeof item.setEnabledOnly !== "boolean")
     || (item.enabledAfterSave !== undefined && typeof item.enabledAfterSave !== "boolean")
   ) return null;
 
   const cadence = item.cadence as WorkforceScheduleCadence;
   const recurrenceRule = item.recurrenceRule === null ? null : validateWorkforceScheduleRule(item.recurrenceRule);
-  if ((cadence === "hourly" && item.recurrenceRule !== null) || (cadence !== "hourly" && !recurrenceRule)) return null;
+  const setEnabledOnly = item.setEnabledOnly === true;
+  if (setEnabledOnly && item.updateExisting !== true) return null;
+  if (!setEnabledOnly && ((cadence === "hourly" && item.recurrenceRule !== null) || (cadence !== "hourly" && !recurrenceRule))) return null;
   if (recurrenceRule && ((recurrenceRule.kind === "daily" && cadence !== "daily") || (recurrenceRule.kind === "weekly" && cadence !== "weekly"))) return null;
   let expectedExistingSchedule: PendingChatSchedule["expectedExistingSchedule"] = null;
   if (item.expectedExistingSchedule !== null) {
@@ -194,6 +198,7 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     if (!uuid.test(String(existing.id ?? "")) || typeof existing.updatedAt !== "string" || !Number.isFinite(Date.parse(existing.updatedAt))) return null;
     expectedExistingSchedule = { id: existing.id as string, updatedAt: existing.updatedAt };
   }
+  if (setEnabledOnly && !expectedExistingSchedule) return null;
   const businessHours = validateBusinessHours(item.businessHours);
   if (!businessHours) return null;
   if (item.status === "accepted" && !uuid.test(String(item.scheduleId ?? ""))) return null;
@@ -213,6 +218,7 @@ function parsePendingChatSchedule(value: unknown): PendingChatSchedule | null {
     payload: item.payload as Record<string, unknown>,
     businessHours: businessHours as unknown as Record<string, unknown>,
     updateExisting: item.updateExisting === true,
+    setEnabledOnly,
     enabledAfterSave: item.enabledAfterSave === true,
     expectedExistingSchedule,
     expiresAt: item.expiresAt,
@@ -470,37 +476,44 @@ async function handleChatScheduleAction(
 
     if (input.action.kind === "clarification") return reply(input.action.message);
 
-    if (input.action.kind === "proposal" || input.action.kind === "update_existing") {
+    if (input.action.kind === "proposal" || input.action.kind === "update_existing" || input.action.kind === "set_existing_enabled") {
       const action = input.action;
-      const updateExisting = action.kind === "update_existing";
+      const setEnabledOnly = action.kind === "set_existing_enabled";
+      const updateExisting = action.kind === "update_existing" || setEnabledOnly;
       const capability = action.capability;
       const definition = capabilityDefinition(capability);
+      const resumeRequested = action.kind === "set_existing_enabled" && action.enabled;
       if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, capability)) {
-        return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
+        return reply(`Your current workspace role can't ${setEnabledOnly ? "manage" : "create"} this AI schedule. No schedule was changed.`);
       }
-      const switchedOff = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${capability}`, need: capabilityNeed(capability) }, db);
+      const switchedOff = !setEnabledOnly || resumeRequested
+        ? await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${capability}`, need: capabilityNeed(capability) }, db)
+        : null;
       if (switchedOff) return reply(switchedOff);
 
       const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
-      const timezone = orgRows[0]?.timezone;
-      if (!timezone || timezone !== ctx.org.timezone) {
+      const workspaceTimezone = orgRows[0]?.timezone;
+      if (!workspaceTimezone || workspaceTimezone !== ctx.org.timezone) {
         return reply("The workspace timezone changed while this request was being prepared. Refresh and request a new schedule preview.");
       }
+      let timezone = workspaceTimezone;
       const { rows: scheduleRows } = await db.query<{
         id: string;
         updated_at: string;
         enabled: boolean;
+        timezone: string;
+        interval_minutes: number;
         business_hours: unknown;
         cadence: WorkforceScheduleCadence;
         recurrence_rule: unknown;
         payload: unknown;
       }>(
-        `select s.id, s.updated_at::text as updated_at, s.enabled, s.business_hours, s.cadence, s.recurrence_rule, s.payload
+        `select s.id, s.updated_at::text as updated_at, s.enabled, s.timezone, s.interval_minutes, s.business_hours, s.cadence, s.recurrence_rule, s.payload
            from ai_work_schedules s
            join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
-          where s.org_id = $1 and a.role_key = $2 and s.capability = $3
+          where s.org_id = $1 and a.id = $2 and a.role_key = $3 and s.capability = $4
           limit 1`,
-        [ctx.org.orgId, input.agentRole, capability],
+        [ctx.org.orgId, input.agentId, input.agentRole, capability],
       );
       const existing = scheduleRows[0] ?? null;
       if (updateExisting && !existing) {
@@ -511,8 +524,32 @@ async function handleChatScheduleAction(
       let recurrenceRule: WorkforceScheduleRule | null;
       let payload: Record<string, unknown>;
       let enabledAfterSave = false;
+      let setEnabledOnlyForPreview = false;
       let proposedBusinessHours: unknown = existingHours ?? {};
-      if (action.kind === "update_existing") {
+      if (action.kind === "set_existing_enabled") {
+        if (existing!.enabled === action.enabled) {
+          return reply(`The saved lead research schedule is already ${action.enabled ? "enabled" : "paused"}. No schedule was changed.`);
+        }
+        timezone = existing!.timezone;
+        cadence = existing!.cadence;
+        recurrenceRule = validateWorkforceScheduleRule(existing!.recurrence_rule);
+        const storedPayload = typeof existing!.payload === "object" && existing!.payload !== null && !Array.isArray(existing!.payload)
+          ? existing!.payload as Record<string, unknown>
+          : {};
+        if (action.enabled) {
+          if (cadence !== "hourly" && !recurrenceRule) {
+            return reply("The saved lead research recurrence needs correction before it can be resumed. No schedule was changed.");
+          }
+          const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
+          if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
+            return reply("The saved research assignment couldn't be verified, so I didn't resume it. Review its targeting and quantity in Work Board → Schedules.");
+          }
+        }
+        payload = storedPayload;
+        enabledAfterSave = action.enabled;
+        setEnabledOnlyForPreview = true;
+        proposedBusinessHours = {};
+      } else if (action.kind === "update_existing") {
         const currentRule = validateWorkforceScheduleRule(existing?.recurrence_rule);
         if (!currentRule) return reply("The saved lead research schedule doesn't have a valid daily or weekday run time, so I couldn't change it safely. Review it in Work Board → Schedules. No schedule was changed.");
         if (action.cadence === "daily") {
@@ -545,21 +582,23 @@ async function handleChatScheduleAction(
         recurrenceRule = action.recurrenceRule;
         payload = action.payload;
       }
-      let nextRun: Date;
-      try {
-        nextRun = recurrenceRule
-          ? nextWorkforceScheduleOccurrence(recurrenceRule, timezone, new Date())
-          : new Date(Date.now() + 60 * 60 * 1000);
-      } catch {
-        return reply("I couldn't calculate the next time in the workspace timezone. No schedule was saved; check the timezone and try again.");
-      }
-      let nextLabel: string;
-      try {
-        nextLabel = new Intl.DateTimeFormat("en-US", {
-          weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timezone,
-        }).format(nextRun);
-      } catch {
-        return reply("The workspace timezone is invalid, so I can't prepare a schedule preview. No schedule was saved.");
+      let nextLabel: string | null = null;
+      if (!setEnabledOnlyForPreview || enabledAfterSave) {
+        let nextRun: Date;
+        try {
+          nextRun = recurrenceRule
+            ? nextWorkforceScheduleOccurrence(recurrenceRule, timezone, new Date())
+            : new Date(Date.now() + (existing?.interval_minutes ?? 60) * 60 * 1000);
+        } catch {
+          return reply("I couldn't calculate the next time in the schedule timezone. No schedule was saved; check the timezone and try again.");
+        }
+        try {
+          nextLabel = new Intl.DateTimeFormat("en-US", {
+            weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: timezone,
+          }).format(nextRun);
+        } catch {
+          return reply("The schedule timezone is invalid, so I can't prepare a schedule preview. No schedule was saved.");
+        }
       }
 
       const proposal: PendingChatSchedule = {
@@ -577,6 +616,7 @@ async function handleChatScheduleAction(
         payload,
         businessHours: (proposedBusinessHours ?? {}) as Record<string, unknown>,
         updateExisting,
+        setEnabledOnly: setEnabledOnlyForPreview,
         enabledAfterSave,
         expectedExistingSchedule: existing ? { id: existing.id, updatedAt: existing.updated_at } : null,
         expiresAt: new Date(Date.now() + SCHEDULE_PREVIEW_TTL_MS).toISOString(),
@@ -586,17 +626,25 @@ async function handleChatScheduleAction(
         ctx.org.orgId,
         JSON.stringify(proposal),
       ]);
-      const existingNotice = updateExisting
+      const existingNotice = setEnabledOnlyForPreview
+        ? ` The existing schedule is currently ${existing?.enabled ? "enabled" : "paused"} and its research assignment will be preserved.`
+        : updateExisting
         ? ` The existing schedule will be updated in place, with its research assignment preserved. It is currently ${existing?.enabled ? "enabled" : "paused"} and will remain ${enabledAfterSave ? "enabled" : "paused"}.`
         : existing
           ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
         : "";
-      const activationNotice = updateExisting && enabledAfterSave
+      const activationNotice = setEnabledOnlyForPreview && enabledAfterSave
+        ? " After confirmation it will be enabled. Workspace schedule automation, source settings and usage limits must still permit work when the scheduled run starts."
+        : setEnabledOnlyForPreview
+          ? " After confirmation it will be paused. A job already created remains on the Work Board and is checked under its own controls."
+          : updateExisting && enabledAfterSave
         ? " After confirmation it will stay enabled in Schedules; workspace schedule automation must also be enabled."
         : updateExisting
           ? " It will stay paused after confirmation."
           : " It will be saved paused and won't run until you enable it in Schedules; workspace schedule automation must also be enabled.";
-      const content = `Schedule preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}.${scheduleWorkWindowNotice(proposal.businessHours, proposal.recurrenceRule)} The next planned time is ${nextLabel} (${timezone}).${existingNotice}${activationNotice} Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
+      const operationLabel = setEnabledOnlyForPreview ? (enabledAfterSave ? "Resume" : "Pause") : "Schedule";
+      const nextNotice = nextLabel ? ` The next planned time is ${nextLabel} (${timezone}).` : "";
+      const content = `${operationLabel} preview for ${definition.label}: ${scheduleCadenceLabel(proposal.cadence, proposal.recurrenceRule)} in ${timezone}.${scheduleWorkWindowNotice(proposal.businessHours, proposal.recurrenceRule)}${nextNotice}${existingNotice}${activationNotice} Reply exactly “confirm schedule” to save it, or “cancel schedule” to discard it. This preview expires in 15 minutes.`;
       return reply(content, serverMarker("proposed_change"));
     }
 
@@ -631,7 +679,7 @@ async function handleChatScheduleAction(
 
     const definition = capabilityDefinition(pending.capability);
     if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, pending.capability)) {
-      return reply("Your current workspace role can't create this AI schedule. No schedule was saved.");
+      return reply(`Your current workspace role can't ${pending.setEnabledOnly ? "manage" : "create"} this AI schedule. No schedule was changed.`);
     }
     if (pending.status === "accepted" && pending.scheduleId) {
       const { rows: savedRows } = await db.query<{ enabled: boolean }>(
@@ -649,14 +697,16 @@ async function handleChatScheduleAction(
       ]);
       return reply("This schedule preview has expired. No schedule was saved; request a fresh preview.");
     }
-    // A switch-off after the preview blocks the confirmation: the preview stays and nothing is saved.
-    const switchedOffNow = await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${pending.capability}`, need: capabilityNeed(pending.capability) }, db);
+    // A switch-off after a resume/create preview blocks confirmation. Pausing remains available as a safety action.
+    const switchedOffNow = !pending.setEnabledOnly || pending.enabledAfterSave
+      ? await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${pending.capability}`, need: capabilityNeed(pending.capability) }, db)
+      : null;
     if (switchedOffNow) return reply(switchedOffNow);
-    if (!validateWorkforceScheduleRule(pending.recurrenceRule) && pending.cadence !== "hourly") {
+    if (!pending.setEnabledOnly && !validateWorkforceScheduleRule(pending.recurrenceRule) && pending.cadence !== "hourly") {
       return reply("I couldn't verify the recurrence in this preview. No schedule was saved; request a fresh preview.");
     }
     const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
-    if (!orgRows[0]?.timezone || orgRows[0].timezone !== pending.timezone || ctx.org.timezone !== pending.timezone) {
+    if (!pending.setEnabledOnly && (!orgRows[0]?.timezone || orgRows[0].timezone !== pending.timezone || ctx.org.timezone !== pending.timezone)) {
       pending.status = "expired";
       await db.query("update chat_conversations set pending_workforce_schedule = $3::jsonb where id = $1 and org_id = $2", [
         input.conversationId, ctx.org.orgId, JSON.stringify(pending),
@@ -666,16 +716,27 @@ async function handleChatScheduleAction(
 
     let saved: { id: string; enabled: boolean };
     try {
-      saved = await saveScheduleInTransaction(db, ctx, {
-        capability: pending.capability,
-        agentRole: pending.agentRole,
-        cadence: pending.cadence as ScheduleCadence,
-        enabled: pending.enabledAfterSave,
-        businessHours: pending.businessHours,
-        payload: pending.payload,
-        recurrenceRule: pending.recurrenceRule,
-        expectedExistingSchedule: pending.expectedExistingSchedule,
-      });
+      if (pending.setEnabledOnly) {
+        if (!pending.expectedExistingSchedule) throw new AppError("conflict", "The saved schedule changed after this preview. Review the current schedule and request a fresh preview.");
+        saved = await setScheduleEnabledInTransaction(
+          db,
+          ctx,
+          pending.expectedExistingSchedule.id,
+          pending.enabledAfterSave,
+          pending.expectedExistingSchedule,
+        );
+      } else {
+        saved = await saveScheduleInTransaction(db, ctx, {
+          capability: pending.capability,
+          agentRole: pending.agentRole,
+          cadence: pending.cadence as ScheduleCadence,
+          enabled: pending.enabledAfterSave,
+          businessHours: pending.businessHours,
+          payload: pending.payload,
+          recurrenceRule: pending.recurrenceRule,
+          expectedExistingSchedule: pending.expectedExistingSchedule,
+        });
+      }
     } catch (error) {
       if (!(error instanceof AppError) || !["conflict", "agent_unavailable", "forbidden", "invalid_input", "not_found"].includes(error.code)) throw error;
       pending.status = "expired";
@@ -705,7 +766,11 @@ async function handleChatScheduleAction(
     } catch {
       // Saving is already durable in this transaction; the prior preview contains the exact time.
     }
-    const content = pending.updateExisting
+    const content = pending.setEnabledOnly
+      ? saved.enabled
+        ? `Resumed ${definition.label} in ${pending.timezone}. The next planned time is ${nextLabel} (${pending.timezone}). Workspace schedule automation, source settings and usage limits must still permit work when the scheduled run starts.`
+        : `Paused ${definition.label}. No future scheduled jobs will be created. A job already created remains on the Work Board and is checked under its own controls.`
+      : pending.updateExisting
       ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}.${scheduleWorkWindowNotice(pending.businessHours, pending.recurrenceRule)} The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
       : `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
     return reply(content, serverMarker("approved_write", { kind: "schedule", id: saved.id }));
@@ -2510,7 +2575,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       action: { kind: scheduleConfirmation },
     });
   }
-  if ((scheduleIntent.kind === "proposal" || scheduleIntent.kind === "update_existing") && (!refusal || refusal.reason === "appointment_write")) {
+  if ((scheduleIntent.kind === "proposal" || scheduleIntent.kind === "update_existing" || scheduleIntent.kind === "set_existing_enabled") && (!refusal || refusal.reason === "appointment_write")) {
     return handleChatScheduleAction(ctx, {
       agentId: agent.id,
       agentRole: input.agentRole,

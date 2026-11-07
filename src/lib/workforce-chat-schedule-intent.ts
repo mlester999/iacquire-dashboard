@@ -10,6 +10,7 @@ export type WorkforceScheduleWindow = { startTime: string; endTime: string };
 export type WorkforceChatScheduleIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
+  | { kind: "set_existing_enabled"; capability: "lead_research"; enabled: boolean }
   | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[]; window?: WorkforceScheduleWindow }
   | {
       kind: "proposal";
@@ -38,6 +39,7 @@ const RECURRING_SIGNAL = new RegExp(`\\b(?:every|each)\\s+(?:\\d+\\s+)?${PERIOD}
 const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])/i;
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;
+const LEAD_SCHEDULE_TOGGLE = /^(?:please\s+)?(pause|disable|stop|resume|enable|restart)\s+(?:(?:my|our|the)\s+)?(?:lead[ -](?:research|hunting)|prospecting)\s+schedule[.!?]*$/i;
 const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?(?:schedule\s+)?(?:(?:from\s+.+?\s+)?(?:to|for|at)\s+)(.+?)[.!?]*$/i;
 const SCHEDULE_WINDOW_TIME = String.raw`(?:\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]\d|2[0-3]):[0-5]\d\b)`;
 const SCHEDULE_WINDOW = new RegExp(`(${SCHEDULE_WINDOW_TIME})\\s*(?:-|–|—|\\bto\\b)\\s*(${SCHEDULE_WINDOW_TIME})`, "i");
@@ -182,6 +184,15 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
   const text = content.replace(/\s+/g, " ").trim().slice(0, 2000);
   const researchOwner = role === "growth_partner" ? "AI Growth Partner" : "Lead Hunter";
   if (!text) return { kind: "none" };
+
+  const scheduleToggle = role === "growth_partner" ? text.match(LEAD_SCHEDULE_TOGGLE) : null;
+  if (scheduleToggle) {
+    const enabled = /^(?:resume|enable|restart)$/i.test(scheduleToggle[1]);
+    return { kind: "set_existing_enabled", capability: "lead_research", enabled };
+  }
+  if (role === "growth_partner" && /^(?:please\s+)?(?:pause|disable|stop|resume|enable|restart)\b.*\b(?:schedule|scheduled work)\b/i.test(text)) {
+    return { kind: "clarification", message: "Name the saved lead research schedule you want me to pause or resume. No schedule was changed." };
+  }
 
   const scheduleChange = role === "growth_partner" ? text.match(LEAD_SCHEDULE_CHANGE) : null;
   if (scheduleChange) {
