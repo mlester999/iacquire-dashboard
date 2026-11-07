@@ -8,7 +8,9 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
+import acceptance_harness
 from acceptance_harness import (
     AcceptanceState,
     EXPECTED_PROFILES,
@@ -21,11 +23,167 @@ from acceptance_harness import (
     _model_request_challenge,
     _portal_status_state,
     _synthetic_model_counters,
+    verify_hermes_memory_after_restart,
 )
 from verify_portal_acceptance import VerificationError, read_private_text
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
+    def test_local_model_fixture_exercises_memory_tool_write_and_recall_protocol(self):
+        model_key = "synthetic-model-key-not-for-diagnostics"
+        challenge = "0123456789abcdef0123456789abcdef"
+        marker = "IACQUIRE_HERMES_MEMORY_0123456789abcdef0123456789abcdef"
+        tool = {
+            "type": "function",
+            "function": {
+                "name": "memory",
+                "parameters": {"properties": {
+                    "action": {"enum": ["add", "patch", "remove"]},
+                    "target": {"enum": ["memory", "user"]},
+                    "content": {"type": "string"},
+                }},
+            },
+        }
+        portal_soul = f"For the private setup check only, return this marker exactly: {challenge}"
+        with tempfile.TemporaryDirectory() as directory:
+            state = AcceptanceState("00000000-0000-4000-8000-000000000001", Path(directory))
+            state.begin_portal_phase()
+            server = ThreadingHTTPServer(("127.0.0.1", 0), _model_handler(state, model_key))
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            server_thread.start()
+
+            def post(payload):
+                body = json.dumps(payload).encode("utf-8")
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+                    data=body,
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {model_key}"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    return response.status, json.loads(response.read())
+
+            def post_stream(payload):
+                body = json.dumps(payload).encode("utf-8")
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+                    data=body,
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {model_key}"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    return response.status, response.read().decode("utf-8")
+
+            try:
+                add_messages = [
+                    {"role": "system", "content": portal_soul},
+                    {"role": "user", "content": f"Store this exact synthetic marker in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_ADD:{marker}"},
+                ]
+                status, first = post({"messages": add_messages, "tools": [tool]})
+                self.assertEqual(status, 200)
+                call = first["choices"][0]["message"]["tool_calls"][0]
+                self.assertEqual(call["function"]["name"], "memory")
+                self.assertEqual(json.loads(call["function"]["arguments"]), {"action": "add", "target": "memory", "content": marker})
+
+                status, completed = post({"messages": add_messages + [
+                    {"role": "assistant", "tool_calls": [call]},
+                    {"role": "tool", "name": "memory", "tool_call_id": call["id"], "content": json.dumps({"success": True})},
+                ]})
+                self.assertEqual(status, 200)
+                self.assertEqual(completed["choices"][0]["message"]["content"], challenge)
+                self.assertEqual(state.hermes_memory_tool_calls, 1)
+                self.assertEqual(state.hermes_memory_tool_results, 1)
+
+                try:
+                    post({"messages": add_messages + [
+                        {"role": "assistant", "tool_calls": [call]},
+                        {"role": "tool", "name": "memory", "tool_call_id": "unrelated-call", "content": json.dumps({"success": True})},
+                    ]})
+                except urllib.error.HTTPError as error:
+                    self.assertEqual(error.code, 400)
+                    self.assertEqual(json.loads(error.read())["error"]["message"], "hermes_memory_tool_result_unverified")
+                else:
+                    self.fail("a mismatched tool result must not prove a persistent-memory write")
+
+                own_prompt = f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{marker}"
+                status, own = post({"messages": [
+                    {"role": "system", "content": portal_soul + f"\nPersistent memory: {marker}"},
+                    {"role": "user", "content": own_prompt},
+                ]})
+                self.assertEqual(status, 200)
+                self.assertEqual(own["choices"][0]["message"]["content"], marker)
+
+                foreign_marker = "IACQUIRE_HERMES_MEMORY_abcdef0123456789abcdef0123456789"
+                status, foreign = post({"messages": [
+                    {"role": "system", "content": portal_soul + f"\nPersistent memory: {marker}"},
+                    {"role": "user", "content": f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{foreign_marker}"},
+                ]})
+                self.assertEqual(status, 200)
+                self.assertEqual(foreign["choices"][0]["message"]["content"], acceptance_harness.MEMORY_NOT_FOUND)
+
+                stream_marker = "IACQUIRE_HERMES_MEMORY_11111111111111111111111111111111"
+                status, stream = post_stream({
+                    "stream": True,
+                    "tools": [tool],
+                    "messages": [
+                        {"role": "system", "content": portal_soul},
+                        {"role": "user", "content": f"Store this exact synthetic marker in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_ADD:{stream_marker}"},
+                    ],
+                })
+                self.assertEqual(status, 200)
+                self.assertIn('"name":"memory"', stream)
+                self.assertIn('"finish_reason":"tool_calls"', stream)
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=2)
+
+            diagnostic_text = (Path(directory) / "model-diagnostics.json").read_text(encoding="utf-8")
+            for private_value in (model_key, marker, stream_marker, challenge):
+                self.assertNotIn(private_value, diagnostic_text)
+
+    def test_gateway_restart_memory_probe_uses_profile_isolation_and_updates_final_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / "profiles"
+            results = root / "results"
+            results.mkdir()
+            probes = []
+            markers = {}
+            for index, tenant in enumerate(TENANTS):
+                profile = f"{tenant}-growth-partner"
+                marker = f"IACQUIRE_HERMES_MEMORY_{index:032x}"
+                markers[profile] = marker
+                profile_dir = profiles / profile
+                memory_dir = profile_dir / "memories"
+                memory_dir.mkdir(parents=True)
+                (profile_dir / ".env").write_text(f"API_SERVER_KEY={'a' * 63}{index}\n", encoding="ascii")
+                (memory_dir / "MEMORY.md").write_text(f"- {marker}\n", encoding="utf-8")
+                probes.append({"tenant": tenant, "profile": profile, "orgId": f"00000000-0000-4000-8000-00000000000{index + 1}", "marker": marker})
+            (results / "hermes-memory-probes.json").write_text(
+                json.dumps({"schemaVersion": 1, "probes": probes}), encoding="utf-8"
+            )
+            (results / "status.json").write_text(
+                json.dumps({"result": "SANDBOX_PASS", "hermesMemoryVerified": False}), encoding="utf-8"
+            )
+
+            def fake_chat(_base, profile, _key, _session_key, prompt):
+                match = acceptance_harness.MEMORY_RECALL_REQUEST_RE.search(prompt)
+                self.assertIsNotNone(match)
+                requested = match.group(1)
+                return requested if markers[profile] == requested else acceptance_harness.MEMORY_NOT_FOUND
+
+            with patch.dict(os.environ, {
+                "ACCEPTANCE_PROFILE_ROOT": str(profiles),
+                "ACCEPTANCE_RESULTS_DIR": str(results),
+            }), patch("acceptance_harness._hermes_memory_chat", side_effect=fake_chat):
+                result = verify_hermes_memory_after_restart()
+
+            self.assertTrue(result["hermesMemoryVerified"])
+            self.assertEqual(result["hermesMemoryRestartVerifiedProfiles"], EXPECTED_PROFILES)
+            self.assertEqual(result["hermesMemoryRestartForeignDenials"], EXPECTED_PROFILES)
+            self.assertEqual(json.loads((results / "status.json").read_text(encoding="utf-8")), result)
+
     def test_readonly_mounted_secret_mode_does_not_weaken_profile_file_mode(self):
         if os.name == "nt":
             self.skipTest("POSIX file permission modes are required for this check")

@@ -503,6 +503,12 @@ jobs:
               "auditEvents": 5,
               "auditSecretLeaks": 0,
               "modelAuthenticationFailures": 0,
+              "hermesMemoryWriteReadVerified": True,
+              "hermesMemoryProbeProfiles": 2,
+              "hermesMemoryToolCalls": 2,
+              "hermesMemoryToolResults": 2,
+              "hermesMemoryPreRestartTenantIsolationVerified": 2,
+              "hermesMemoryVerified": False,
               "externalNetwork": "disabled",
           }
           for key, value in expected.items():
@@ -819,6 +825,63 @@ jobs:
             "$portal_id" "$client_id" "$worker_id" \
             "$HERMES_ACCEPTANCE_DIR" "$GITHUB_WORKSPACE"
           portal_failure_phase=portal_acceptance_complete
+
+      - name: Restart isolated Hermes and verify native memory recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose() {
+            docker compose --project-name "$HERMES_ACCEPTANCE_PROJECT" \
+              --env-file "$HERMES_ACCEPTANCE_DIR/compose.env" \
+              -f services/hermes-provisioner/compose.client.yaml \
+              -f services/hermes-provisioner/compose.acceptance.yaml \
+              -f services/hermes-provisioner/compose.portal-acceptance.yaml \
+              --profile provisioner --profile acceptance "$@"
+          }
+
+          client_id="$(compose ps --all -q hermes-client | head -n 1)"
+          harness_id="$(compose ps --all -q acceptance-harness | head -n 1)"
+          if [[ -z "$client_id" || -z "$harness_id" ]]; then
+            echo "HERMES_MEMORY_RESTART_FAIL: isolated_container_missing"
+            exit 1
+          fi
+
+          started_before="$(docker inspect -f '{{.State.StartedAt}}' "$client_id")"
+          docker restart --time 60 "$client_id" >/dev/null
+          deadline=$((SECONDS + 240))
+          healthy=0
+          while [[ "$SECONDS" -lt "$deadline" ]]; do
+            if docker exec "$client_id" /opt/hermes/.venv/bin/python -c \
+              "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8642/health', timeout=4); raise SystemExit(0 if r.status == 200 else 1)" \
+              >/dev/null 2>&1; then
+              healthy=1
+              break
+            fi
+            sleep 3
+          done
+          started_after="$(docker inspect -f '{{.State.StartedAt}}' "$client_id")"
+          if [[ "$healthy" -ne 1 || "$started_before" == "$started_after" ]]; then
+            echo "HERMES_MEMORY_RESTART_FAIL: gateway_restart_not_healthy"
+            exit 1
+          fi
+
+          docker exec "$harness_id" \
+            /opt/iacquire-hermes/.venv/bin/python -B \
+            /opt/iacquire-hermes/acceptance_harness.py verify-hermes-memory
+          python3 - "$HERMES_ACCEPTANCE_DIR/results/status.json" <<'PY'
+          import json, sys
+          result = json.load(open(sys.argv[1], encoding="utf-8"))
+          expected = {
+              "result": "SANDBOX_PASS",
+              "hermesMemoryVerified": True,
+              "hermesMemoryRestartVerifiedProfiles": 2,
+              "hermesMemoryRestartForeignDenials": 2,
+              "hermesMemoryRestartSource": "synthetic_local_fixture",
+          }
+          for key, value in expected.items():
+              assert result.get(key) == value, f"post-restart memory evidence mismatch: {key}"
+          print("HERMES_MEMORY_RESTART_EVIDENCE_PASS: two isolated profiles recovered native memory after the pinned gateway restarted")
+          PY
 
       - name: Remove all synthetic containers, networks, volumes, and credentials
         if: always()

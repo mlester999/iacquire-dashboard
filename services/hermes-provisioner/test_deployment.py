@@ -145,6 +145,33 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertEqual(service["platform"], "linux/amd64")
         self.assertIn(f"docker pull {helper_image}", workflow_text)
 
+    def test_manual_acceptance_restarts_only_the_isolated_gateway_before_memory_recovery_check(self):
+        workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        steps = workflow["jobs"]["build-and-accept"]["steps"]
+        restart_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Restart isolated Hermes and verify native memory recovery"
+        )
+        portal_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Provision through real iAcquireOS routes and verify Hermes state"
+        )
+        cleanup_index = next(
+            index for index, step in enumerate(steps)
+            if step.get("name") == "Remove all synthetic containers, networks, volumes, and credentials"
+        )
+        self.assertLess(portal_index, restart_index)
+        self.assertLess(restart_index, cleanup_index)
+        run = steps[restart_index]["run"]
+        self.assertIn('docker restart --time 60 "$client_id"', run)
+        self.assertIn("verify-hermes-memory", run)
+        self.assertIn("hermesMemoryRestartVerifiedProfiles", run)
+        self.assertIn("hermesMemoryRestartForeignDenials", run)
+        self.assertIn("docker exec \"$client_id\" /opt/hermes/.venv/bin/python", run)
+        self.assertIn('"hermesMemoryVerified": False', workflow_path.read_text(encoding="utf-8"))
+        self.assertIn('"externalNetwork": "disabled"', workflow_path.read_text(encoding="utf-8"))
+
     def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
         hermes = self.services["hermes-client"]
         self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])

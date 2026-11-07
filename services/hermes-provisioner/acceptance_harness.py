@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -38,6 +39,10 @@ PORTAL_SOUL_MARKER_RE = re.compile(
     r"([0-9a-f]{32})(?=[ \t]*(?:\r?\n|$))",
     re.IGNORECASE,
 )
+MEMORY_ADD_REQUEST_RE = re.compile(r"IACQUIRE_MEMORY_ACCEPTANCE_ADD:(IACQUIRE_HERMES_MEMORY_[0-9a-f]{32})")
+MEMORY_RECALL_REQUEST_RE = re.compile(r"IACQUIRE_MEMORY_ACCEPTANCE_RECALL:(IACQUIRE_HERMES_MEMORY_[0-9a-f]{32})")
+MEMORY_MARKER_RE = re.compile(r"^IACQUIRE_HERMES_MEMORY_[0-9a-f]{32}$")
+MEMORY_NOT_FOUND = "IACQUIRE_MEMORY_MARKER_NOT_FOUND"
 ROLE_TITLES = {
     "growth_partner": ("AI Growth Partner", "AI Growth Partner"),
 }
@@ -111,6 +116,293 @@ def _model_request_challenge(request: Any) -> str | None:
         if marker:
             return marker.group(1).lower()
     return None
+
+
+def _memory_probe_intent(request: Any) -> tuple[str, str] | None:
+    """Recognize only the bounded synthetic memory protocol used by this acceptance harness."""
+    if not isinstance(request, dict) or not isinstance(request.get("messages"), list):
+        return None
+    user_text = "\n".join(
+        text
+        for message in request["messages"]
+        if isinstance(message, dict) and message.get("role") == "user"
+        for text in _collect_text(message.get("content"))
+    )
+    if match := MEMORY_ADD_REQUEST_RE.search(user_text):
+        return "add", match.group(1)
+    if match := MEMORY_RECALL_REQUEST_RE.search(user_text):
+        return "recall", match.group(1)
+    return None
+
+
+def _memory_tool_advertised(request: Any) -> bool:
+    """Require the pinned gateway to expose Hermes' actual built-in memory tool to the model."""
+    tools = request.get("tools") if isinstance(request, dict) else None
+    if not isinstance(tools, list):
+        return False
+    for row in tools:
+        function = row.get("function") if isinstance(row, dict) else None
+        parameters = function.get("parameters") if isinstance(function, dict) else None
+        properties = parameters.get("properties") if isinstance(parameters, dict) else None
+        action = properties.get("action") if isinstance(properties, dict) else None
+        target = properties.get("target") if isinstance(properties, dict) else None
+        content = properties.get("content") if isinstance(properties, dict) else None
+        if (
+            isinstance(function, dict)
+            and function.get("name") == "memory"
+            and isinstance(action, dict)
+            and isinstance(action.get("enum"), list)
+            and "add" in action["enum"]
+            and isinstance(target, dict)
+            and isinstance(target.get("enum"), list)
+            and "memory" in target["enum"]
+            and isinstance(content, dict)
+            and content.get("type") == "string"
+        ):
+            return True
+    return False
+
+
+def _memory_tool_result_succeeded(request: Any) -> bool:
+    """Match a successful result to a memory tool call in the same model conversation."""
+    messages = request.get("messages") if isinstance(request, dict) else None
+    if not isinstance(messages, list):
+        return False
+    memory_call_ids = {
+        call.get("id")
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "assistant"
+        for call in (message.get("tool_calls") or [])
+        if isinstance(call, dict)
+        and isinstance(call.get("function"), dict)
+        and call["function"].get("name") == "memory"
+        and isinstance(call.get("id"), str)
+    }
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "tool":
+            continue
+        if message.get("tool_call_id") not in memory_call_ids:
+            continue
+        if message.get("name") not in (None, "memory"):
+            continue
+        try:
+            content = message.get("content")
+            if isinstance(content, str):
+                content = json.loads(content)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(content, dict) and content.get("success") is True and not content.get("staged"):
+            return True
+    return False
+
+
+def _memory_tool_call_present(request: Any) -> bool:
+    messages = request.get("messages") if isinstance(request, dict) else None
+    return bool(
+        isinstance(messages, list)
+        and any(
+            isinstance(call, dict)
+            and isinstance(call.get("function"), dict)
+            and call["function"].get("name") == "memory"
+            for message in messages
+            if isinstance(message, dict) and message.get("role") == "assistant"
+            for call in (message.get("tool_calls") or [])
+        )
+    )
+
+
+def _memory_system_text(request: Any) -> str:
+    if not isinstance(request, dict):
+        return ""
+    parts = _collect_text(request.get("system"))
+    messages = request.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if isinstance(message, dict) and message.get("role") == "system":
+                parts.extend(_collect_text(message.get("content")))
+    return "\n".join(parts)
+
+
+def _memory_probe_model_response(request: Any, challenge: str, state: "AcceptanceState") -> dict[str, Any] | None:
+    """Deterministic synthetic model behavior for built-in memory add and recall acceptance."""
+    intent = _memory_probe_intent(request)
+    if intent is None:
+        return None
+    action, marker = intent
+    if action == "add":
+        if _memory_tool_result_succeeded(request):
+            with state.lock:
+                state.hermes_memory_tool_results += 1
+            return {"message": {"role": "assistant", "content": challenge}, "finish_reason": "stop"}
+        if _memory_tool_call_present(request) or not _memory_tool_advertised(request):
+            return {"error": "hermes_memory_tool_result_unverified"}
+        with state.lock:
+            state.hermes_memory_tool_calls += 1
+        return {
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": "call_iacquire_memory_acceptance",
+                    "type": "function",
+                    "function": {
+                        "name": "memory",
+                        "arguments": json.dumps({"action": "add", "target": "memory", "content": marker}, separators=(",", ":")),
+                    },
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }
+    present = marker in _memory_system_text(request)
+    with state.lock:
+        if present:
+            state.hermes_memory_recall_hits += 1
+        else:
+            state.hermes_memory_recall_misses += 1
+    return {
+        "message": {
+            "role": "assistant",
+            "content": marker if present else MEMORY_NOT_FOUND,
+        },
+        "finish_reason": "stop",
+    }
+
+
+def _hermes_memory_chat(base: str, profile: str, key: str, session_key: str, prompt: str) -> str:
+    body = json.dumps({
+        "model": "synthetic-fixture",
+        "stream": False,
+        "messages": [{"role": "user", "content": prompt}],
+    }, separators=(",", ":")).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base}/p/{urllib.parse.quote(profile, safe='')}/v1/chat/completions",
+        data=body,
+        headers={
+            "Authorization": "Bearer " + key,
+            "Content-Type": "application/json",
+            "X-Hermes-Session-Key": session_key,
+            "Cache-Control": "no-cache",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read(1_048_576).decode("utf-8"))
+            if response.status != 200 or response.headers.get("X-Hermes-Completed") == "false":
+                raise ValueError("hermes_memory_chat_failed")
+    except Exception:
+        raise ValueError("hermes_memory_chat_failed") from None
+    choices = payload.get("choices") if isinstance(payload, dict) else None
+    message = choices[0].get("message") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        raise ValueError("hermes_memory_chat_response_invalid")
+    return content.strip()
+
+
+def _read_profile_api_key(profile_dir: Path) -> str:
+    env_path = profile_dir / ".env"
+    if env_path.is_symlink() or not env_path.is_file():
+        raise ValueError("hermes_memory_profile_key_missing")
+    values = [line.partition("=")[2] for line in env_path.read_text(encoding="ascii").splitlines() if line.startswith("API_SERVER_KEY=")]
+    if len(values) != 1 or not API_KEY_RE.fullmatch(values[0]):
+        raise ValueError("hermes_memory_profile_key_invalid")
+    return values[0]
+
+
+def verify_hermes_memory_after_restart() -> dict[str, Any]:
+    """Verify profile-native memory through fresh API sessions after the gateway restarts."""
+    profiles_root = Path(os.environ["ACCEPTANCE_PROFILE_ROOT"])
+    result_dir = Path(os.environ["ACCEPTANCE_RESULTS_DIR"])
+    manifest_path = result_dir / "hermes-memory-probes.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("hermes_memory_manifest_missing")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or set(manifest) != {"schemaVersion", "probes"} or manifest.get("schemaVersion") != 1:
+        raise ValueError("hermes_memory_manifest_invalid")
+    probes = manifest.get("probes")
+    if not isinstance(probes, list) or len(probes) != EXPECTED_PROFILES:
+        raise ValueError("hermes_memory_probe_count_mismatch")
+    tenants: set[str] = set()
+    profiles: set[str] = set()
+    markers: set[str] = set()
+    normalized: list[dict[str, str]] = []
+    for row in probes:
+        if not isinstance(row, dict) or set(row) != {"tenant", "profile", "orgId", "marker"}:
+            raise ValueError("hermes_memory_manifest_invalid")
+        tenant, profile, org_id, marker = (row.get("tenant"), row.get("profile"), row.get("orgId"), row.get("marker"))
+        if (
+            tenant not in TENANTS
+            or not isinstance(profile, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", profile)
+            or not isinstance(org_id, str)
+            or not isinstance(marker, str)
+            or not MEMORY_MARKER_RE.fullmatch(marker)
+        ):
+            raise ValueError("hermes_memory_manifest_invalid")
+        try:
+            uuid.UUID(org_id)
+        except ValueError:
+            raise ValueError("hermes_memory_manifest_invalid") from None
+        if tenant in tenants or profile in profiles or marker in markers:
+            raise ValueError("hermes_memory_manifest_duplicate")
+        tenants.add(tenant)
+        profiles.add(profile)
+        markers.add(marker)
+        normalized.append({"tenant": tenant, "profile": profile, "orgId": org_id, "marker": marker})
+    if tenants != set(TENANTS):
+        raise ValueError("hermes_memory_tenant_manifest_mismatch")
+
+    own_recalls = 0
+    foreign_denials = 0
+    base = "http://127.0.0.1:8642"
+    by_tenant = {row["tenant"]: row for row in normalized}
+    for tenant, row in by_tenant.items():
+        profile_dir = profiles_root / row["profile"]
+        if profile_dir.is_symlink() or not profile_dir.is_dir():
+            raise ValueError("hermes_memory_profile_missing")
+        key = _read_profile_api_key(profile_dir)
+        memory_dir = profile_dir / "memories"
+        memory_path = memory_dir / "MEMORY.md"
+        if memory_dir.is_symlink() or not memory_dir.is_dir() or memory_path.is_symlink() or not memory_path.is_file() or row["marker"] not in memory_path.read_text(encoding="utf-8"):
+            raise ValueError("hermes_memory_restart_disk_state_missing")
+        session_key = f"iaq:{row['orgId']}:growth_partner"
+        own = _hermes_memory_chat(
+            base, row["profile"], key, session_key,
+            f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{row['marker']}",
+        )
+        if own != row["marker"]:
+            raise ValueError("hermes_memory_restart_recall_failed")
+        own_recalls += 1
+
+        foreign = next(candidate for candidate in normalized if candidate["tenant"] != tenant)
+        cross_tenant = _hermes_memory_chat(
+            base, row["profile"], key, session_key,
+            f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{foreign['marker']}",
+        )
+        if cross_tenant != MEMORY_NOT_FOUND:
+            raise ValueError("hermes_memory_restart_tenant_leak")
+        foreign_denials += 1
+
+    status_path = result_dir / "status.json"
+    if status_path.is_symlink() or not status_path.is_file():
+        raise ValueError("hermes_memory_status_missing")
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    if not isinstance(status, dict) or status.get("result") != "SANDBOX_PASS" or status.get("hermesMemoryVerified") is not False:
+        raise ValueError("hermes_memory_status_invalid")
+    status["hermesMemoryVerified"] = True
+    status["hermesMemoryRestartVerifiedProfiles"] = own_recalls
+    status["hermesMemoryRestartForeignDenials"] = foreign_denials
+    status["hermesMemoryRestartSource"] = "synthetic_local_fixture"
+    status_temp = status_path.with_suffix(".tmp")
+    status_temp.write_text(json.dumps(status, separators=(",", ":")) + "\n", encoding="utf-8")
+    status_temp.chmod(0o644)
+    status_temp.replace(status_path)
+    print(
+        "HERMES_MEMORY_RESTART_PASS "
+        f"profiles={len(normalized)} own_recalls={own_recalls} foreign_denials={foreign_denials}"
+    )
+    return status
 
 
 def _portal_status_state(status: Any, phase: str) -> str:
@@ -251,6 +543,10 @@ class AcceptanceState:
         self.model_invalid_requests = 0
         self.model_missing_challenge_marker = 0
         self.model_not_found = 0
+        self.hermes_memory_tool_calls = 0
+        self.hermes_memory_tool_results = 0
+        self.hermes_memory_recall_hits = 0
+        self.hermes_memory_recall_misses = 0
         self.model_portal_baseline: dict[str, int] | None = None
         self.audit_events_observed: int | None = None
         self.audit_event_summary_observed: dict[str, int] | None = None
@@ -592,6 +888,7 @@ class AcceptanceState:
             raise ValueError("audit_success_count_mismatch")
 
         self._verify_authenticated_routes(bootstrap_key)
+        memory_probe_count = self._verify_hermes_memory_before_restart()
         return {
             "result": "SANDBOX_PASS",
             "syntheticTenants": len(TENANTS),
@@ -609,8 +906,115 @@ class AcceptanceState:
             "auditSecretLeaks": 0,
             "canaryModelCalls": self.model_calls,
             "modelAuthenticationFailures": self.model_bad_auth,
+            "hermesMemoryWriteReadVerified": True,
+            "hermesMemoryProbeProfiles": memory_probe_count,
+            "hermesMemoryToolCalls": self.hermes_memory_tool_calls,
+            "hermesMemoryToolResults": self.hermes_memory_tool_results,
+            "hermesMemoryPreRestartTenantIsolationVerified": self.hermes_memory_recall_misses,
+            "hermesMemoryVerified": False,
             "externalNetwork": "disabled",
         }
+
+    def _verify_hermes_memory_before_restart(self) -> int:
+        """Use the real profile API and model-facing memory tool, with only the local model fixture."""
+        base = "http://127.0.0.1:8642"
+        probes: list[dict[str, str]] = []
+        for tenant in TENANTS:
+            profile = next(
+                (name for name, value in self.profile_tenants.items() if value == tenant), None
+            )
+            if profile is None or profile not in self.profile_keys:
+                raise ValueError("hermes_memory_profile_missing")
+            if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", profile):
+                raise ValueError("hermes_memory_profile_invalid")
+            key = self.profile_keys[profile]
+            tenant_id = self.tenant_orgs[tenant]
+            session_key = f"iaq:{tenant_id}:growth_partner"
+            marker = "IACQUIRE_HERMES_MEMORY_" + uuid.uuid4().hex
+
+            challenge = uuid.uuid4().hex
+            tool_request = urllib.request.Request(
+                f"{base}/p/{urllib.parse.quote(profile, safe='')}/v1/tools?platform=api_server&inventory_challenge={challenge}",
+                headers={
+                    "Authorization": "Bearer " + key,
+                    "X-Hermes-Inventory-Challenge": challenge,
+                    "Cache-Control": "no-cache",
+                },
+            )
+            try:
+                with urllib.request.urlopen(tool_request, timeout=15) as response:
+                    catalog = json.loads(response.read(1_048_576).decode("utf-8"))
+            except Exception:
+                raise ValueError("hermes_memory_tool_inventory_failed") from None
+            memory_tools = [
+                item for item in catalog.get("data", [])
+                if isinstance(item, dict) and item.get("name") == "memory"
+            ] if isinstance(catalog, dict) else []
+            memory_parameters = memory_tools[0].get("parameters") if len(memory_tools) == 1 else None
+            memory_properties = memory_parameters.get("properties") if isinstance(memory_parameters, dict) else None
+            action_schema = memory_properties.get("action") if isinstance(memory_properties, dict) else None
+            target_schema = memory_properties.get("target") if isinstance(memory_properties, dict) else None
+            content_schema = memory_properties.get("content") if isinstance(memory_properties, dict) else None
+            if (
+                not isinstance(catalog, dict)
+                or catalog.get("complete") is not True
+                or len(memory_tools) != 1
+                or not isinstance(action_schema, dict)
+                or not isinstance(action_schema.get("enum"), list)
+                or "add" not in action_schema["enum"]
+                or not isinstance(target_schema, dict)
+                or not isinstance(target_schema.get("enum"), list)
+                or "memory" not in target_schema["enum"]
+                or not isinstance(content_schema, dict)
+                or content_schema.get("type") != "string"
+            ):
+                raise ValueError("hermes_memory_tool_unavailable")
+
+            tool_calls_before = self.hermes_memory_tool_calls
+            tool_results_before = self.hermes_memory_tool_results
+            write_result = _hermes_memory_chat(
+                base, profile, key, session_key,
+                f"Store this exact synthetic marker in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_ADD:{marker}",
+            )
+            if (
+                not write_result
+                or write_result == MEMORY_NOT_FOUND
+                or self.hermes_memory_tool_calls != tool_calls_before + 1
+                or self.hermes_memory_tool_results != tool_results_before + 1
+            ):
+                raise ValueError("hermes_memory_write_failed")
+            memory_dir = Path(os.environ["ACCEPTANCE_PROFILE_ROOT"]) / profile / "memories"
+            memory_path = memory_dir / "MEMORY.md"
+            if memory_dir.is_symlink() or not memory_dir.is_dir() or memory_path.is_symlink() or not memory_path.is_file() or marker not in memory_path.read_text(encoding="utf-8"):
+                raise ValueError("hermes_memory_disk_write_missing")
+
+            own_read = _hermes_memory_chat(
+                base, profile, key, session_key,
+                f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{marker}",
+            )
+            if own_read != marker:
+                raise ValueError("hermes_memory_new_session_recall_failed")
+            probes.append({"tenant": tenant, "profile": profile, "orgId": tenant_id, "marker": marker})
+
+        if len(probes) != EXPECTED_PROFILES:
+            raise ValueError("hermes_memory_probe_count_mismatch")
+        by_tenant = {row["tenant"]: row for row in probes}
+        for tenant, row in by_tenant.items():
+            foreign = next(item for item in probes if item["tenant"] != tenant)
+            foreign_read = _hermes_memory_chat(
+                base, row["profile"], self.profile_keys[row["profile"]],
+                f"iaq:{row['orgId']}:growth_partner",
+                f"Return this exact marker only if present in persistent memory: IACQUIRE_MEMORY_ACCEPTANCE_RECALL:{foreign['marker']}",
+            )
+            if foreign_read != MEMORY_NOT_FOUND:
+                raise ValueError("hermes_memory_cross_tenant_leak")
+
+        manifest_path = Path(os.environ["ACCEPTANCE_RESULTS_DIR"]) / "hermes-memory-probes.json"
+        temp_path = manifest_path.with_suffix(".tmp")
+        temp_path.write_text(json.dumps({"schemaVersion": 1, "probes": probes}, separators=(",", ":")) + "\n", encoding="utf-8")
+        temp_path.chmod(0o600)
+        temp_path.replace(manifest_path)
+        return len(probes)
 
     def _verify_authenticated_routes(self, bootstrap_key: str) -> None:
         base = "http://127.0.0.1:8642"
@@ -788,6 +1192,49 @@ def _model_handler(state: AcceptanceState, model_key: str):
             if record_diagnostics:
                 state.record_model_response(status, category=category)
 
+        def _send_completion(self, request: dict[str, Any], message: dict[str, Any], finish_reason: str) -> None:
+            created = int(time.time())
+            if request.get("stream") is True:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                deltas: list[dict[str, Any]] = [{"role": "assistant"}]
+                if isinstance(message.get("tool_calls"), list):
+                    for index, call in enumerate(message["tool_calls"]):
+                        deltas.append({"tool_calls": [{
+                            "index": index,
+                            "id": call.get("id"),
+                            "type": call.get("type", "function"),
+                            "function": call.get("function", {}),
+                        }]})
+                else:
+                    deltas.append({"content": message.get("content", "")})
+                chunks = [
+                    {"id": "chatcmpl-synthetic", "object": "chat.completion.chunk", "created": created,
+                     "model": "synthetic-fixture", "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+                    for delta in deltas
+                ]
+                chunks.append({
+                    "id": "chatcmpl-synthetic", "object": "chat.completion.chunk", "created": created,
+                    "model": "synthetic-fixture", "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+                })
+                for chunk in chunks:
+                    self.wfile.write(b"data: " + json.dumps(chunk, separators=(",", ":")).encode("utf-8") + b"\n\n")
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                state.record_model_response(200)
+                return
+            self._send_json(200, {
+                "id": "chatcmpl-synthetic",
+                "object": "chat.completion",
+                "created": created,
+                "model": "synthetic-fixture",
+                "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            })
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/healthz":
                 self._send_json(200, {"ok": True}, record_diagnostics=False)
@@ -824,36 +1271,19 @@ def _model_handler(state: AcceptanceState, model_key: str):
             if challenge is None:
                 self._send_json(400, {"error": {"message": "synthetic_prompt_marker_missing", "type": "invalid_request_error"}}, category="missing_challenge_marker")
                 return
+            memory_response = _memory_probe_model_response(request, challenge, state)
+            if memory_response is not None:
+                if memory_response.get("error"):
+                    self._send_json(400, {"error": {"message": memory_response["error"], "type": "invalid_request_error"}}, category="invalid_request")
+                    return
+                self._send_completion(request, memory_response["message"], memory_response["finish_reason"])
+                return
             fail_canary = state.should_inject_canary_mismatch(challenge)
             if fail_canary:
                 output = ("00" * 16) if challenge != ("00" * 16) else ("11" * 16)
             else:
                 output = challenge
-            if request.get("stream") is True:
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "close")
-                self.end_headers()
-                created = int(time.time())
-                chunks = (
-                    {"id": "chatcmpl-synthetic", "object": "chat.completion.chunk", "created": created, "model": "synthetic-fixture", "choices": [{"index": 0, "delta": {"role": "assistant", "content": output}, "finish_reason": None}]},
-                    {"id": "chatcmpl-synthetic", "object": "chat.completion.chunk", "created": created, "model": "synthetic-fixture", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
-                )
-                for chunk in chunks:
-                    self.wfile.write(b"data: " + json.dumps(chunk, separators=(",", ":")).encode("utf-8") + b"\n\n")
-                self.wfile.write(b"data: [DONE]\n\n")
-                self.wfile.flush()
-                state.record_model_response(200)
-                return
-            self._send_json(200, {
-                "id": "chatcmpl-synthetic",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "synthetic-fixture",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": output}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-            })
+            self._send_completion(request, {"role": "assistant", "content": output}, "stop")
 
     return ModelHandler
 
@@ -1010,6 +1440,13 @@ if __name__ == "__main__":
             raise
         except Exception:
             print("ACCEPTANCE_FIXTURE_STARTUP_FAIL")
+            raise SystemExit(1) from None
+    elif command == "verify-hermes-memory":
+        try:
+            verify_hermes_memory_after_restart()
+        except Exception as error:
+            safe_code = str(error) if re.fullmatch(r"[a-z0-9_]{1,80}", str(error)) else "hermes_memory_restart_verification_failed"
+            print("HERMES_MEMORY_RESTART_FAIL: " + safe_code)
             raise SystemExit(1) from None
     else:
         print("ACCEPTANCE_INVALID_COMMAND")
