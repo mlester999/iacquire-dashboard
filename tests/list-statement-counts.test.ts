@@ -4,6 +4,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { listInvoices, receivablesSummary } from "@/server/invoices/invoices";
 import { listProposals } from "@/server/proposals/proposals";
+import { clearFeatureCache } from "@/server/proposals/features";
 import { capture } from "./perf/harness";
 import { invoiceOrg, issuedInvoice, type InvoiceOrg } from "./support/invoices";
 import { approvedProposal, proposalOrg, type ProposalOrg } from "./support/proposals";
@@ -46,8 +47,11 @@ describe("the proposal list sends the same statements however many proposals the
 
   it("listProposals", async () => {
     for (let i = 0; i < FEW; i++) await approvedProposal(p);
+    // Count the feature-gate read in both samples. Its short cache can expire while the larger fixture is being seeded.
+    clearFeatureCache(p.org.id);
     const few = await capture(() => listProposals(p.actor("owner")));
     for (let i = FEW; i < MANY; i++) await approvedProposal(p);
+    clearFeatureCache(p.org.id);
     const many = await capture(() => listProposals(p.actor("owner")));
     expect(many.result.length).toBeGreaterThan(few.result.length);
     expect(many.queries.length, "listProposals statements").toBe(few.queries.length);

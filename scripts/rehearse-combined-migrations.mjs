@@ -10,7 +10,8 @@
 //      migration from 0077 has a rollback; the declared prerequisites hold in the order applied; the same files on codex/client-ai-onboarding are the same blobs.
 //   B. Upgrade from the production baseline: apply everything below 0077, populate a realistic dataset (several workspaces, members, contacts, conversations,
 //      messages, calls, appointments, AI employees, notifications, private files, tasks, leads, chat), hash every row of every table, then apply each later
-//      migration ONE AT A TIME. After each: every earlier row is unchanged (count and hash, all tables), no earlier notification kind, permission, storage bucket,
+//      migration ONE AT A TIME. After each: every earlier row is unchanged (count and hash, all tables), except an explicitly verified migration-owned data change;
+//      0131 may advance only the three untouched AQi starter tutorials to their next published version. No earlier notification kind, permission, storage bucket,
 //      stored-file bucket, conversation channel or contact origin is lost, the application role sees exactly the same rows as before, every new table has
 //      row-level security and no grant to anon, authenticated, PUBLIC or the published-site role, the application role holds SELECT only (column level where the
 //      migration says so), and every new table starts empty. Each migration's own data is then added, so later migrations meet realistic rows of earlier ones.
@@ -227,6 +228,13 @@ async function hashRows(db, table, cols, expr, keys) {
     from (select ${expr} as k, (select jsonb_object_agg(e.key, e.value) from jsonb_each(to_jsonb(t)) e where e.key = any($1::text[]))::text as r from public."${table}" t${keys ? ` where ${expr} = any($2::text[])` : ""}) s`;
   return one(db, sql, keys ? [cols, keys] : [cols]);
 }
+async function hashRowsByKey(db, table, cols, expr, keys = null) {
+  const sql = `select ${expr} as k,
+        md5((select jsonb_object_agg(e.key, e.value) from jsonb_each(to_jsonb(t)) e where e.key = any($1::text[]))::text) as h
+    from public."${table}" t${keys ? ` where ${expr} = any($2::text[])` : ""}`;
+  return q(db, sql, keys ? [cols, keys] : [cols]);
+}
+const ROW_HASHED_TABLES = new Set(["aqi_tutorials", "aqi_tutorial_versions"]);
 async function snapshot(db) {
   const tables = await listTables(db);
   const counts = await countAll(db, tables);
@@ -241,14 +249,17 @@ async function snapshot(db) {
     }
     const expr = keyExpr(t, pks);
     const r = await hashRows(db, t, c, expr, null);
-    snap.set(t, { n: r.n, cols: c, expr, keys: r.keys, h: r.h });
+    const rowHashes = ROW_HASHED_TABLES.has(t)
+      ? new Map((await hashRowsByKey(db, t, c, expr)).map((row) => [row.k, row.h]))
+      : null;
+    snap.set(t, { n: r.n, cols: c, expr, keys: r.keys, h: r.h, rowHashes });
   }
   return snap;
 }
 const rowsIn = (snap) => [...snap.values()].reduce((a, s) => a + s.n, 0);
 // The whole table must still be what it was: same number of rows and the same hash over the columns that existed then. Returns what differs.
 // A table in `growable` (one the migration itself inserts into, such as the role permissions) may gain rows; every earlier row must still be there and unchanged.
-async function verifyWhole(db, snap, growable = new Set()) {
+async function verifyWhole(db, snap, growable = new Set(), allowedChanged = new Map(), expectedGrowth = new Map()) {
   const bad = [];
   bad.grew = new Map();
   const tables = [...snap.keys()];
@@ -260,11 +271,25 @@ async function verifyWhole(db, snap, growable = new Set()) {
       continue;
     }
     const n = counts.get(t);
-    if (growable.has(t)) {
-      if (s.n) {
-        const r = await hashRows(db, t, s.cols, s.expr, s.keys);
-        if (r.n !== s.n || r.h !== s.h) bad.push(`${t}: ${s.n} earlier rows, ${r.n} found, ${r.h === s.h ? "same" : "different"} content`);
+    const ignored = allowedChanged.get(t) ?? new Set();
+    if (ignored.size > s.n) {
+      bad.push(`${t}: migration allowance names ${ignored.size} rows but only ${s.n} existed`);
+      continue;
+    }
+    const expectedEarlier = s.n - ignored.size;
+    const keys = s.keys.filter((key) => !ignored.has(key));
+    const compareEarlier = async () => {
+      if (!expectedEarlier) return true;
+      if (ignored.size && s.rowHashes) {
+        const current = new Map((await hashRowsByKey(db, t, s.cols, s.expr, keys)).map((row) => [row.k, row.h]));
+        return current.size === expectedEarlier && keys.every((key) => current.get(key) === s.rowHashes.get(key));
       }
+      const r = await hashRows(db, t, s.cols, s.expr, keys);
+      return r.n === expectedEarlier && (!ignored.size ? r.h === s.h : false);
+    };
+    if (growable.has(t)) {
+      if (!(await compareEarlier())) bad.push(`${t}: earlier rows outside the explicit migration allowance are missing or changed`);
+      if (expectedGrowth.has(t) && n !== s.n + expectedGrowth.get(t)) bad.push(`${t}: expected ${s.n + expectedGrowth.get(t)} total rows after the migration, found ${n}`);
       if (n > s.n) bad.grew.set(t, n - s.n);
       continue;
     }
@@ -273,13 +298,12 @@ async function verifyWhole(db, snap, growable = new Set()) {
       continue;
     }
     if (!n) continue;
-    const r = await hashRows(db, t, s.cols, s.expr, null);
-    if (r.h !== s.h) bad.push(`${t}: ${s.n} rows keep their count but their content changed`);
+    if (!(await compareEarlier())) bad.push(`${t}: earlier rows outside the explicit migration allowance are missing or changed`);
   }
   return bad;
 }
 // Only the rows that existed then (by key), over the columns that existed then: for a database that has since gained other rows.
-async function verifyKeys(db, snap) {
+async function verifyKeys(db, snap, allowedChanged = new Map()) {
   const bad = [];
   const exists = new Set(await listTables(db));
   for (const [t, s] of snap) {
@@ -288,8 +312,16 @@ async function verifyKeys(db, snap) {
       bad.push(`${t}: the table is gone`);
       continue;
     }
-    const r = await hashRows(db, t, s.cols, s.expr, s.keys);
-    if (r.n !== s.n || r.h !== s.h) bad.push(`${t}: ${s.n} earlier rows, ${r.n} found, ${r.h === s.h ? "same" : "different"} content`);
+    const ignored = allowedChanged.get(t) ?? new Set();
+    const keys = s.keys.filter((key) => !ignored.has(key));
+    const expected = s.n - ignored.size;
+    if (ignored.size && s.rowHashes) {
+      const current = new Map((await hashRowsByKey(db, t, s.cols, s.expr, keys)).map((row) => [row.k, row.h]));
+      if (current.size !== expected || !keys.every((key) => current.get(key) === s.rowHashes.get(key))) bad.push(`${t}: ${expected} earlier rows outside the explicit migration allowance are missing or changed`);
+      continue;
+    }
+    const r = await hashRows(db, t, s.cols, s.expr, keys);
+    if (r.n !== expected || (ignored.size ? true : r.h !== s.h)) bad.push(`${t}: ${expected} earlier rows, ${r.n} found, ${r.h === s.h ? "same" : "different"} content`);
   }
   return bad;
 }
@@ -366,6 +398,52 @@ const probeDiff = (a, b, skip = new Set()) => {
 const insertTargets = (file) => {
   const text = fs.readFileSync(path.join(MIGRATIONS, file), "utf8").replace(/--[^\n]*/g, "");
   return new Set([...text.matchAll(/\binsert\s+into\s+(?:public\.)?"?([a-z_]+)"?/gi)].map((m) => m[1]));
+};
+
+// 0131 intentionally publishes a new AQi tutorial version for three untouched starter seeds.
+// Only their parent metadata and original version status change; every other earlier row must
+// stay byte-for-byte identical, and exactly three version rows are added.
+const migrationRowAllowance = async (file, db) => {
+  if (prefix(file) !== "0131") return { changed: new Map(), growth: new Map(), detail: "" };
+  const expected = new Map([
+    ["getting-started", ["Getting started with iAcquireOS", "A short tour of the workspace, your AI team and where to get help."]],
+    ["navigate-dashboard", ["Navigating your dashboard", "Understand the overview tiles, next actions and AI team panel."]],
+    ["view-ai-employees", ["Viewing your AI employees", "Meet the AI workforce, understand status and open an employee."]],
+  ]);
+  const rows = await q(db, `select t.id::text as tutorial_id, t.slug, t.title, t.description, t.category, t.route_prefix,
+           t.status as tutorial_status, t.published_version_id::text as published_version_id,
+           old.id::text as old_id, old.version as old_version, old.status as old_status, old.notes as old_notes,
+           old.definition->>'title' as old_title, old.definition->>'description' as old_description,
+           current.id::text as current_id, current.version as current_version, current.status as current_status,
+           current.notes as current_notes, current.definition->>'title' as current_title,
+           current.definition->>'description' as current_description, current.definition->>'category' as current_category,
+           current.definition->>'routePrefix' as current_route_prefix
+      from aqi_tutorials t
+      join aqi_tutorial_versions old on old.tutorial_id = t.id and old.version = 1
+      join aqi_tutorial_versions current on current.tutorial_id = t.id and current.version = 2
+     where t.slug = any($1::text[]) order by t.slug`, [[...expected.keys()]]);
+  if (rows.length !== expected.size) throw new Error(`expected ${expected.size} migrated AQi tutorials, found ${rows.length}`);
+  for (const row of rows) {
+    const [oldTitle, oldDescription] = expected.get(row.slug) ?? [];
+    if (!oldTitle || row.old_title !== oldTitle || row.old_description !== oldDescription
+        || row.old_version !== 1 || row.old_status !== "archived" || row.old_notes !== "Starter library"
+        || row.current_version !== 2 || row.current_status !== "published" || row.current_notes !== "AI Growth Partner guidance migration 0131"
+        || row.published_version_id !== row.current_id || row.tutorial_status !== "published"
+        || row.title !== row.current_title || row.description !== row.current_description
+        || row.category !== row.current_category || row.route_prefix !== row.current_route_prefix) {
+      throw new Error(`the versioned AQi guidance state is incorrect for ${row.slug}`);
+    }
+  }
+  const migrationVersions = await one(db, "select count(*)::int as n from aqi_tutorial_versions where notes = 'AI Growth Partner guidance migration 0131'");
+  if (migrationVersions.n !== expected.size) throw new Error(`expected exactly ${expected.size} migration-created tutorial versions, found ${migrationVersions.n}`);
+  return {
+    changed: new Map([
+      ["aqi_tutorials", new Set(rows.map((row) => row.tutorial_id))],
+      ["aqi_tutorial_versions", new Set(rows.map((row) => row.old_id))],
+    ]),
+    growth: new Map([["aqi_tutorial_versions", expected.size]]),
+    detail: "3 original AQi starter tutorials were advanced to version 2; all unrelated rows were preserved",
+  };
 };
 
 // --------------------------------------------------------------------------------------------------------------------------------------------
@@ -1613,7 +1691,13 @@ async function runBCD() {
     after.probe = await probe(db, ctx, before.probeTables.filter((x) => after.tables.has(x)));
     // 1. Every earlier row, in every table, unchanged.
     const growable = insertTargets(file);
-    const changed = await verifyWhole(db, before.snap, growable);
+    let rowAllowance = { changed: new Map(), growth: new Map(), detail: "" };
+    try {
+      rowAllowance = await migrationRowAllowance(file, db);
+    } catch (e) {
+      fail("B", `${v}: ${clip(e.message, 300)}`);
+    }
+    const changed = await verifyWhole(db, before.snap, growable, rowAllowance.changed, rowAllowance.growth);
     for (const c of changed) fail("B", `${v}: ${c}`);
     const grew = [...changed.grew.entries()].map(([t, n]) => `+${n} rows in ${t} (inserted by the migration itself, every earlier row intact)`);
     // 2. Nothing earlier was lost from the shared lists.
@@ -1671,7 +1755,7 @@ async function runBCD() {
     const sameAsFresh = same(d);
     steps.set(v, { before, after, ms, sameAsFresh, diffText: sameAsFresh ? "" : showDiff(d) });
     const addedKinds = subsetOf(after.kinds, before.kinds);
-    finding("B", `${v}: applied in ${ms} ms; ${before.snap.size} tables / ${rowsIn(before.snap)} earlier rows unchanged; ${objects.fresh.length} new table${objects.fresh.length === 1 ? "" : "s"}${objects.fresh.length ? ` (${objects.fresh.join(", ")}) with row-level security, empty, no grant to anon / authenticated / PUBLIC / the site role, select-only for the application role${objects.columnLevel.length ? `; column level: ${objects.columnLevel.join("; ")}` : ""}${objects.serverOnly.length ? `; no access at all for the application role (server only): ${objects.serverOnly.join(", ")}` : ""}${objects.fnInfo.length ? `; new functions: ${objects.fnInfo.join("; ")}` : ""}` : ""}${addedKinds.length ? `; +${addedKinds.length} notification kind${addedKinds.length === 1 ? "" : "s"}` : ""}${after.buckets.length !== before.buckets.length ? `; +${after.buckets.length - before.buckets.length} storage bucket` : ""}${after.perms.size !== before.perms.size ? `; +${after.perms.size - before.perms.size} role permissions` : ""}; the application role sees the same rows${fileAnswers}${grew.length ? `; ${grew.join("; ")}` : ""}`);
+    finding("B", `${v}: applied in ${ms} ms; ${before.snap.size} tables / ${rowsIn(before.snap)} earlier rows checked${rowAllowance.detail ? `; ${rowAllowance.detail}` : " unchanged"}; ${objects.fresh.length} new table${objects.fresh.length === 1 ? "" : "s"}${objects.fresh.length ? ` (${objects.fresh.join(", ")}) with row-level security, empty, no grant to anon / authenticated / PUBLIC / the site role, select-only for the application role${objects.columnLevel.length ? `; column level: ${objects.columnLevel.join("; ")}` : ""}${objects.serverOnly.length ? `; no access at all for the application role (server only): ${objects.serverOnly.join(", ")}` : ""}${objects.fnInfo.length ? `; new functions: ${objects.fnInfo.join("; ")}` : ""}` : ""}${addedKinds.length ? `; +${addedKinds.length} notification kind${addedKinds.length === 1 ? "" : "s"}` : ""}${after.buckets.length !== before.buckets.length ? `; +${after.buckets.length - before.buckets.length} storage bucket` : ""}${after.perms.size !== before.perms.size ? `; +${after.perms.size - before.perms.size} role permissions` : ""}; the application role sees the same rows${fileAnswers}${grew.length ? `; ${grew.join("; ")}` : ""}`);
     // 8. This migration's own data.
     if (SEEDS[v]) {
       try {
@@ -1874,9 +1958,15 @@ async function runBCD() {
   }
   const finalAgain = diff(fresh.final, await fingerprint(db));
   if (!same(finalAgain)) fail("D", `after rolling everything back and forward the schema differs from C: ${showDiff(finalAgain)}`);
-  const againMoved = await verifyKeys(db, baseline.snap);
+  let forwardAllowance = { changed: new Map(), growth: new Map(), detail: "" };
+  try {
+    forwardAllowance = await migrationRowAllowance(files.find((f) => prefix(f) === "0131"), db);
+  } catch (e) {
+    fail("D", `after rolling forward again: ${clip(e.message, 300)}`);
+  }
+  const againMoved = await verifyKeys(db, baseline.snap, forwardAllowance.changed);
   for (const m of againMoved) fail("D", `after rolling back and forward again an original row changed: ${m}`);
-  if (forwardOk && same(finalAgain) && !againMoved.length) finding("D", `applied forward again one at a time: after every step the schema equals the fresh chain, the final schema equals C (${fresh.final.size} facts), the original rows are unchanged, and each feature accepted its data again (triggers, constraints and policies are alive)`);
+  if (forwardOk && same(finalAgain) && !againMoved.length) finding("D", `applied forward again one at a time: after every step the schema equals the fresh chain, the final schema equals C (${fresh.final.size} facts), original rows are unchanged except the three explicitly versioned AQi tutorials, and each feature accepted its data again (triggers, constraints and policies are alive)`);
   const missingRb = HISTORY.filter((f) => !fs.existsSync(rollbackPath(f))).map(name);
   finding("D", `rollbacks present for ${HISTORY.length - missingRb.length} of ${HISTORY.length} migrations from 0077${missingRb.length ? `; MISSING: ${missingRb.join(", ")}` : ""}`);
   result.sections.D.ms = Date.now() - tD;
@@ -2004,7 +2094,9 @@ async function runHosted(key, cfg) {
   // F rehearses the whole tree: 0084 is part of it here, and pending in production.
   files = allFiles;
   HISTORY = files.filter((f) => numOf(f) >= 77);
-  if (cfg.resetFresh) freshMemo = null;
+  // A preceding A-E run caches a chain that deliberately omits reserved 0084. Always rebuild
+  // after switching to the full list, including when G/H run without F first.
+  freshMemo = null;
   const fresh = await freshChain();
   // The runner's rules, mirrored from src/server/db/index.ts (appliedVersions, runMigrations, selectMigrationFiles) and scripts/migrate.ts (--only, --through, --dry-run).
   const src = fs.readFileSync(path.join(root, "src", "server", "db", "index.ts"), "utf8");
@@ -2155,7 +2247,13 @@ async function runHosted(key, cfg) {
     after.probe = await probe(db, ctx, before.probeTables.filter((x) => after.tables.has(x)));
     const problems = [];
     const growable = insertTargets(files.find((f) => name(f) === v));
-    const rowsChanged = await verifyWhole(db, before.snap, growable);
+    let rowAllowance = { changed: new Map(), growth: new Map(), detail: "" };
+    try {
+      rowAllowance = await migrationRowAllowance(files.find((f) => name(f) === v), db);
+    } catch (e) {
+      problems.push(clip(e.message, 300));
+    }
+    const rowsChanged = await verifyWhole(db, before.snap, growable, rowAllowance.changed, rowAllowance.growth);
     for (const m of rowsChanged) problems.push(`earlier data: ${m}`);
     // A version that sorts below the head (0084) is added in the middle of the ledger, so it is looked for, not expected last.
     if (after.ledger.length !== before.ledger.length + 1 || !after.ledger.includes(v) || (!prodLacks.has(v) && after.ledger[after.ledger.length - 1] !== v)) problems.push(`ledger is ${after.ledger.length} rows ending ${after.ledger[after.ledger.length - 1]}`);
@@ -2170,7 +2268,7 @@ async function runHosted(key, cfg) {
     if (!prodLacks.has(v) && !same(dd)) problems.push(`schema differs from the fresh chain: ${showDiff(dd, 500)}`);
     for (const p of problems) fail(key, `${v}: ${p}`);
     if (problems.length || objects.problems.length) sawProblem = true;
-    finding(key, `--only ${v}: ledger ${after.ledger.length} rows ending ${v}; ${rowsIn(before.snap)} earlier rows in ${before.snap.size} tables unchanged; ${objects.fresh.length} new tables (${objects.fresh.join(", ")}) with row-level security, empty, select-only for the application role; no public table without row-level security; the application role sees the same rows; the schema equals the fresh chain at this point`);
+    finding(key, `--only ${v}: ledger ${after.ledger.length} rows ending ${v}; ${rowsIn(before.snap)} earlier rows in ${before.snap.size} tables checked${rowAllowance.detail ? `; ${rowAllowance.detail}` : " unchanged"}; ${objects.fresh.length} new tables (${objects.fresh.join(", ")}) with row-level security, empty, select-only for the application role; no public table without row-level security; the application role sees the same rows; the schema equals the fresh chain at this point`);
     cur = after;
   }
   const finalDiff = diff(fresh.final, cur.fp);
