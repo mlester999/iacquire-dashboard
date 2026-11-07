@@ -72,10 +72,32 @@ const STATUS_WORDS: Record<string, string> = { connected: "connected", pending: 
 /** One chip per system, coloured by its recorded state. Detail is available on hover. */
 export function ConnectionChips({ r, compact = false }: { r: ClientSetupRow; compact?: boolean }) {
   const h = r.health;
-  const aiTone: Tone = h.failingAgents > 0 ? "danger" : h.agentsEnabled > 0 && h.agentsOnline === h.agentsEnabled ? "success" : h.agentsOnline > 0 ? "warning" : "neutral";
+  const aiTone: Tone = h.failingAgents > 0
+    ? "danger"
+    : !h.growthPartnerIdentityExists || !h.growthPartnerRuntimeLinked
+      ? "warning"
+      : h.agentsEnabled === 0
+        ? "neutral"
+        : h.agentsOnline === h.agentsEnabled
+          ? "success"
+          : "warning";
+  const aiLabel = !h.growthPartnerIdentityExists
+    ? "Partner setup"
+    : !h.growthPartnerRuntimeLinked
+      ? "Partner unlinked"
+      : h.agentsEnabled === 0
+        ? "Partner paused"
+        : `Partner ${h.agentsOnline}/${h.agentsEnabled}`;
+  const aiDetail = !h.growthPartnerIdentityExists
+    ? "The AI Growth Partner identity is not set up. Retained role profiles are managed separately."
+    : !h.growthPartnerRuntimeLinked
+      ? "The AI Growth Partner has no linked runtime. Retained role profiles are managed separately."
+      : h.agentsEnabled === 0
+        ? "The linked AI Growth Partner runtime is paused. Retained role profiles are managed separately."
+        : `AI Growth Partner runtime recorded ready: ${h.agentsOnline} of ${h.agentsEnabled}${h.failingAgents ? ` · ${plural(h.failingAgents, "runtime")} need attention` : ""}. Retained role profiles are managed separately.`;
   const chips: Array<{ key: string; label: string; tone: Tone; detail: string }> = [
     { key: "crm", label: "CRM", tone: connectionTone(h.ghl), detail: `CRM: ${h.ghl ? STATUS_WORDS[h.ghl] ?? h.ghl : "not mapped"}` },
-    { key: "ai", label: `AI ${h.agentsOnline}/${h.agentsEnabled}`, tone: aiTone, detail: `Runtime profiles online: ${h.agentsOnline} of ${h.agentsEnabled}${h.failingAgents ? ` · ${plural(h.failingAgents, "profile")} need attention` : ""}` },
+    { key: "ai", label: aiLabel, tone: aiTone, detail: aiDetail },
     { key: "calendar", label: "Calendar", tone: connectionTone(h.calendar), detail: `Calendar: ${h.calendar && h.calendar !== "not_configured" ? STATUS_WORDS[h.calendar] ?? h.calendar : "not connected"}` },
     { key: "n8n", label: "n8n", tone: connectionTone(h.n8n), detail: `n8n: ${h.n8n ? STATUS_WORDS[h.n8n] ?? h.n8n : "not configured"}` },
   ];

@@ -15,7 +15,7 @@ function row(over: { orgStatus?: string; started?: boolean; state?: "in_setup" |
     services: [],
     setup: { started: over.started ?? true, state: over.state === undefined ? "in_setup" : over.state, percent: 0, completed: 0, total: 18, clientActions: 0, blocked: 0, outstanding: 18, blockers: [] },
     responsible: null,
-    health: { level: "not_connected", agentsOnline: 0, agentsEnabled: 6, ghl: null, calendar: null, n8n: null, failedChecks: 0, failingAgents: 0 },
+    health: { level: "not_connected", agentsOnline: 0, agentsEnabled: 0, growthPartnerIdentityExists: false, growthPartnerRuntimeLinked: false, ghl: null, calendar: null, n8n: null, failedChecks: 0, failingAgents: 0 },
     openTickets: 0,
     lastActivityAt: null,
   };

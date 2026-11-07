@@ -345,10 +345,10 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
 export interface AdminOverview {
   clients: number;
   activeClients: number;
-  agentsOnline: number;
-  agentsEnabled: number;
-  agentsPreparing: number;
-  agentsNeedsAttention: number;
+  growthPartnerRuntimesOnline: number;
+  growthPartnerRuntimesEnabled: number;
+  growthPartnerRuntimesPreparing: number;
+  growthPartnerRuntimesNeedsAttention: number;
   openTickets: number;
   urgentTickets: number;
   provisioningOpen: number;
@@ -365,7 +365,7 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
     user.platformRole === "agency_super_admin"
       ? Number((await withSystem((s) => s.query<{ n: number }>("select count(*)::int as n from access_requests where status = 'new'"))).rows[0].n)
       : 0;
-  return withUser(user.id, async (db) => {
+  const overview = await withUser(user.id, async (db) => {
     const permissions = await db.query<{ workforce: boolean; support: boolean }>(
       `select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as workforce,
               coalesce(app.user_has_agency_permission($1,'agency.support.view'),false) as support`,
@@ -378,10 +378,10 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
     return {
       clients: await n(`select count(*)::int as n from organizations o where ${scope}`),
       activeClients: await n(`select count(*)::int as n from organizations o where ${scope} and o.status = 'active'`),
-      agentsOnline: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and ${runtimeReadySql("a")}`) : 0,
-      agentsEnabled: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled`) : 0,
-      agentsPreparing: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('provisioning','setup_required')`) : 0,
-      agentsNeedsAttention: canViewWorkforce ? await n(`select count(*)::int as n from agent_instances a join organizations o on o.id = a.org_id where ${scope} and a.enabled and a.status in ('error','offline')`) : 0,
+      growthPartnerRuntimesOnline: 0,
+      growthPartnerRuntimesEnabled: 0,
+      growthPartnerRuntimesPreparing: 0,
+      growthPartnerRuntimesNeedsAttention: 0,
       openTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress','waiting_for_client')") : 0,
       urgentTickets: canViewSupport ? await n("select count(*)::int as n from support_tickets where status in ('new','open','in_progress') and priority in ('high','urgent')") : 0,
       provisioningOpen: canViewWorkforce ? await n(`select count(*)::int as n from agent_provisioning_jobs j join organizations o on o.id = j.org_id where ${scope} and j.status in ('requested','in_progress','awaiting_health_check')`) : 0,
@@ -393,8 +393,39 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
       newAccessRequests,
       messagesThisMonth: await n("select coalesce(sum(quantity),0)::int as n from usage_events where kind = 'agent_message' and created_at >= date_trunc('month', now())"),
       tokensThisMonth: await n("select coalesce(sum(coalesce(input_tokens,0)+coalesce(output_tokens,0)),0)::int as n from usage_events where created_at >= date_trunc('month', now())"),
+      canViewWorkforce,
     };
   });
+  const { canViewWorkforce, ...baseOverview } = overview;
+  if (!canViewWorkforce) return baseOverview;
+
+  // Partner identity is intentionally readable only to clients with `agents.use` under RLS.
+  // Agency workforce viewers therefore use a separate trusted read with an explicit active-user
+  // and per-client access check; the user-scoped transaction above already checked workforce permission.
+  const growthPartnerRuntimes = (await withSystem((db) => db.query<{
+    online: number;
+    enabled: number;
+    preparing: number;
+    needs_attention: number;
+  }>(
+    `select count(*) filter (where ${runtimeReadySql("a")})::int as online,
+            count(*) filter (where a.enabled)::int as enabled,
+            count(*) filter (where a.enabled and a.status in ('provisioning','setup_required'))::int as preparing,
+            count(*) filter (where a.enabled and a.status in ('error','offline'))::int as needs_attention
+       from organizations o
+       join ai_growth_partners gp on gp.org_id = o.id
+       join agent_instances a on a.id = gp.runtime_agent_instance_id and a.org_id = o.id and a.role_key = 'growth_partner'
+       where o.kind = 'client' and app.user_can_access_org($1,o.id)`,
+    [user.id],
+  ))).rows[0];
+
+  return {
+    ...baseOverview,
+    growthPartnerRuntimesOnline: growthPartnerRuntimes.online,
+    growthPartnerRuntimesEnabled: growthPartnerRuntimes.enabled,
+    growthPartnerRuntimesPreparing: growthPartnerRuntimes.preparing,
+    growthPartnerRuntimesNeedsAttention: growthPartnerRuntimes.needs_attention,
+  };
 }
 
 export async function listAllAgents(user: SessionUser) {

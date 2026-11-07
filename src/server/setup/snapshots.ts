@@ -479,7 +479,7 @@ export interface ClientSetupRow {
     blockers: string[];
   };
   responsible: { id: string; name: string } | null;
-  health: { level: HealthLevel; agentsOnline: number; agentsEnabled: number; ghl: string | null; calendar: string | null; n8n: string | null; failedChecks: number; failingAgents: number };
+  health: { level: HealthLevel; agentsOnline: number; agentsEnabled: number; growthPartnerIdentityExists: boolean; growthPartnerRuntimeLinked: boolean; ghl: string | null; calendar: string | null; n8n: string | null; failedChecks: number; failingAgents: number };
   openTickets: number;
   lastActivityAt: string | null;
   /** The launch ledger's newest state for this client: null when nothing has been recorded yet. Optional so a row built by hand (a test, a preview) needs no launch data. */
@@ -514,6 +514,8 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
       outstanding: number | null;
       blockers: string[] | null;
       last_task_at: Date | null;
+      growth_partner_identity_exists: boolean;
+      growth_partner_runtime_linked: boolean;
       agents_online: number;
       agents_enabled: number;
       agents_failing: number;
@@ -530,9 +532,11 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
               i.id as instance_id, i.state, i.services, i.responsible_user_id, ru.full_name as responsible_name,
               contact.contact_name, contact.contact_email,
               p.total, p.completed, p.waiting, p.blocked, p.outstanding, p.blockers, p.last_task_at,
-              (select count(*)::int from agent_instances a where a.org_id = o.id and ${runtimeReadySql("a")}) as agents_online,
-              (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled) as agents_enabled,
-              (select count(*)::int from agent_instances a where a.org_id = o.id and a.enabled and a.status in ('error', 'offline')) as agents_failing,
+              (gp.org_id is not null) as growth_partner_identity_exists,
+              (gp_runtime.id is not null) as growth_partner_runtime_linked,
+              case when ${runtimeReadySql("gp_runtime")} then 1 else 0 end as agents_online,
+              case when gp_runtime.id is not null and gp_runtime.enabled then 1 else 0 end as agents_enabled,
+              case when gp_runtime.id is not null and gp_runtime.enabled and gp_runtime.status in ('error', 'offline') then 1 else 0 end as agents_failing,
               (select g.status from ghl_location_mappings g where g.org_id = o.id) as ghl_status,
               (select s.status from integration_status s where s.org_id = o.id and s.provider = 'ghl_calendar') as calendar_status,
               (select s.status from integration_status s where s.org_id = o.id and s.provider = 'n8n') as n8n_status,
@@ -546,6 +550,9 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
        from organizations o
        left join client_setup_instances i on i.org_id = o.id
        left join users ru on ru.id = i.responsible_user_id
+       left join ai_growth_partners gp on gp.org_id = o.id
+       left join agent_instances gp_runtime on gp_runtime.id = gp.runtime_agent_instance_id
+         and gp_runtime.org_id = o.id and gp_runtime.role_key = 'growth_partner'
        left join lateral (
          select coalesce(nullif(u.full_name, ''), u.email::text) as contact_name, u.email::text as contact_email
          from organization_memberships m join users u on u.id = m.user_id and u.status = 'active'
@@ -612,6 +619,8 @@ export async function listClientSetupOverview(user: SessionUser): Promise<Client
         level,
         agentsOnline: r.agents_online,
         agentsEnabled: r.agents_enabled,
+        growthPartnerIdentityExists: r.growth_partner_identity_exists,
+        growthPartnerRuntimeLinked: r.growth_partner_runtime_linked,
         ghl: r.ghl_status,
         calendar: r.calendar_status,
         n8n: r.n8n_status,

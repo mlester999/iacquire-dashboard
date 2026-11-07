@@ -8,6 +8,7 @@ import { listClientSetupOverview } from "@/server/setup/snapshots";
 import { getAdminOverview, getTenantDetail, listAllAgents } from "@/server/admin/queries";
 import { agencyCrmPortfolio } from "@/server/crm/agency";
 import { listAgencyTickets } from "@/server/support/service";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { loadAgencyPermissionOverrides, loadAgencyPermissions, loadAgencyRolePermissions } from "@/server/tenancy/context";
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
 import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, PERMISSION_MATRIX } from "@/lib/permissions";
@@ -182,20 +183,43 @@ describe("agency manager and staff access", () => {
       await db.query("insert into support_tickets (org_id,created_by,subject,priority) values ($1,$2,'Permission test ticket','urgent')", [client.id, staff.id]);
       await db.query("insert into support_tickets (org_id,created_by,subject,priority) values ($1,$2,'Out-of-scope permission test ticket','urgent')", [unassignedClient.id, staff.id]);
     });
-    // An employee counts as online only in the recorded runtime-ready state (src/lib/employee-runtime.ts), not because a status says so.
+    // Legacy profiles remain in the directory, but Admin health counts only the linked Growth Partner runtime.
     const firstAgent = async (orgId: string) => (await withSystem((db) => db.query<{ id: string }>("select id from agent_instances where org_id = $1 order by role_key limit 1", [orgId]))).rows[0].id;
     await makeRuntimeReady(await firstAgent(client.id), client.id, owner.id);
     await makeRuntimeReady(await firstAgent(unassignedClient.id), unassignedClient.id, owner.id);
+    const growthPartnerRuntimeId = await withSystem((db) => ensureGrowthPartnerRuntime(client.id, db));
+    await makeRuntimeReady(growthPartnerRuntimeId, client.id, owner.id);
+    const unassignedGrowthPartnerRuntimeId = await withSystem((db) => ensureGrowthPartnerRuntime(unassignedClient.id, db));
+    await makeRuntimeReady(unassignedGrowthPartnerRuntimeId, unassignedClient.id, owner.id);
     const session = agencyUser(staff, "agency_staff");
 
     const visible = await getAdminOverview(session);
     expect(visible.clients).toBe(1);
-    expect(visible.agentsOnline).toBe(1);
+    expect(visible.growthPartnerRuntimesOnline).toBe(1);
+    expect(visible.growthPartnerRuntimesEnabled).toBe(1);
     expect(visible.openTickets).toBe(1);
+    // The legacy directory still contains exactly the six preserved role profiles; the Partner is counted separately.
     expect(await listAllAgents(session)).toHaveLength(6);
     expect(await listAgencyTickets(session, "active")).toHaveLength(1);
 
     const admin = agencyUser(owner, "agency_super_admin");
+    const setupRows = await listClientSetupOverview(admin);
+    expect(setupRows.find((row) => row.id === client.id)?.health).toMatchObject({
+      agentsOnline: 1,
+      agentsEnabled: 1,
+      growthPartnerIdentityExists: true,
+      growthPartnerRuntimeLinked: true,
+    });
+    expect(setupRows.find((row) => row.id === unassignedClient.id)?.health).toMatchObject({
+      agentsOnline: 1,
+      agentsEnabled: 1,
+      growthPartnerIdentityExists: true,
+      growthPartnerRuntimeLinked: true,
+    });
+    const staffSetupRows = await listClientSetupOverview(session);
+    expect(staffSetupRows.map((row) => row.id)).toEqual([client.id]);
+    expect(staffSetupRows[0].health).toMatchObject({ agentsOnline: 1, agentsEnabled: 1 });
+
     await updateAgencyUserPermission(admin, { userId: staff.id, permission: "agency.workforce.view", effect: "deny" });
     await updateAgencyUserPermission(admin, { userId: staff.id, permission: "agency.support.view", effect: "deny" });
 
@@ -203,7 +227,7 @@ describe("agency manager and staff access", () => {
     expect(effectivePermissions).not.toContain("agency.workforce.view");
     expect(effectivePermissions).not.toContain("agency.support.view");
     const restricted = await getAdminOverview(session);
-    expect(restricted).toMatchObject({ agentsOnline: 0, agentsEnabled: 0, provisioningOpen: 0, heldReviews: 0, openTickets: 0, urgentTickets: 0 });
+    expect(restricted).toMatchObject({ growthPartnerRuntimesOnline: 0, growthPartnerRuntimesEnabled: 0, growthPartnerRuntimesPreparing: 0, growthPartnerRuntimesNeedsAttention: 0, provisioningOpen: 0, heldReviews: 0, openTickets: 0, urgentTickets: 0 });
     await expect(listAllAgents(session)).rejects.toMatchObject({ code: "forbidden" });
     await expect(listAgencyTickets(session, "active")).rejects.toMatchObject({ code: "forbidden" });
   });
