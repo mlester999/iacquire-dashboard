@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { withSystem } from "@/server/db";
 import { saveResearchSourcePolicyAction } from "@/app/actions/leads";
 import { ResearchSourceSettings } from "@/components/growth-partner/research-source-settings";
@@ -136,6 +139,70 @@ describe("source-settings UI and backend acceptance", () => {
     expect(acknowledgements.every((tag) => !/\schecked(?:=|\s|>)/.test(tag))).toBe(true);
     expect(html).toContain("Owner and admin settings");
     expect(html).toContain("Saving stores limits; it does not start discovery.");
+  });
+
+  it("saves through the rendered form and reloads the persisted source policy", async () => {
+    const user = userEvent.setup();
+    const page = render(<ResearchSourceSettings policies={{ openstreetmap: null, company_website: null }} />);
+    const form = screen.getByRole("form", { name: "Configure OpenStreetMap discovery" });
+    const setField = async (label: string, value: string) => {
+      const field = within(form).getByLabelText(label) as HTMLInputElement;
+      await user.clear(field);
+      await user.type(field, value);
+    };
+
+    await user.click(within(form).getByRole("switch", { name: "Allow OpenStreetMap discovery requests" }));
+    await setField("Provider fee per request (USD)", "0.25");
+    await setField("Exact allowed server host", "overpass-api.de");
+    await setField("Maximum requests per job", "3");
+    await setField("Maximum requests per day", "5");
+    await setField("Provider spend cap per job (USD)", "0.25");
+    await setField("Provider spend cap per day (USD)", "0.50");
+
+    const advanced = form.querySelector("details");
+    expect(advanced).not.toBeNull();
+    advanced!.open = true;
+    await setField("Reviewed HTTPS endpoint", OSM.endpoint);
+    await setField("Identifying User-Agent", OSM.userAgent);
+    await setField("South latitude", String(OSM.bounds.south));
+    await setField("West longitude", String(OSM.bounds.west));
+    await setField("North latitude", String(OSM.bounds.north));
+    await setField("East longitude", String(OSM.bounds.east));
+    await user.click(within(form).getByRole("checkbox", { name: /I approve bounded, read-only requests/ }));
+    await user.click(within(form).getByRole("button", { name: "Save settings" }));
+
+    expect((await screen.findByRole("status")).textContent).toMatch(/saved/i);
+    const persisted = await withSystem((db) => getResearchSourcePolicy(db, org.id, "openstreetmap"));
+    expect(persisted).toMatchObject({
+      enabled: true,
+      approvedBy: owner.id,
+      providerFeeUsdPerRequest: 0.25,
+      perJobRequestCap: 3,
+      perDayRequestCap: 5,
+      perJobSpendCapUsd: 0.25,
+      perDaySpendCapUsd: 0.5,
+      sourceConfig: { endpoint: OSM.endpoint, approvedEndpointHosts: OSM.approvedEndpointHosts, bounds: OSM.bounds },
+    });
+    expect(auth.revalidatePath).toHaveBeenCalledWith("/growth-partner");
+
+    page.unmount();
+    const reloaded = render(<ResearchSourceSettings policies={{
+      openstreetmap: {
+        enabled: persisted!.enabled,
+        providerFeeUsdPerRequest: persisted!.providerFeeUsdPerRequest,
+        perJobRequestCap: persisted!.perJobRequestCap,
+        perDayRequestCap: persisted!.perDayRequestCap,
+        perJobSpendCapUsd: persisted!.perJobSpendCapUsd,
+        perDaySpendCapUsd: persisted!.perDaySpendCapUsd,
+        sourceConfig: persisted!.sourceConfig as Record<string, unknown>,
+      },
+      company_website: null,
+    }} />);
+    const reloadedForm = screen.getByRole("form", { name: "Configure OpenStreetMap discovery" });
+    expect((within(reloadedForm).getByRole("switch", { name: "Allow OpenStreetMap discovery requests" }) as HTMLInputElement).checked).toBe(true);
+    expect((within(reloadedForm).getByLabelText("Provider fee per request (USD)") as HTMLInputElement).value).toBe("0.25");
+    expect((within(reloadedForm).getByLabelText("Maximum requests per job") as HTMLInputElement).value).toBe("3");
+    reloaded.unmount();
   });
 
   it("persists approved limits through the server action and rejects unauthorized action and direct service calls", async () => {
