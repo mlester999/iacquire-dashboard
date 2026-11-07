@@ -161,6 +161,50 @@ describe("the employee cards while Setup required", () => {
   });
 });
 
+describe("the retained capability records", () => {
+  it("keeps saved role data reviewable while every new-work link opens the one permanent conversation", () => {
+    const checkedAt = "2026-10-24T00:00:00.000Z";
+    const profile = {
+      id: "legacy-lead-hunter",
+      role_key: "lead_hunter",
+      display_name: "Lead Hunter",
+      enabled: true,
+      status: "online",
+      mode: "approval_required",
+      summary: "Researches and qualifies prospective customers.",
+      config_version: 1,
+      last_health_check_at: checkedAt,
+      last_health_ok: true,
+      credential_ready: true,
+      tool_inventory_contract: "hermes.api_server.tool_catalog.v1",
+      tool_inventory_digest: "a".repeat(64),
+      tool_inventory_verified_at: checkedAt,
+      tool_inventory_expires_at: "2026-10-24T00:02:00.000Z",
+      tool_inventory_tool_count: 5,
+    };
+    render(<WorkforceGallery
+      agents={[profile] as never}
+      capabilities={{ lead_hunter: ["Research approved sources", "Check customer fit"] }}
+      companyName="Gallery Co"
+      canConfigure
+      canUse
+      evaluatedAt={Date.parse(checkedAt)}
+      paymentCleared
+    />);
+
+    expect(screen.getByText("One AI Growth Partner.")).toBeTruthy();
+    expect(screen.getByText("Legacy capability record 02")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Lead research" })).toBeTruthy();
+    expect(screen.getByText("Preserved capability details")).toBeTruthy();
+    const partnerLinks = screen.getAllByRole("link", { name: "Open AI Growth Partner" });
+    expect(partnerLinks).toHaveLength(2);
+    expect(partnerLinks.every((link) => link.getAttribute("href") === "/growth-partner/conversation")).toBe(true);
+    expect(screen.queryByRole("link", { name: "Open chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check setup status" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Review record" }).getAttribute("href")).toBe("/employees/lead-hunter");
+  });
+});
+
 describe("the review's plan", () => {
   const answers: StoredAnswers = Object.fromEntries(
     Object.entries({ "a.business_name": "Plan Co", "a.industry": "healthcare", "a.business_model": "local" } as Record<string, AnswerValue>).map(([id, value]) => [id, { value, source: "user" as const, skipped: false, needsConfirmation: false, updatedAt: "2026-10-21T04:00:00Z" }]),

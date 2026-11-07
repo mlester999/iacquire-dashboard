@@ -7,9 +7,8 @@ import { ArrowRight, ArrowUpRight, Check, MessageSquare, Search, ShieldCheck, Sl
 import { AgentAvatar } from "@/components/brand";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
-import { RequestSetupButton } from "@/components/workforce/request-setup";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
-import { AGENT_BY_KEY, AGENT_ROLES, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLES, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { deriveEmployeeReadiness, type ReadinessExtras } from "@/lib/workforce-readiness";
 import { employeeCardStatus } from "@/lib/onboarding/employee-status";
 import { cn } from "@/lib/utils";
@@ -62,7 +61,8 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
     paymentCleared,
   });
   const ready = agents.filter((a) => readinessFor(a).workReady);
-  // "Request setup" is about the runtime (a profile to create), so it counts employees that cannot chat yet, not those waiting on a calendar or a pipeline.
+  // This client page is a preservation view. Do not offer provisioning for retained role records;
+  // new work belongs to the one Growth Partner identity and its permanent conversation.
   const preparing = agents.filter((a) => a.enabled && !readinessFor(a).chatAvailable);
   const visible = agents.filter((a) => (filter === "all" || filter === "ready" && readinessFor(a).workReady || filter === "setup" && a.enabled && !readinessFor(a).workReady || filter === "disabled" && !a.enabled) && `${a.display_name} ${AGENT_BY_KEY[a.role_key].name}`.toLowerCase().includes(query.toLowerCase()));
 
@@ -72,19 +72,20 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
         <div aria-hidden className="pointer-events-none absolute -right-16 -top-28 size-96 rounded-full bg-blue-500/15 blur-3xl" />
         <div className="relative grid items-center gap-8 lg:grid-cols-[1.4fr_1fr]">
           <div>
-            <p className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.18em] text-blue-200"><Sparkles className="size-3.5" /> {companyName} profiles awaiting migration</p>
-            <h1 className="mt-3 max-w-xl text-[26px] font-semibold leading-[1.08] tracking-[-.04em] sm:text-[36px]">Growth Partner migration pending.<br /><span className="text-blue-200">Your existing settings stay available.</span></h1>
-            <p className="mt-4 max-w-xl text-[14px] leading-relaxed text-slate-300">Review the profiles that are still enabled in this workspace. Their current settings, schedules and history remain available while iAcquire reviews the migration.</p>
+            <p className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.18em] text-blue-200"><Sparkles className="size-3.5" /> {companyName} · retained capability settings</p>
+            <h1 className="mt-3 max-w-xl text-[26px] font-semibold leading-[1.08] tracking-[-.04em] sm:text-[36px]">One AI Growth Partner.<br /><span className="text-blue-200">Previous settings stay preserved.</span></h1>
+            <p className="mt-4 max-w-xl text-[14px] leading-relaxed text-slate-300">These records preserve settings, schedules and history from the previous setup. New work belongs in your AI Growth Partner’s permanent conversation.</p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              {preparing.length > 0 && canConfigure ? <RequestSetupButton count={preparing.length} /> : <ButtonLink href="/setup" variant="brand" size="sm">View your setup journey<ArrowRight className="size-3.5" /></ButtonLink>}
+              <ButtonLink href="/growth-partner/conversation" variant="brand" size="sm"><MessageSquare className="size-3.5" />Open AI Growth Partner</ButtonLink>
+              <ButtonLink href="/growth-partner" variant="secondary" size="sm">Partner Control Center<ArrowRight className="size-3.5" /></ButtonLink>
               <span className="flex items-center gap-1.5 text-[12px] text-slate-300"><ShieldCheck className="size-3.5 text-blue-200" />Private to your organization</span>
             </div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[.045] p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3"><span className="text-[12px] font-medium text-slate-300">Profile readiness</span><span className="rounded-full border border-white/15 px-2 py-1 text-[12px] uppercase tracking-wider text-slate-300">Current status</span></div>
-            <div className="mt-3 flex items-baseline gap-2"><strong className="text-[34px] font-semibold leading-none tracking-[-.05em] sm:text-[42px]">{ready.length}</strong><span className="text-[14px] text-slate-300">of {agents.filter((a) => a.enabled).length} enabled profiles ready</span></div>
+            <div className="flex items-center justify-between gap-3"><span className="text-[12px] font-medium text-slate-300">Retained record checks</span><span className="rounded-full border border-white/15 px-2 py-1 text-[12px] uppercase tracking-wider text-slate-300">Saved status</span></div>
+            <div className="mt-3 flex items-baseline gap-2"><strong className="text-[34px] font-semibold leading-none tracking-[-.05em] sm:text-[42px]">{ready.length}</strong><span className="text-[14px] text-slate-300">of {agents.filter((a) => a.enabled).length} retained records passed their saved checks</span></div>
             <div className="mt-4 grid grid-cols-6 gap-0 sm:flex sm:flex-wrap sm:gap-2">{agents.map((a) => <Link aria-label={`View ${a.display_name}`} key={a.id} href={`/employees/${AGENT_BY_KEY[a.role_key].slug}`} className="flex size-11 items-center justify-center rounded-xl transition hover:-translate-y-1 focus-visible:outline-white"><AgentAvatar role={AGENT_BY_KEY[a.role_key]} size="sm" /></Link>)}</div>
-            <p className="mt-4 text-[12px] leading-relaxed text-slate-300">{preparing.length ? `${preparing.length} profiles need preparation or connection verification. Each profile explains the next step in its own context.` : ready.length ? "Every enabled profile has passed the recorded checks. Open one to review its configuration or start a conversation." : "Connection checks will confirm when these profiles are ready to work."}</p>
+            <p className="mt-4 text-[12px] leading-relaxed text-slate-300">{preparing.length ? `${preparing.length} retained records need review or connection verification. Open a record to inspect its saved settings.` : ready.length ? "These saved checks describe the previous records. Use the permanent Growth Partner conversation for new work." : "Saved connection checks describe these retained records; they do not change the Growth Partner’s readiness."}</p>
           </div>
         </div>
       </section>
@@ -99,16 +100,15 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
           {visible.map((a, index) => {
             const role = AGENT_BY_KEY[a.role_key];
             const readiness = readinessFor(a);
-            const connected = readiness.chatAvailable;
             // "Setup required" says why: the setup payment, or the Hermes profile (src/lib/onboarding/employee-status.ts).
             const cardStatus = employeeCardStatus(readiness, { status: a.status, enabled: a.enabled, paymentCleared });
             return (
               <motion.article key={a.id} data-aqi-target="workforce.employee" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: reduced ? 1 : .97 }} transition={{ duration: reduced ? 0 : .3, delay: reduced ? 0 : index * .035 }} whileHover={reduced ? undefined : { y: -4 }} className={cn("group flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-soft transition hover:border-line-strong", !a.enabled && "opacity-80")}>
                 <div className="relative flex h-32 items-center justify-between overflow-hidden border-b border-line px-5" style={{ background: `radial-gradient(ellipse at 85% 20%,${role.accent}30,transparent 72%),var(--surface-2)` }}>
                   <div className="relative z-10">
-                    <span className="block font-mono text-[12px] uppercase tracking-[.14em] text-muted">Existing profile {String(AGENT_ROLES.findIndex((r) => r.key === a.role_key) + 1).padStart(2, "0")}</span>
+                    <span className="block font-mono text-[12px] uppercase tracking-[.14em] text-muted">Legacy capability record {String(AGENT_ROLES.findIndex((r) => r.key === a.role_key) + 1).padStart(2, "0")}</span>
                     <span className="mt-2 block max-w-36 text-[18px] font-semibold leading-tight tracking-tight text-ink">{ROLE_HEADLINE[a.role_key]}</span>
-                    <p className="mt-1 text-[12px] text-muted">{MODE_LABEL[a.mode]}</p>
+                    <p className="mt-1 text-[12px] text-muted">Saved mode · {MODE_LABEL[a.mode]}</p>
                   </div>
                   <div aria-hidden className="absolute right-4 top-4 size-28 rounded-full border border-line-strong/70" />
                   <div aria-hidden className="absolute right-0 top-0 size-36 rounded-full border border-line/70" />
@@ -116,15 +116,15 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <h2 className="min-w-0 text-[18px] font-semibold tracking-tight" title={agentIdentityLabel(a.display_name, role)}>{agentIdentityLabel(a.display_name, role)}</h2>
+                    <h2 className="min-w-0 text-[18px] font-semibold tracking-tight">{ROLE_HEADLINE[a.role_key]}</h2>
                     <ArrowUpRight className="mt-1 size-4 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
                   </div>
                   <p className="mt-2 min-h-12 text-[14px] leading-relaxed text-muted" title={a.summary ?? undefined}>{a.summary?.split(/(?<=[.!?])\s/)[0] ?? role.tagline}</p>
-                  <div className="mt-4 border-t border-line pt-4"><p className="mb-2 text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Current responsibilities</p><ul className="space-y-2">{(capabilities[a.role_key] ?? []).slice(0, 3).map((capability) => <li key={capability} className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-2"><Check className="mt-0.5 size-3.5 shrink-0 text-primary" />{capability}</li>)}</ul></div>
+                  <div className="mt-4 border-t border-line pt-4"><p className="mb-2 text-[12px] font-semibold uppercase tracking-[.14em] text-muted">Preserved capability details</p><ul className="space-y-2">{(capabilities[a.role_key] ?? []).slice(0, 3).map((capability) => <li key={capability} className="flex items-start gap-2 text-[12px] leading-relaxed text-ink-2"><Check className="mt-0.5 size-3.5 shrink-0 text-primary" />{capability}</li>)}</ul></div>
                   <div className="mt-4 border-t border-line pt-4"><ReadinessInline readiness={{ ...readiness, label: cardStatus.label }} /><p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-muted">{readiness.chatAvailable && !readiness.inventoryAttestationCurrent ? "Ready for authorized work · tools refresh before chat" : cardStatus.line}</p></div>
                   <div className="mt-auto flex items-center justify-between gap-2 pt-5">
-                    {connected && canUse ? <ButtonLink href={`/chat/${role.slug}`} size="sm" variant="brand"><MessageSquare className="size-3.5" />Open chat</ButtonLink> : canConfigure ? <ButtonLink href={`/employees/${role.slug}?tab=configure`} size="sm" variant="brand"><SlidersHorizontal className="size-3.5" />{readiness.stage === "setup" ? "Complete setup" : "Review setup"}</ButtonLink> : <span className="max-w-36 text-[12px] text-muted">{a.enabled ? "Chat opens after verification" : "Not included in your package"}</span>}
-                    <Link href={`/employees/${role.slug}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-ink-2 hover:bg-surface-2">{canConfigure ? "Profile" : "Details"}<ArrowRight className="size-3.5" /></Link>
+                    {canUse ? <ButtonLink href="/growth-partner/conversation" size="sm" variant="brand"><MessageSquare className="size-3.5" />Open AI Growth Partner</ButtonLink> : canConfigure ? <ButtonLink href={`/employees/${role.slug}?tab=configure`} size="sm" variant="brand"><SlidersHorizontal className="size-3.5" />Review saved settings</ButtonLink> : <span className="max-w-36 text-[12px] text-muted">Saved record retained</span>}
+                    <Link href={`/employees/${role.slug}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-ink-2 hover:bg-surface-2">{canConfigure ? "Review record" : "Details"}<ArrowRight className="size-3.5" /></Link>
                   </div>
                 </div>
               </motion.article>
