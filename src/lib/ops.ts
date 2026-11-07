@@ -9,7 +9,7 @@ export type IncidentSeverity = "info" | "warning" | "critical";
 export type IncidentStatus = "open" | "acknowledged" | "resolved";
 
 export const SOURCE_LABELS: Record<IncidentSource, string> = {
-  database: "Database", scheduler: "Scheduled jobs", ghl: "GoHighLevel", hermes: "AI employees", n8n: "n8n automation", appointment_processor: "Appointment processing",
+  database: "Database", scheduler: "Scheduled jobs", ghl: "GoHighLevel", hermes: "AI runtime", n8n: "n8n automation", appointment_processor: "Appointment processing",
   website: "Website", domain: "Domain", messaging: "Messaging", payments: "Payments", queue: "Work queue", credits: "Service credits", email: "Email delivery",
   integration: "Connection", automation: "Automation",
 };
@@ -123,10 +123,10 @@ export const JOB_LABELS: Record<string, string> = {
   inactivityReview: "Review accounts that have gone quiet",
   offboardingReminders: "Remind departing clients before deletion",
   aiWorkRecovery: "Recover stalled AI work jobs",
-  aiWorkSchedules: "Run due AI workforce schedules",
-  aiWorkTriggers: "Run AI workforce event triggers",
+  aiWorkSchedules: "Run due AI work schedules",
+  aiWorkTriggers: "Run AI work triggers",
   aiProactiveHeldReports: "Release proactive reports held by quiet hours",
-  aiProactiveBriefings: "Generate opted-in AI workforce briefings",
+  aiProactiveBriefings: "Generate opted-in AI briefings",
   customerPaymentReconcile: "Settle customer payments a provider reported or that were never confirmed",
   invoiceOverdueSweep: "Notice customer invoices that went past their due date",
   invoiceReminders: "Queue authorized reminders for unpaid customer invoices",

@@ -11,7 +11,7 @@ import { listAgencyTickets } from "@/server/support/service";
 import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { loadAgencyPermissionOverrides, loadAgencyPermissions, loadAgencyRolePermissions } from "@/server/tenancy/context";
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
-import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, PERMISSION_MATRIX } from "@/lib/permissions";
+import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSION_INFO, PERMISSION_MATRIX } from "@/lib/permissions";
 import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
 import { makeRuntimeReady } from "./support/runtime-ready";
 
@@ -38,6 +38,14 @@ describe("agency team migration compatibility", () => {
     expect(new Set(agencyTeamPermissions).size).toBe(agencyTeamPermissions.length);
     expect([...agencyTeamPermissions].sort()).toEqual(Object.keys(PERMISSION_MATRIX).sort());
     expect([...AGENCY_DELEGABLE_PERMISSIONS]).toEqual(Object.entries(AGENCY_PERMISSION_INFO).filter(([, info]) => info.delegable).map(([permission]) => permission));
+  });
+
+  it("describes client access in the unified Growth Partner model", () => {
+    expect(AGENCY_TEAM_PROTECTED_PERMISSION_INFO["agents.use"]).toMatchObject({ label: "Use the AI Growth Partner", group: "AI Growth Partner" });
+    expect(AGENCY_TEAM_PROTECTED_PERMISSION_INFO["agents.configure"]).toMatchObject({ label: "Configure the AI Growth Partner", group: "AI Growth Partner" });
+    expect(AGENCY_PERMISSION_INFO["agency.workforce.view"].label).toContain("Growth Partners");
+    expect(AGENCY_PERMISSION_INFO["agency.workforce.manage"].label).toContain("retained profiles");
+    expect(AGENCY_PERMISSION_INFO["agency.tool_policies.view"].group).toBe("AI operations");
   });
 
   it("applies the exact agency permission migrations in order despite shared numeric prefixes", async () => {

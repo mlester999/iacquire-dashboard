@@ -273,12 +273,12 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.clients.create": { label: "Create client workspaces", group: "Clients", delegable: true },
   "agency.clients.invite_users": { label: "Invite client users", group: "Clients", delegable: true },
   "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", delegable: false },
-  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", delegable: false },
-  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", delegable: false },
+  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI operations", delegable: false },
+  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI operations", delegable: false },
   "agency.integrations.health": { label: "View integration health", group: "Integrations", delegable: false },
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", delegable: false },
-  "agency.workforce.view": { label: "View assigned client AI workforce", group: "Client operations", delegable: true },
-  "agency.workforce.manage": { label: "Manage assigned client AI workforce", group: "Client operations", delegable: true },
+  "agency.workforce.view": { label: "Review assigned client Growth Partners and retained profiles", group: "Client operations", delegable: true },
+  "agency.workforce.manage": { label: "Manage assigned client Growth Partner settings and retained profiles", group: "Client operations", delegable: true },
   "agency.crm.read": { label: "Read assigned client CRM records", group: "Client operations", delegable: true },
   "agency.crm.manage": { label: "Update assigned client CRM records", group: "Client operations", delegable: true },
   "agency.support.view": { label: "Read assigned client support tickets", group: "Client operations", delegable: true },
@@ -304,7 +304,7 @@ export const AGENCY_PERMISSION_INFO = {
   "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", delegable: false },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", delegable: false },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", delegable: false },
-  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", delegable: false },
+  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI operations", delegable: false },
 } as const satisfies Record<Extract<Permission, `agency.${string}`>, { label: string; group: string; delegable: boolean }>;
 
 export type AgencyPermission = keyof typeof AGENCY_PERMISSION_INFO;
@@ -482,8 +482,8 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "workspace.manage_profile": { label: "Edit client workspace profile", group: "Workspace", note: "Client owner or agency role control." },
   "team.view": { label: "View client team", group: "Team and access", note: "Client scope and resource access still apply." },
   "team.manage": { label: "Manage client users and roles", group: "Team and access", note: "Client owner or agency role control." },
-  "agents.use": { label: "Use client AI agents", group: "AI workforce", note: "Agent availability and client policy still apply." },
-  "agents.configure": { label: "Configure client AI agents", group: "AI workforce", note: "Client owner control." },
+  "agents.use": { label: "Use the AI Growth Partner", group: "AI Growth Partner", note: "Availability and workspace policy still apply." },
+  "agents.configure": { label: "Configure the AI Growth Partner", group: "AI Growth Partner", note: "Client owner control." },
   "knowledge.view": { label: "View shared knowledge", group: "Knowledge", note: "Client scope and resource access still apply." },
   "knowledge.edit": { label: "Edit shared knowledge", group: "Knowledge", note: "Client owner or agency role control." },
   "leads.view": { label: "View leads", group: "Leads", note: "Client scope and resource access still apply." },
@@ -574,8 +574,8 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "reviews.respond": { label: "Draft replies to customer reviews", group: "Reputation", note: "Client scope still applies. A draft is never posted until the client's owner or manager approves it." },
   "reviews.reply_publish": { label: "Approve and post replies to customer reviews", group: "Reputation", note: "Reserved for the client's owner and manager: a reply goes out under the business's name." },
   "agency.team.manage": { label: "Manage agency team and permissions", group: "Agency security", note: "Super Admin only." },
-  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI workforce", note: "Agency role control." },
-  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI workforce", note: "Super Admin only." },
+  "agency.tool_policies.view": { label: "View Hermes tool policies", group: "AI operations", note: "Agency role control." },
+  "agency.tool_policies.manage": { label: "Edit Hermes tool policies", group: "AI operations", note: "Super Admin only." },
   "agency.integrations.health": { label: "View integration health", group: "Integrations", note: "Agency role control." },
   "agency.integrations.manage": { label: "Manage integrations and credentials", group: "Integrations", note: "Super Admin only." },
   "agency.support.settings": { label: "Configure support hours, response targets and notifications", group: "Support", note: "Super Admin only." },
@@ -587,7 +587,7 @@ export const AGENCY_TEAM_PROTECTED_PERMISSION_INFO = {
   "agency.prospects.manage": { label: "Run the demo funnel: its settings, extending a demo, blocking, assigning, erasing and converting a prospect", group: "Sales", note: "Super Admin only. Converting a prospect also needs the permission to create client workspaces." },
   "agency.settings.manage": { label: "Change agency-wide settings", group: "Agency security", note: "Super Admin only." },
   "agency.audit.view": { label: "Review agency audit history", group: "Agency security", note: "Super Admin only." },
-  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI workforce", note: "Super Admin only." },
+  "agency.workforce.full_capabilities.acknowledge": { label: "Authorize full capabilities for internal Hermes profiles", group: "AI operations", note: "Super Admin only." },
 } as const satisfies Record<AgencyTeamProtectedPermission, { label: string; group: string; note: string }>;
 
 export const AGENCY_TEAM_PROTECTED_PERMISSIONS = Object.keys(AGENCY_TEAM_PROTECTED_PERMISSION_INFO) as AgencyTeamProtectedPermission[];

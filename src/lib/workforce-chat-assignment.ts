@@ -58,7 +58,7 @@ export function parseWorkforceChatAssignment(role: WorkforceRoleKey, content: st
     }
     if (reviewAction && /\b(?:sales pipeline|pipeline|opportunities|deals|stale deals|follow[\s-]*ups?)\b/.test(text)
       && /\b(?:draft|prepare|write|compose)\b.{0,60}\b(?:follow[\s-]*ups?|messages?|emails?)\b/.test(text)) {
-      return { capability: "pipeline_followup_drafts", title: "Sales pipeline review and follow-up drafts", input: { limit: 5 }, acknowledgement: "I’ll review stale opportunities and prepare up to five unsent, neutral follow-up drafts only in open conversations already handled by the workspace’s AI workforce. A person must review every draft before anything is sent." };
+      return { capability: "pipeline_followup_drafts", title: "Sales pipeline review and follow-up drafts", input: { limit: 5 }, acknowledgement: "I’ll review stale opportunities and prepare up to five unsent, neutral follow-up drafts only in open conversations already assigned to AI in this workspace. A person must review every draft before anything is sent." };
     }
     if (reviewAction && /\b(?:sales pipeline|pipeline|opportunities|deals|stale deals|follow ups|followups)\b/.test(text)) {
       return { capability: "pipeline_review", title: "Sales pipeline review", input: {}, acknowledgement: "I’ll review saved opportunities and record follow-up risks and next-step recommendations. This review does not change deals or send outreach." };

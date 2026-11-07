@@ -81,7 +81,7 @@ export const WORKFORCE_CAPABILITIES: Record<CapabilityKey, CapabilityDefinition>
   pipeline_followup_drafts: {
     key: "pipeline_followup_drafts",
     label: "Sales follow-up drafts",
-    description: "Review stale open opportunities and prepare at most five unsent, neutral follow-up drafts only for open conversations already handled by the workspace's AI workforce. A person must review each draft before any message can be sent.",
+    description: "Review stale open opportunities and prepare at most five unsent, neutral follow-up drafts only for open conversations already assigned to AI in this workspace. A person must review each draft before any message can be sent.",
     allowedRoles: ["sales_assistant", AI_GROWTH_PARTNER_ROLE_KEY],
     requiredPermission: "sales.view",
     additionalPermissions: ["inbox.reply"],
