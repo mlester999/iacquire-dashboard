@@ -10,26 +10,36 @@ export interface SetupCopyView {
 }
 
 const LEGACY_COPY: Record<string, {
-  title?: readonly [string, string];
-  clientTitle?: readonly [string, string];
-  description?: readonly [string, string];
-  completionNotice?: readonly [string, string];
+  title?: Readonly<Record<string, string>>;
+  clientTitle?: Readonly<Record<string, string>>;
+  description?: Readonly<Record<string, string>>;
+  completionNotice?: Readonly<Record<string, string>>;
   action?: { oldLabel: string; newLabel: string; oldInstructions: string; newInstructions: string };
 }> = {
   company_info: {
-    description: [
-      "The details you shared about your business, goals and how your AI team should communicate.",
-      "The details you shared about your business, goals and how AI should support your work.",
-    ],
+    description: {
+      "The details you shared about your business, goals and how your AI team should communicate.": "The details you shared about your business, goals and how AI should support your work.",
+    },
   },
   ai_employees: {
-    title: ["Six client-specific Hermes AI employees configured", "AI runtime and safety checks passed"],
-    clientTitle: ["Your six AI employees are configured", "Your AI runtime is configured"],
-    description: [
-      "Each AI employee gets its own private environment and is checked live before it is marked ready.",
-      "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
-    ],
-    completionNotice: ["Your AI team is ready", "Your AI workspace is ready"],
+    title: {
+      "Six client-specific Hermes AI employees configured": "AI runtime verification",
+      "AI runtime and safety checks passed": "AI runtime verification",
+      "AI Growth Partner runtime and safety checks passed": "AI Growth Partner runtime verification",
+    },
+    clientTitle: {
+      "Your six AI employees are configured": "Your AI runtime setup",
+      "Your AI runtime is configured": "Your AI runtime setup",
+      "Your AI Growth Partner is ready": "Your AI Growth Partner setup",
+    },
+    description: {
+      "Each AI employee gets its own private environment and is checked live before it is marked ready.": "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
+      "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.": "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
+      "We prepare one tenant-isolated Growth Partner profile with its approved persona, permissions and Business Brain. It becomes ready only after its connection, identity and permitted-tool checks pass.": "We prepare one tenant-isolated AI Growth Partner with its approved Business Brain, personality and permissions. Setup stays in progress until its runtime identity, connection and permitted tools are verified.",
+    },
+    completionNotice: {
+      "Your AI team is ready": "Your AI workspace is ready",
+    },
     action: {
       oldLabel: "Approve your AI employee configuration",
       newLabel: "Review your AI workspace configuration",
@@ -38,38 +48,60 @@ const LEGACY_COPY: Record<string, {
     },
   },
   ai_configuration: {
-    title: ["AI employee configuration drafts prepared", "AI workspace configuration prepared"],
-    clientTitle: ["Your AI employee instructions are prepared", "Your AI configuration is prepared"],
-    description: [
-      "We prepare each included employee around your business knowledge, tone and approved responsibilities.",
-      "We prepare an AI configuration around your approved business information, communication preferences and permitted capabilities.",
-    ],
+    title: {
+      "AI employee configuration drafts prepared": "AI workspace configuration",
+      "AI workspace configuration prepared": "AI workspace configuration",
+      "AI Growth Partner configuration prepared": "AI Growth Partner configuration",
+    },
+    clientTitle: {
+      "Your AI employee instructions are prepared": "Your AI configuration",
+      "Your AI configuration is prepared": "Your AI configuration",
+    },
+    description: {
+      "We prepare each included employee around your business knowledge, tone and approved responsibilities.": "We prepare the AI configuration around your approved business information, communication preferences and permitted capabilities.",
+    },
   },
   ai_profiles: {
-    title: ["Dedicated AI employee profiles provisioned", "Private AI runtime profile provisioned"],
-    clientTitle: ["Your private AI employees are prepared", "Your private AI runtime is prepared"],
-    description: [
-      "We prepare separate employee identities for your company. They become ready only after successful connection and safety checks.",
-      "We prepare the private runtime profile for your workspace. It becomes ready only after successful connection and safety checks.",
-    ],
+    title: {
+      "Dedicated AI employee profiles provisioned": "AI runtime profile preparation",
+      "Private AI runtime profile provisioned": "AI runtime profile preparation",
+      "AI Growth Partner Hermes profile provisioned": "AI Growth Partner runtime profile",
+    },
+    clientTitle: {
+      "Your private AI employees are prepared": "Your private AI runtime setup",
+      "Your private AI runtime is prepared": "Your private AI runtime setup",
+      "Your private AI Growth Partner profile is prepared": "Your private AI Growth Partner profile",
+    },
+    description: {
+      "We prepare separate employee identities for your company. They become ready only after successful connection and safety checks.": "We prepare the private runtime profile for your workspace. It becomes ready only after its identity, connection and safety checks pass.",
+      "We prepare the private runtime profile for your workspace. It becomes ready only after successful connection and safety checks.": "We prepare the private runtime profile for your workspace. It becomes ready only after its identity, connection and safety checks pass.",
+      "We prepare one private Hermes profile for your AI Growth Partner. It becomes ready only after its connection and safety checks pass.": "We prepare one private runtime profile for your AI Growth Partner. It becomes ready only after its identity, connection and safety checks pass.",
+    },
   },
   integration_tests: {
-    title: ["AI workforce and integration tests passed", "AI and integration checks passed"],
-    description: [
-      "We run live checks across your AI employees and connected tools before activation.",
-      "We run live checks across the AI runtime, CRM and connected tools before activation.",
-    ],
+    title: {
+      "AI workforce and integration tests passed": "AI and integration verification",
+      "AI and integration checks passed": "AI and integration verification",
+      "AI Growth Partner and integration checks passed": "AI Growth Partner and integration verification",
+    },
+    clientTitle: {
+      "Final system checks passed": "Final system verification",
+    },
+    description: {
+      "We run live checks across your AI employees and connected tools before activation.": "We verify the AI runtime, CRM and connected tools before activation.",
+      "We run live checks across the AI runtime, CRM and connected tools before activation.": "We verify the AI runtime, CRM and connected tools before activation.",
+      "We run live checks across your AI Growth Partner, CRM and connected tools before activation.": "We verify the AI Growth Partner runtime, CRM and connected tools before activation.",
+    },
   },
   knowledge_review: {
-    description: [
-      "We review your approved business information so your AI employees have accurate reference material.",
-      "We review approved business information and reference materials before the AI runtime is activated.",
-    ],
+    description: {
+      "We review your approved business information so your AI employees have accurate reference material.": "We review the approved Business Brain and company information before the AI runtime is activated.",
+    },
   },
 };
 
-function current(value: string | null, rule?: readonly [string, string]) {
-  return rule && value === rule[0] ? rule[1] : value;
+function current(value: string | null, rule?: Readonly<Record<string, string>>) {
+  return value === null ? null : rule?.[value] ?? value;
 }
 
 /** Presentation-only cleanup for known legacy checklist copy; it never changes saved workflow rows. */

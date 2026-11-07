@@ -205,9 +205,9 @@ describe("configurable master setup templates", () => {
     const { admin, ctx, taskId } = await fixture();
     const template = (await listSetupTemplates(admin))[0];
     expect(template.tasks.find((item) => item.key === "ai_employees")).toMatchObject({
-      title: "AI runtime and safety checks passed",
-      clientTitle: "Your AI runtime is configured",
-      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      title: "AI runtime verification",
+      clientTitle: "Your AI runtime setup",
+      description: "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
     });
     const task = template.tasks.find((t) => t.key === "website_built")!;
     const data = { title: task.title,clientTitle: task.clientTitle ?? "",description: task.description,required: task.required,requiresEvidence: task.requiresEvidence,requiresClientResponse: task.requiresClientResponse,dependsOn: task.dependsOn,clientAction: task.clientAction };

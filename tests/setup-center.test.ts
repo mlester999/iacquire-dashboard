@@ -110,8 +110,9 @@ describe("checklist creation", () => {
   });
 
   it("uses capability-focused setup copy for workspaces with retained role profiles", async () => {
-    const { org } = await fresh("Legacy Setup Copy Co");
-    expect(await task(org.id, "ai_employees")).toMatchObject({
+    const { org, ownerCtx } = await fresh("Legacy Setup Copy Co");
+    const saved = await task(org.id, "ai_employees");
+    expect(saved).toMatchObject({
       title: "AI runtime and safety checks passed",
       client_title: "Your AI runtime is configured",
       description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
@@ -121,6 +122,12 @@ describe("checklist creation", () => {
         label: "Review your AI workspace configuration",
         instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup.",
       },
+    });
+    const visible = (await getClientSetupSnapshot(ownerCtx))!.tasks.find((item) => item.id === saved.id)!;
+    expect(visible).toMatchObject({
+      title: "Your AI runtime setup",
+      status: "pending",
+      description: "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
     });
   });
 
@@ -140,15 +147,15 @@ describe("checklist creation", () => {
 
     const clientTask = (await getClientSetupSnapshot(ownerCtx))!.tasks.find((item) => item.id === id)!;
     expect(clientTask).toMatchObject({
-      title: "Your AI runtime is configured",
-      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      title: "Your AI runtime setup",
+      description: "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
       action: { label: "Review your AI workspace configuration", instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup." },
     });
     const agencyTask = (await getAgencySetupSnapshot(await admin(), org.id)).tasks.find((item) => item.id === id)!;
     expect(agencyTask).toMatchObject({
-      title: "AI runtime and safety checks passed",
-      clientTitle: "Your AI runtime is configured",
-      description: "We prepare the AI runtime with your approved business information, behavior and permissions. It becomes ready only after its connection and safety checks pass.",
+      title: "AI runtime verification",
+      clientTitle: "Your AI runtime setup",
+      description: "We prepare your approved AI configuration and verify its runtime connections, identities and safety before marking setup ready.",
       clientAction: { label: "Review your AI workspace configuration", instructions: "Review the approved business information, communication settings and enabled capabilities, then approve so we can finish and test your setup." },
     });
 
@@ -163,22 +170,39 @@ describe("checklist creation", () => {
     });
   });
 
-  it("uses unified Partner setup copy as soon as the logical identity exists, before runtime linking", async () => {
+  it("keeps new Partner setup status neutral until the runtime has passed its checks", async () => {
     const org = await createOrg({ name: "Partner Setup Copy Co" });
     const owner = await createUser();
     await addMember(org.id, owner.id, "owner");
     const ownerCtx = ctxFor(owner, org, "owner");
     await ensureGrowthPartnerIdentity(ownerCtx);
+    await withSystem((db) => ensureSetupInstance(db, org.id));
     const runtimeId = (await withSystem((db) => db.query<{ runtime_agent_instance_id: string | null }>(
       "select runtime_agent_instance_id from ai_growth_partners where org_id = $1", [org.id],
     ))).rows[0].runtime_agent_instance_id;
     expect(runtimeId).toBeNull();
 
-    await withSystem((db) => ensureSetupInstance(db, org.id));
-    expect(await task(org.id, "ai_employees")).toMatchObject({
+    const saved = await task(org.id, "ai_employees");
+    expect(saved).toMatchObject({
       title: "AI Growth Partner runtime and safety checks passed",
       client_title: "Your AI Growth Partner is ready",
+      completion_notice: "Your AI Growth Partner is ready",
     });
+    const visible = (await getClientSetupSnapshot(ownerCtx))!.tasks.find((item) => item.id === saved.id)!;
+    expect(visible).toMatchObject({
+      title: "Your AI Growth Partner setup",
+      status: "pending",
+    });
+
+    await updateTaskStatus(await admin(), org.id, saved.id as string, {
+      status: "blocked",
+      note: "The runtime identity has not been verified yet.",
+    });
+    const issue = (await withSystem((db) => db.query<{ title: string }>(
+      "select title from notifications where user_id = $1 and kind = 'setup_issue' order by created_at desc limit 1",
+      [owner.id],
+    ))).rows[0];
+    expect(issue.title).toBe("Your AI Growth Partner setup needs attention");
   });
 
   it("is idempotent and never creates a checklist for the agency workspace", async () => {

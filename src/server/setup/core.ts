@@ -9,6 +9,7 @@ import type { SessionUser } from "@/server/auth/service";
 import { publishSetupChange } from "@/server/setup/hub";
 import { publishSetupRevision } from "@/server/setup/realtime";
 import { evaluateReadiness, type CheckKey, type CheckStatus, type InstanceState, type RuleTask, type SetupCrmProvider, type SetupService, type TaskStatus, type CompletionMode } from "@/lib/setup";
+import { currentSetupCopy } from "@/lib/setup-copy";
 
 export interface InstanceRow {
   id: string;
@@ -397,6 +398,16 @@ export async function lockClientSetupResponse(db: Queryable, userId: string, org
   if (!rows.length) throw new AppError("forbidden", "Only current workspace owners and admins can respond to setup requests.");
 }
 
-export function clientTitle(t: { title: string; client_title: string | null }) {
-  return t.client_title?.trim() || t.title;
+export function clientTitle(t: Pick<TaskRow, "template_key" | "title" | "client_title">) {
+  const fallback = t.client_title?.trim() || t.title;
+  if (!t.template_key) return fallback;
+  const copy = currentSetupCopy({
+    key: t.template_key,
+    title: t.title,
+    clientTitle: t.client_title,
+    description: "",
+    completionNotice: null,
+    clientAction: null,
+  });
+  return copy.clientTitle?.trim() || copy.title;
 }
