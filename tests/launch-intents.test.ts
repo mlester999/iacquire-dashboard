@@ -322,7 +322,7 @@ describe("sync_employees: bringing the AI team up to what the client approved", 
     expect([...audit[0].metadata.held].sort()).toEqual(held);
 
     // Pressing it again finds nothing to do and writes nothing.
-    expect(await runLaunchIntent(c.ctx, "sync_employees")).toEqual({ ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." });
+    expect(await runLaunchIntent(c.ctx, "sync_employees")).toEqual({ ok: true, message: "Your active AI setup already matches your approved company information. Nothing was changed." });
     expect(await versions(c.org.id)).toEqual(after);
     expect(await q("select 1 from audit_logs where org_id = $1 and action = 'setup.launch_employees_synced'", [c.org.id])).toHaveLength(1);
   }, 180_000);

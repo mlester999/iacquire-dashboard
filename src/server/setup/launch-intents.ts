@@ -173,7 +173,7 @@ async function runIntent(ctx: OrgContext, intent: LaunchIntent, params: LaunchIn
  */
 async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
   const orgId = ctx.org.orgId;
-  if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only an owner or admin can update the AI employees from your approved setup.");
+  if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only an owner or admin can update the AI setup from your approved company information.");
   assertRealWorkspace(ctx);
   await assertStepsOpen(orgId, "setup");
   await assertNothingWaitingApproval(orgId);
@@ -207,7 +207,7 @@ async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
   });
   if (!result.generated.length) return { ok: true, message: result.partnerOnly
     ? "Your AI Growth Partner already matches your approved setup. Nothing was changed."
-    : "Your AI employees already match your approved setup. Nothing was changed." };
+    : "Your active AI setup already matches your approved company information. Nothing was changed." };
   const names = (roles: WorkforceRoleKey[]) => roles.map(workforceRoleShortName).join(", ");
   const updated = result.generated.filter((g) => g.configStatus === "applied").map((g) => g.role);
   const held = result.generated.filter((g) => g.configStatus === "pending_agency_review").map((g) => g.role);
