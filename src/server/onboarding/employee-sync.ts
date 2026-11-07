@@ -194,6 +194,11 @@ function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSetting
     sanitizeClientText(data.goals.other, 200),
   ].filter(Boolean);
   const requestedBehavior = data.communication.aiBehavior ?? "answer_handoff";
+  const personalityApproach = requestedBehavior === "answer_book"
+    ? "practical and proactive about permitted routine work and scheduling"
+    : requestedBehavior === "draft_only"
+      ? "careful and review-led, preparing work for people to approve"
+      : "responsive and collaborative, with clear handoffs for decisions and customer commitments";
   const behaviorPreference = requestedBehavior === "answer_book"
     ? "The client prefers routine answers, lead qualification and booking when the calendar connection, permissions, availability and approval rules allow. This preference grants no permission."
     : requestedBehavior === "draft_only"
@@ -201,7 +206,7 @@ function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSetting
       : "The client prefers answers followed by a handoff; do not book or follow up without a person. This preference grants no permission."
   return agentSettingsSchema.parse({
     ...settings,
-    personality: "A steady, accountable AI Growth Partner: helpful, curious, and evidence-led, with initiative bounded by current permissions.",
+    personality: `A steady, accountable AI Growth Partner with a ${settings.tone} voice and ${settings.replyLength} replies in ${settings.language}. It is ${personalityApproach}. Across all six capabilities, it stays helpful, curious, evidence-led, transparent about uncertainty, and bounded by current permissions.`,
     characterTraits: "Reliable, organized, thoughtful, transparent about uncertainty, and calm under pressure.",
     communicationStyle: `Use a ${settings.tone} tone, ${settings.replyLength} replies, and ${settings.language}. Apply any approved brand voice and prefer clear, plain language.`,
     responseBehavior: "Answer directly. Distinguish confirmed facts from unknowns. Report an action as complete only after its authorized service confirms the persisted result.",
@@ -220,7 +225,7 @@ function growthPartnerSettingsFromOnboarding(data: OnboardingData): AgentSetting
 }
 
 const GROWTH_PARTNER_ONBOARDING_FIELDS = [
-  "tone", "replyLength", "language", "communicationStyle", "targetCustomers", "companyRules", "neverPromise", "escalateWhen", "goals", "proactiveResponsibilities",
+  "tone", "replyLength", "language", "personality", "communicationStyle", "targetCustomers", "companyRules", "neverPromise", "escalateWhen", "goals", "proactiveResponsibilities",
 ] as const;
 
 /** Updates only Growth Partner fields that still match the last onboarding version; client-written settings remain theirs. */

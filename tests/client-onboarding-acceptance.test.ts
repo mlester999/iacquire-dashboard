@@ -109,6 +109,8 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
           neverPromise: "Never guarantee a repair date.",
           approvalPreference: "always",
         });
+        expect(settings.personality).toContain("professional voice");
+        expect(settings.personality).toContain("practical and proactive about permitted routine work and scheduling");
         expect(settings.escalateWhen).toContain("anything unsafe or uncertain");
         expect(settings.proactiveResponsibilities).toMatch(/prefers routine answers, lead qualification and booking/i);
         expect(settings.proactiveResponsibilities).toMatch(/grants no permission/i);
@@ -179,6 +181,25 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
     expect(updatedSettings.proactiveResponsibilities).toMatch(/draft-only behavior/i);
     expect(updatedSettings.approvalPreference).toBe("always");
     expect(updated.compiled_instructions).toContain("draft-only behavior");
+
+    const plumbingBefore = (await withSystem((db) => db.query<{ id: string; settings: unknown }>(
+      `select a.id, v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`,
+      [plumbing.org.id],
+    ))).rows[0];
+    const previousGeneratedPersonality = agentSettingsSchema.parse(plumbingBefore.settings).personality;
+    expect(previousGeneratedPersonality).toContain("friendly voice");
+    const resubmitted = await saveOnboardingStep(plumbing.ctx, { answers: { "c.tone": { value: "premium" }, "f.review": { value: true } } });
+    expect(resubmitted.rejected).toEqual({});
+    await submitOnboarding(plumbing.ctx);
+    const plumbingAfter = (await withSystem((db) => db.query<{ settings: unknown }>(
+      `select v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.org_id = $1 and a.role_key = 'growth_partner'`,
+      [plumbing.org.id],
+    ))).rows[0];
+    const updatedGeneratedPersonality = agentSettingsSchema.parse(plumbingAfter.settings).personality;
+    expect(updatedGeneratedPersonality).toContain("premium voice");
+    expect(updatedGeneratedPersonality).not.toBe(previousGeneratedPersonality);
 
     const runtimeCounts = await withSystem((db) => db.query<{ org_id: string; profiles: number; identities: number }>(
       `select o.id as org_id,

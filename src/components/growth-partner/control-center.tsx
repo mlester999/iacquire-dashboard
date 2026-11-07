@@ -566,7 +566,7 @@ export function GrowthPartnerControlCenter({
               <div className="space-y-3">
                 <div className="flex gap-3 rounded-xl border border-success/20 bg-success-soft/40 p-4">
                   <MessageSquareText className="mt-0.5 size-5 shrink-0 text-success-ink" aria-hidden />
-                  <p className="text-[13px] leading-relaxed text-ink-2">This is the single shared Growth Partner thread. Members with AI access see the same history; earlier employee conversations remain in their original records.</p>
+                  <p className="text-[13px] leading-relaxed text-ink-2">This is the single shared Growth Partner thread. Members with AI access see the same history; conversations from previous role profiles remain in their original records.</p>
                 </div>
                 {state.conversationLastMessageAt && <p className="text-[12px] text-faint">Latest message {formatDate(state.conversationLastMessageAt, timezone)}</p>}
                 <ButtonLink href="/growth-partner/conversation" variant="secondary" size="sm">
@@ -577,7 +577,7 @@ export function GrowthPartnerControlCenter({
               <div className="flex gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
                 <MessageSquareText className="mt-0.5 size-5 shrink-0 text-muted" aria-hidden />
                 <p className="text-[13px] leading-relaxed text-muted">
-                  This workspace does not yet have a registered permanent conversation for the AI Growth Partner. Existing employee conversations remain in their original history while a dedicated unified runtime is prepared.
+                  This workspace does not yet have a registered permanent conversation for the AI Growth Partner. Conversations from previous role profiles remain in their original history while a dedicated unified runtime is prepared.
                 </p>
               </div>
             )}

@@ -41,7 +41,7 @@ import { acknowledgeInternalFullCapabilities, resetHermesToolPolicy, saveHermesT
 
 async function agentOrg(agentId: string) {
   const { rows } = await withSystem((db) => db.query<{ org_id: string }>("select org_id from agent_instances where id = $1", [agentId]));
-  if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+  if (!rows[0]) throw new AppError("not_found", "AI partner profile not found.");
   return rows[0].org_id;
 }
 
@@ -50,7 +50,7 @@ async function agentKind(agentId: string) {
     "select o.kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1",
     [agentId],
   ));
-  if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+  if (!rows[0]) throw new AppError("not_found", "AI partner profile not found.");
   return rows[0].kind;
 }
 

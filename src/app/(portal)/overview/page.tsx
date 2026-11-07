@@ -70,7 +70,7 @@ export default async function OverviewPage() {
     { key: "wonDeals", label: "Won deals", icon: <Trophy className="size-[18px]" />, definition: nativeDeals ? "Deals marked Won in your iAcquire CRM in the last 30 days." : "Opportunities marked Won in your CRM in the last 30 days.", href: nativeDeals ? "/crm/opportunities" : "/sales", accent: "success" as const },
     { key: "followUps", label: "Follow-ups due", icon: <ClipboardList className="size-[18px]" />, definition: "Open tasks that are overdue or due within 24 hours.", href: "/overview#tasks", accent: "warning" as const },
     { key: "customerIssues", label: "Open customer issues", icon: <HeartPulse className="size-[18px]" />, definition: "Open issues across your active customer accounts in Customer Retention.", href: "/retention", accent: "warning" as const },
-    { key: "aiActivity", label: "AI tasks completed", icon: <Bot className="size-[18px]" />, definition: "AI Growth Partner and previous employee runs that finished in the last 30 days.", href: "/activity", accent: "primary" as const },
+    { key: "aiActivity", label: "AI tasks completed", icon: <Bot className="size-[18px]" />, definition: "AI Growth Partner and retained role-profile runs that finished in the last 30 days.", href: "/activity", accent: "primary" as const },
     { key: "pendingApprovals", label: "Pending approvals", icon: <ShieldCheck className="size-[18px]" />, definition: "AI work waiting for a decision.", href: "/approvals", accent: "violet" as const },
   ] as const;
 

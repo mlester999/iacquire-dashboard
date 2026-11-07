@@ -49,7 +49,7 @@ export function AgencyWorkforceControls({
     setConfirming(false);
     setReason("");
     toast.success(enabled ? `${employeeName} paused` : `${employeeName} enabled`, {
-      description: enabled ? "Chat and automated work are now unavailable for this employee." : "It becomes usable after a successful connection check.",
+      description: enabled ? "Chat and automated work are now unavailable for this profile." : "It becomes usable after a successful connection check.",
     });
     router.refresh();
   };
@@ -84,8 +84,8 @@ export function AgencyWorkforceControls({
         title={enabled ? `Pause ${employeeName}?` : `Enable ${employeeName}?`}
         description={
           enabled
-            ? "Chat and automated work stop immediately. Existing conversations and configuration stay in place, and you can enable the employee again."
-            : "The employee becomes available for chat and automated work only after its connection check passes."
+            ? "Chat and automated work stop immediately. Existing conversations and configuration stay in place, and you can enable the profile again."
+            : "The profile becomes available for chat and automated work only after its connection check passes."
         }
         size="sm"
         footer={
@@ -94,13 +94,13 @@ export function AgencyWorkforceControls({
               Cancel
             </Button>
             <Button variant={enabled ? "danger" : "brand"} loading={saving} disabled={reason.trim().length < 5} onClick={toggle}>
-              {enabled ? "Pause employee" : "Enable employee"}
+              {enabled ? "Pause profile" : "Enable profile"}
             </Button>
           </>
         }
       >
         <p className="text-[14px] leading-relaxed text-muted">
-          This changes the employee&apos;s availability for the iAcquire internal workspace. It does not delete its history, knowledge or profile connection.
+          This changes the profile&apos;s availability for the iAcquire internal workspace. It does not delete its history, knowledge or connection.
         </p>
         <Field label="Reason (kept in the audit log)" htmlFor={`agency-plan-reason-${agentId}`} className="mt-4">
           <Textarea id={`agency-plan-reason-${agentId}`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} />
