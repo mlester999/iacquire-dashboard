@@ -41,6 +41,7 @@ import { parseWorkforceChatCalendarCreateIntent, type WorkforceChatCalendarCreat
 import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
 import { parseWorkforceChatAppointmentChangeIntent, type WorkforceChatAppointmentChangeIntent } from "@/lib/workforce-chat-appointment-change-intent";
 import { parseWorkforceChatTargetingIntent } from "@/lib/workforce-chat-targeting-intent";
+import { parseWorkforceChatGoalIntent } from "@/lib/workforce-chat-goal-intent";
 import { parseWorkforceChatPreferencesIntent } from "@/lib/workforce-chat-preferences-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
@@ -82,6 +83,7 @@ import { agentSettingsSchema, aiPreferencesSchema } from "@/lib/agent-settings";
 import { getProfile, updateAiPreferences } from "@/server/settings/service";
 import { parseWorkforceChatOutboundControlIntent } from "@/lib/workforce-chat-outbound-control-intent";
 import { setClientPause } from "@/server/automation/controls";
+import { listGrowthPartnerGoalProgress, saveGrowthPartnerGoal } from "@/server/ai-growth-partner/goals";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -928,6 +930,60 @@ async function handleChatTargetingIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The targeting service could not save the change just now.";
     return reply(`I couldn't update saved lead targeting: ${chatSafeText(message)} No settings were confirmed as changed.`);
+  }
+}
+
+async function handleChatGoalIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatGoalIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "set") return reply("I couldn't identify one supported Growth Partner goal. No goal was changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:partner_goal_update"))) {
+    return reply("The AI Growth Partner can't update measurable goals from chat right now. No goal was changed.");
+  }
+  if (!ctx.can("agents.configure")) {
+    return reply("Only a workspace owner or admin can change shared AI Growth Partner goals. No goal was changed.");
+  }
+
+  const { metric, cadence, targetValue } = input.intent;
+  let persistedRevision: number | null = null;
+  try {
+    const before = await listGrowthPartnerGoalProgress(ctx);
+    const existing = before.find((goal) => goal.metric === metric && goal.cadence === cadence);
+    if (existing?.enabled && existing.targetValue === targetValue) {
+      return reply(`That ${existing.metricLabel.toLocaleLowerCase("en-US")} goal is already set to ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. Current progress is measured in Partner Controls and the Work Board.`);
+    }
+
+    const saved = await saveGrowthPartnerGoal(ctx, {
+      metric,
+      cadence,
+      targetValue,
+      baseRevision: existing?.revision ?? null,
+    });
+    persistedRevision = saved.revision;
+    const after = await listGrowthPartnerGoalProgress(ctx);
+    const confirmed = after.find((goal) => goal.metric === metric && goal.cadence === cadence);
+    if (!confirmed || !confirmed.enabled || confirmed.targetValue !== targetValue || confirmed.revision !== saved.revision) {
+      return reply("The goal was saved, but I couldn't verify its active value afterward. Check Partner Controls before relying on it.", systemNoticeMarker());
+    }
+    return reply(
+      `Saved the ${confirmed.metricLabel.toLocaleLowerCase("en-US")} goal: ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. This is a target, not a guarantee. Measured progress appears in Partner Controls and the Work Board.`,
+      serverMarker("approved_write"),
+    );
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The goal service could not confirm the saved value.";
+    return persistedRevision === null
+      ? reply(`I couldn't change the Growth Partner goal. ${chatSafeText(message)} No change was confirmed.`, systemNoticeMarker())
+      : reply(`The goal was saved at revision ${persistedRevision}, but I couldn't verify it afterward. Check Partner Controls before relying on it.`, systemNoticeMarker());
   }
 }
 
@@ -2184,6 +2240,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
       || parseWorkforceChatTargetingIntent(role, content).kind !== "none"
+      || parseWorkforceChatGoalIntent(role, content).kind !== "none"
       || parseWorkforceChatPreferencesIntent(role, content).kind !== "none"
       || isScheduleConfirmation(content)
       || parseWorkforceChatScheduleIntent(role, content).kind !== "none"
@@ -2538,6 +2595,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: targetingIntent,
+    });
+  }
+  const goalIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatGoalIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (goalIntent.kind !== "none" && !refusal) {
+    return handleChatGoalIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: goalIntent,
     });
   }
   const preferencesIntent = !input.regenerateMessageId && !namedOtherRole

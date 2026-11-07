@@ -10,6 +10,7 @@ import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHea
 import { defaultSettings } from "@/server/workforce/compiler";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { activateGrowthPartnerBusinessBrainVersion, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { growthPartnerGoalPromptContext } from "@/server/ai-growth-partner/goals";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
 import { runDueSchedules, setScheduleEnabled } from "@/server/workforce/schedules";
 import { getControlState } from "@/server/automation/controls";
@@ -1512,6 +1513,77 @@ describe("AI Growth Partner chat to native workflow", () => {
     const reply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [confirm.assistantMessageId]))).rows[0].content;
     expect(reply).toContain("preview has expired");
     expect((await withSystem((db) => db.query("select id from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'performance_snapshot'", [org.id, growthPartnerAgentId]))).rows).toHaveLength(0);
+  });
+
+  it("sets and verifies a measured Growth Partner goal through the permanent conversation", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const ctx = ctxFor(owner, org, "owner");
+    const malformed = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set our goal to 20 per week.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const malformedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [malformed.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(malformedReply).toContain("specify one target and period");
+    expect((await withSystem((db) => db.query("select id from ai_growth_partner_goals where org_id = $1", [org.id]))).rows).toHaveLength(0);
+
+    const requestStart = mock.requests.length;
+    const result = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set a goal of 20 qualified leads per week.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(result).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [result.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(reply).toContain("Saved the leads approved goal: 20 per week");
+    expect(reply).toContain("target, not a guarantee");
+    expect((await withSystem((db) => db.query<{ metric_key: string; cadence: string; target_value: number; enabled: boolean; revision: number }>(
+      "select metric_key, cadence, target_value, enabled, revision from ai_growth_partner_goals where org_id = $1 and partner_id = (select id from ai_growth_partners where org_id = $1)", [org.id],
+    ))).rows).toEqual([{ metric_key: "leads_approved", cadence: "weekly", target_value: 20, enabled: true, revision: 1 }]);
+    expect(await withSystem((db) => growthPartnerGoalPromptContext(db, org.id, growthPartnerAgentId))).toContain("Leads approved: 20 per week");
+    expect((await withSystem((db) => db.query<{ action: string; metadata: Record<string, unknown> }>(
+      "select action, metadata from audit_logs where org_id = $1 and action = 'ai_growth_partner.goal_created' order by created_at desc limit 1", [org.id],
+    ))).rows[0]).toMatchObject({
+      action: "ai_growth_partner.goal_created",
+      metadata: { metric: "leads_approved", cadence: "weekly", targetValue: 20, revision: 1 },
+    });
+    const repeated = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set a goal of 20 qualified leads per week.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const repeatedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [repeated.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatedReply).toContain("already set to 20 per week");
+    expect((await withSystem((db) => db.query<{ revision: number }>(
+      "select revision from ai_growth_partner_goals where org_id = $1 and metric_key = 'leads_approved' and cadence = 'weekly'", [org.id],
+    ))).rows[0].revision).toBe(1);
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+    await resetAgentMessageRateLimit(member.id);
+    const denied = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Change our qualified leads target to 25 per week.",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("Only a workspace owner or admin");
+    expect((await withSystem((db) => db.query<{ target_value: number; revision: number }>(
+      "select target_value, revision from ai_growth_partner_goals where org_id = $1 and metric_key = 'leads_approved' and cadence = 'weekly'", [org.id],
+    ))).rows[0]).toEqual({ target_value: 20, revision: 1 });
+    await resetAgentMessageRateLimit(owner.id);
+    await resetAgentMessageRateLimit(member.id);
   });
 
   it("saves bounded persistent preferences from the permanent chat on the Growth Partner only", async () => {

@@ -98,6 +98,7 @@ describe("the policy table, role by role", () => {
     expect(ids).toContain("chat:booking_request");
     expect(ids).toContain("chat:appointment_change");
     expect(ids).toContain("chat:targeting_update");
+    expect(ids).toContain("chat:partner_goal_update");
     expect(ids).toContain("chat:crm_contact_create");
     expect(ids).toContain("chat:appointment_policy_update");
     expect(ids).toContain("chat:calendar_create");
