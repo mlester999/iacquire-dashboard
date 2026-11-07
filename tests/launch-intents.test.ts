@@ -11,6 +11,7 @@ import { LAUNCH_LEDGER_ACTION } from "@/server/setup/launch-ledger";
 import { sweepLaunchVerification } from "@/server/setup/launch-sweep";
 import { agentId, ctxFor } from "./support/fixtures";
 import { approveHours, checkJobs, count, draftClient, itemOf, markSubmitted, readyClient, settled } from "./support/launch";
+import { submitRealOnboarding } from "./support/billing";
 
 describe("the final checks decide 100% Ready to Launch", () => {
   it("is not ready before the checks run, ready only after six finished checks, and never writes or sends anything", async () => {
@@ -324,6 +325,34 @@ describe("sync_employees: bringing the AI team up to what the client approved", 
     expect(await runLaunchIntent(c.ctx, "sync_employees")).toEqual({ ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." });
     expect(await versions(c.org.id)).toEqual(after);
     expect(await q("select 1 from audit_logs where org_id = $1 and action = 'setup.launch_employees_synced'", [c.org.id])).toHaveLength(1);
+  }, 180_000);
+
+  it("uses the single Growth Partner identity in onboarding sync results", async () => {
+    const c = await submitRealOnboarding({
+      name: "Partner Setup Sync Roofing",
+      clearPayment: true,
+      disableRoles: [...AGENT_ROLE_KEYS],
+      withGrowthPartner: true,
+    });
+    const enabledRoles = await q<{ role_key: string }>("select role_key from agent_instances where org_id = $1 and enabled", [c.org.id]);
+    expect(enabledRoles.map((r) => r.role_key)).toEqual(["growth_partner"]);
+    const partner = await q<{ id: string; active_config_version_id: string | null }>(
+      "select id, active_config_version_id from agent_instances where org_id = $1 and role_key = 'growth_partner' and enabled", [c.org.id],
+    );
+    expect(partner).toHaveLength(1);
+    // Simulate an interrupted first configuration write: the setup action should repair the
+    // single Partner from the already-approved questionnaire even though legacy sync rows omit it.
+    await withSystem((db) => db.query("update agent_instances set active_config_version_id = null where id = $1 and org_id = $2", [partner[0].id, c.org.id]));
+    const synced = await runLaunchIntent(c.ctx, "sync_employees");
+    expect(synced.ok).toBe(true);
+    expect(synced.message).toContain("Updated your AI Growth Partner to match your approved setup.");
+    expect(synced.message).not.toMatch(/AI employees|Operations Manager|Lead Hunter|Sales Assistant|CRM Manager|Performance Analyst/);
+    expect((await q<{ active_config_version_id: string | null }>("select active_config_version_id from agent_instances where id = $1", [partner[0].id]))[0].active_config_version_id).toBeTruthy();
+
+    expect(await runLaunchIntent(c.ctx, "sync_employees")).toEqual({
+      ok: true,
+      message: "Your AI Growth Partner already matches your approved setup. Nothing was changed.",
+    });
   }, 180_000);
 
   it("leaves what the client wrote in an employee's settings alone", async () => {

@@ -5,7 +5,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import type { OrgContext } from "@/server/tenancy/context";
 import { assertCan, memberActor } from "@/server/crm/actor";
-import { AGENT_BY_KEY, isAgentRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
 import { PROVISIONING_PAYMENT_NOTE } from "@/lib/billing-clearance";
 import { grantableRoles } from "@/lib/permissions";
 import { confirmedAnswers, planScope, toLegacyData } from "@/lib/onboarding/engine";
@@ -183,11 +183,14 @@ async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
     const rows = await loadAnswerRows(db, orgId);
     // Read again under the lock: an approval that was withdrawn, or an employee another press already updated, is respected.
     if ((await readPendingAnswerChanges(db, orgId, rows)).pending) throw new AppError("conflict", "You changed your company setup and have not approved it yet. Approve your changes first, then try this again.");
-    const behind = (await employeeSyncState(db, orgId)).filter((r) => r.state === "behind").map((r) => r.role);
-    if (!behind.length) return { behind, generated: [] as GeneratedEmployee[] };
-    const roles = (await db.query<{ role_key: string }>(
+    const enabledRoleKeys = (await db.query<{ role_key: string }>(
       "select a.role_key from agent_instances a join agent_roles r on r.key = a.role_key where a.org_id = $1 and a.enabled order by r.sort_order", [orgId],
-    )).rows.map((r) => r.role_key).filter(isAgentRoleKey);
+    )).rows.map((r) => r.role_key);
+    const roles = enabledRoleKeys.filter(isAgentRoleKey);
+    const partnerEnabled = enabledRoleKeys.includes(AI_GROWTH_PARTNER_ROLE_KEY);
+    const partnerOnly = enabledRoleKeys.length === 1 && partnerEnabled;
+    const behind = (await employeeSyncState(db, orgId)).filter((r) => r.state === "behind").map((r) => r.role);
+    if (!behind.length && !partnerEnabled) return { behind, generated: [] as GeneratedEmployee[], partnerOnly };
     const data = toLegacyData(confirmedAnswers(toStored(rows), planScope(roles)), roles);
     const hadNoConfig = new Set((await db.query<{ role_key: string }>(
       "select role_key from agent_instances where org_id = $1 and enabled and active_config_version_id is null", [orgId],
@@ -200,15 +203,21 @@ async function syncEmployees(ctx: OrgContext): Promise<LaunchIntentResult> {
       orgId, actorUserId: ctx.user.id, actorKind: "user", action: "setup.launch_employees_synced", targetType: "organization", targetId: orgId, result: "success",
       metadata: { updated: group((s) => s === "applied"), held: group((s) => s === "pending_agency_review"), unchanged: group((s) => s === "unchanged") },
     }, db);
-    return { behind, generated };
+    return { behind, generated, partnerOnly };
   });
-  if (!result.behind.length) return { ok: true, message: "Your AI employees already match your approved setup. Nothing was changed." };
+  if (!result.generated.length) return { ok: true, message: result.partnerOnly
+    ? "Your AI Growth Partner already matches your approved setup. Nothing was changed."
+    : "Your AI employees already match your approved setup. Nothing was changed." };
   const names = (roles: WorkforceRoleKey[]) => roles.map(workforceRoleShortName).join(", ");
   const updated = result.generated.filter((g) => g.configStatus === "applied").map((g) => g.role);
   const held = result.generated.filter((g) => g.configStatus === "pending_agency_review").map((g) => g.role);
   const parts = [
-    updated.length ? `Updated ${names(updated)} to your approved setup. Anything you wrote in their settings yourself was kept.` : null,
-    held.length ? `${names(held)} ${held.length === 1 ? "has" : "have"} a change that needs iAcquire's review, so ${held.length === 1 ? "it was" : "they were"} saved and ${held.length === 1 ? "waits" : "wait"} for it. Nothing runs on it until it is approved.` : null,
+    updated.length ? result.partnerOnly
+      ? "Updated your AI Growth Partner to match your approved setup. Settings you changed directly were kept."
+      : `Updated ${names(updated)} to your approved setup. Anything you wrote in their settings yourself was kept.` : null,
+    held.length ? result.partnerOnly
+      ? "A change to your AI Growth Partner needs iAcquire's review. The proposed configuration is saved and will not run until it is approved."
+      : `${names(held)} ${held.length === 1 ? "has" : "have"} a change that needs iAcquire's review, so ${held.length === 1 ? "it was" : "they were"} saved and ${held.length === 1 ? "waits" : "wait"} for it. Nothing runs on it until it is approved.` : null,
     !updated.length && !held.length ? "Nothing needed changing after all." : null,
   ].filter((p): p is string => p !== null);
   return { ok: updated.length > 0 || (!held.length), message: parts.join(" ") };
