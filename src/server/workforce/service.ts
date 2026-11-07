@@ -42,6 +42,7 @@ import { buildHeldConfigReview, type HeldConfigRow } from "@/server/workforce/re
 import { clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { liveFactsBlock } from "@/server/workforce/live-facts";
 import { growthPartnerMemoryPromptContext } from "@/server/ai-growth-partner/memory";
+import { growthPartnerGoalPromptContext } from "@/server/ai-growth-partner/goals";
 
 export interface AgentInstanceRow {
   id: string;
@@ -912,7 +913,10 @@ export async function composeRunInstructions(
     if (clientRole && isAgentRoleKey(clientRole)) live = await liveFactsBlock(db, { orgId, orgKind: "client", role: clientRole });
   }
   const memory = clientRole === AI_GROWTH_PARTNER_ROLE_KEY
-    ? await growthPartnerMemoryPromptContext(db, orgId, agentId, memoryQuery)
+    ? [
+        await growthPartnerGoalPromptContext(db, orgId, agentId),
+        await growthPartnerMemoryPromptContext(db, orgId, agentId, memoryQuery),
+      ].filter(Boolean).join("\n\n")
     : "";
   // The live policy is source controlled and must not go stale when an employee's active config
   // predates a policy update. Workspace knowledge stays ahead of the policy so it cannot override it.

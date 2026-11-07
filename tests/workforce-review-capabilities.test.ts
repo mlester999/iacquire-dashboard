@@ -7,6 +7,8 @@ import { defaultSettings } from "@/server/workforce/compiler";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { createFindingTask } from "@/server/workforce/finding-actions";
 import { capabilitiesForRole, roleMayUseCapability, WORKFORCE_CAPABILITIES } from "@/lib/workforce-capabilities";
+import { ensureGrowthPartnerIdentity } from "@/server/ai-growth-partner/service";
+import { saveGrowthPartnerGoal } from "@/server/ai-growth-partner/goals";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
 let owner: { id: string; email: string };
@@ -442,6 +444,10 @@ describe("reviewed workforce capabilities", () => {
       );
     });
     try {
+      await ensureGrowthPartnerIdentity(ctxFor(owner, org, "owner"));
+      await saveGrowthPartnerGoal(ctxFor(owner, org, "owner"), {
+        metric: "leads_created", cadence: "monthly", targetValue: 100, baseRevision: null,
+      });
       const dispatched = await dispatchCapabilityJob(ctxFor(owner, org, "owner"), {
         agentRole: "performance_analyst",
         capability: "performance_snapshot",
@@ -450,7 +456,7 @@ describe("reviewed workforce capabilities", () => {
       });
       const job = await waitForJob(dispatched.jobId);
       expect(job.status).toBe("completed");
-      const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; period?: string; comparisonPeriod?: string }>) ?? [];
+      const metrics = (job.result.metrics as Array<{ key: string; value: number; previous?: number | null; period?: string; comparisonPeriod?: string; goal?: { targetValue: number; cadence: string; percentComplete: number } }>) ?? [];
       const leads = metrics.find((item) => item.key === "leads_created");
       expect(leads).toMatchObject({
         value: baseline.current + 1,
@@ -458,6 +464,7 @@ describe("reviewed workforce capabilities", () => {
         period: "Current calendar month",
         comparisonPeriod: "Previous calendar month",
       });
+      expect(leads?.goal).toEqual({ targetValue: 100, cadence: "monthly", percentComplete: Math.min(100, Math.round(((baseline.current + 1) / 100) * 100)) });
     } finally {
       await withSystem((db) => db.query("update organizations set timezone = 'UTC' where id = $1", [org.id]));
     }

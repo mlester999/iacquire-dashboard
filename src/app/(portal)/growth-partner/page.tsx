@@ -3,6 +3,7 @@ import { GrowthPartnerControlCenter } from "@/components/growth-partner/control-
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { getGrowthPartnerCapabilityAccess } from "@/server/ai-growth-partner/capability-access";
 import { listGrowthPartnerMemories } from "@/server/ai-growth-partner/memory";
+import { listGrowthPartnerGoalProgress } from "@/server/ai-growth-partner/goals";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-source";
 import { listAgents } from "@/server/workforce/service";
@@ -20,7 +21,7 @@ export default async function GrowthPartnerPage() {
   }
 
   const state = await getGrowthPartnerControlState(ctx);
-  const [legacyAgents, memories, capabilityAccess] = await Promise.all([
+  const [legacyAgents, memories, capabilityAccess, goals] = await Promise.all([
     listAgents(ctx.user.id, ctx.org.orgId),
     listGrowthPartnerMemories(ctx),
     getGrowthPartnerCapabilityAccess(ctx, {
@@ -28,6 +29,7 @@ export default async function GrowthPartnerPage() {
       runtimeAgentId: state?.runtimeAgentInstanceId ?? null,
       runtimeReady: state?.status === "configured",
     }),
+    listGrowthPartnerGoalProgress(ctx),
   ]);
   const canConfigure = ctx.can("agents.configure");
   const canConfigureResearch = ctx.can("leads.research");
@@ -60,7 +62,9 @@ export default async function GrowthPartnerPage() {
       state={state}
       capabilityAccess={capabilityAccess}
       memories={memories}
+      goals={goals}
       canManageMemory={canConfigure}
+      canManageGoals={canConfigure}
       canConfigure={canConfigure}
       canConfigureResearch={canConfigureResearch}
       researchSourcePolicies={researchSourcePolicies}

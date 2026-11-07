@@ -51,6 +51,7 @@ export interface ReviewMetric {
   comparisonPeriod?: string;
   /** Used by the UI to colour a trend without assuming every increase is good. */
   higherIsBetter?: boolean;
+  goal?: { targetValue: number; cadence: "monthly"; percentComplete: number };
 }
 
 /** What a review looked at, so a count of zero reads as "nothing there yet" and never as "all clear". Label is a plural noun ("deals"). Contract C2. */

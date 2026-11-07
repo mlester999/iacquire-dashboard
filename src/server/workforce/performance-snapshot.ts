@@ -2,6 +2,8 @@ import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import { runReadOnlyReviewJob, reviewFinding, type ReviewCheck, type ReviewMetric } from "@/server/workforce/read-only-review";
 import type { WorkJobRow } from "@/server/workforce/jobs";
+import { growthPartnerMonthlyGoalTargets } from "@/server/ai-growth-partner/goals";
+import type { GrowthPartnerGoalMetric } from "@/lib/ai-growth-partner-goals";
 
 const n = (value: unknown) => {
   const parsed = Number(value);
@@ -306,7 +308,17 @@ export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { wor
       async (db) => noConfirmedAppointments(await getPeriod(db))(db, job),
     ],
     metrics: async (db) => {
-      const all = await metrics(db, await getPeriod(db));
+      const period = await getPeriod(db);
+      let all = await metrics(db, period);
+      if (job.input.period === "current_month") {
+        const targets = await growthPartnerMonthlyGoalTargets(db, job.org_id);
+        all = all.map((metric) => {
+          const targetValue = targets.get(metric.key as GrowthPartnerGoalMetric);
+          return targetValue === undefined || typeof metric.value !== "number"
+            ? metric
+            : { ...metric, goal: { targetValue, cadence: "monthly" as const, percentComplete: Math.min(100, Math.round((metric.value / targetValue) * 100)) } };
+        });
+      }
       return mayReadRuns ? all : all.filter((metric) => !AI_RUN_METRICS.has(metric.key));
     },
     examined: async (db, reviewed) => {

@@ -32,6 +32,7 @@ import {
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
 import { BusinessBrainDraftReview } from "@/components/growth-partner/brain-draft-review";
 import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
+import { GrowthPartnerGoalsPanel } from "@/components/growth-partner/goals-panel";
 import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import {
@@ -41,6 +42,7 @@ import {
 } from "@/lib/ai-growth-partner";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import type { GrowthPartnerMemory } from "@/lib/ai-growth-partner-memory";
+import type { GrowthPartnerGoalProgress } from "@/lib/ai-growth-partner-goals";
 import { prepareGrowthPartnerFromSubmittedOnboardingAction } from "@/app/actions/ai-growth-partner";
 
 const sectionTitles: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = {
@@ -295,7 +297,9 @@ export function GrowthPartnerControlCenter({
   state,
   capabilityAccess,
   memories,
+  goals,
   canManageMemory,
+  canManageGoals,
   canConfigure,
   canConfigureResearch,
   researchSourcePolicies,
@@ -310,7 +314,9 @@ export function GrowthPartnerControlCenter({
   state: GrowthPartnerControlState | null;
   capabilityAccess: GrowthPartnerCapabilityAccess[];
   memories: GrowthPartnerMemory[];
+  goals: GrowthPartnerGoalProgress[];
   canManageMemory: boolean;
+  canManageGoals: boolean;
   canConfigure: boolean;
   canConfigureResearch: boolean;
   researchSourcePolicies: ResearchSourcePoliciesView;
@@ -421,6 +427,8 @@ export function GrowthPartnerControlCenter({
       </section>
 
       <GrowthPartnerMemoryPanel memories={memories} canManage={canManageMemory} hasPartner={Boolean(state)} timezone={timezone} />
+
+      <GrowthPartnerGoalsPanel goals={goals} canManage={canManageGoals} hasPartner={Boolean(state)} />
 
       {canConfigureResearch && <ResearchSourceSettings policies={researchSourcePolicies} />}
 

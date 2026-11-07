@@ -283,6 +283,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
     key?: string; label?: string; value?: number | string; unit?: string; period?: string; definition?: string; source?: string;
     previous?: number | null; change?: number | null; changePct?: number | null; trend?: "up" | "down" | "flat";
     comparisonPeriod?: string; higherIsBetter?: boolean;
+    goal?: { targetValue: number; cadence: "monthly"; percentComplete: number };
   }>).filter((item) => typeof item.label === "string") : [];
   const availability = job.result.availability && typeof job.result.availability === "object"
     ? (job.result.availability as {
@@ -412,6 +413,7 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
                     {metric.unit && <span className="ml-0.5 text-[12px] font-normal text-muted">{metric.unit}</span>}
                   </dd>
                   {metric.period && <p className="mt-0.5 text-[12px] leading-snug text-faint">{metric.period}</p>}
+                  {metric.goal && <p className="mt-1 text-[12px] leading-snug text-primary-ink">Target {metric.goal.targetValue} this month · {metric.goal.percentComplete}% complete</p>}
                   {metric.trend && metric.previous !== null && metric.previous !== undefined && (
                     <p
                       className={cn(

@@ -470,6 +470,8 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0121_ai_growth_partner_conversation": ["0002_workforce", "0005_tenant_integrity", "0060_rls_initplan", "0120_ai_growth_partner_foundation"],
   // 0130 adds inspectable, tenant-scoped application memory behind the unified Partner identity.
   "0130_ai_growth_partner_memory": ["0121_ai_growth_partner_conversation"],
+  // 0133 adds tenant-scoped targets to the one-per-tenant Growth Partner foundation.
+  "0133_ai_growth_partner_goals": ["0120_ai_growth_partner_foundation"],
 };
 
 /**
