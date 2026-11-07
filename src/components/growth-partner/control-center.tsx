@@ -23,6 +23,12 @@ import {
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHeading } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
+import {
+  GROWTH_PARTNER_CAPABILITY_GROUPS,
+  type GrowthPartnerCapabilityAccess,
+  type GrowthPartnerCapabilityAccessStatus,
+  type GrowthPartnerCapabilityDomainKey,
+} from "@/lib/ai-growth-partner-capability-access";
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
 import { BusinessBrainDraftReview } from "@/components/growth-partner/brain-draft-review";
 import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
@@ -51,14 +57,28 @@ const sectionTitles: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = 
   employeeBehavior: "Working style",
 };
 
-const capabilityAreas = [
-  { title: "Lead discovery & qualification", description: "Find relevant prospects and check fit against approved criteria.", icon: Target },
-  { title: "Sales & outreach", description: "Prepare timely, relevant customer communication within approved limits.", icon: HeartHandshake },
-  { title: "Calendar & appointments", description: "Coordinate booking details with connected calendars and policies.", icon: CalendarClock },
-  { title: "CRM & pipeline", description: "Work with authorized contact, opportunity and pipeline records.", icon: ClipboardList },
-  { title: "Business operations", description: "Coordinate approved tasks, schedules and handoffs.", icon: Workflow },
-  { title: "Performance & analytics", description: "Explain progress using recorded activity and outcomes.", icon: Activity },
-];
+const capabilityAreaPresentation: Record<GrowthPartnerCapabilityDomainKey, { description: string; icon: typeof Target }> = {
+  lead_discovery: { description: "Find relevant prospects and check fit against approved criteria.", icon: Target },
+  sales: { description: "Review the pipeline and prepare follow-up drafts for a person's review.", icon: HeartHandshake },
+  scheduling: { description: "Review appointments and coordinate booking details against calendar rules.", icon: CalendarClock },
+  crm: { description: "Review authorized contact and company records for quality issues.", icon: ClipboardList },
+  operations: { description: "Review blocked work, receivables and reputation tasks.", icon: Workflow },
+  analytics: { description: "Explain progress using recorded activity and outcomes.", icon: Activity },
+};
+
+const capabilityAreas = GROWTH_PARTNER_CAPABILITY_GROUPS.map((group) => ({
+  ...group,
+  ...capabilityAreaPresentation[group.key],
+}));
+
+const capabilityStatusInfo: Record<GrowthPartnerCapabilityAccessStatus, { label: string; tone: "neutral" | "success" | "warning" }> = {
+  available: { label: "Ready to request", tone: "success" },
+  permission_required: { label: "Your access needed", tone: "warning" },
+  disabled: { label: "Turned off", tone: "warning" },
+  actions_unverified: { label: "Access check needed", tone: "neutral" },
+  runtime_unverified: { label: "Runtime check needed", tone: "neutral" },
+  not_configured: { label: "Not set up", tone: "neutral" },
+};
 
 const workspaceControlItems = [
   { key: "work", label: "Work Board", description: "Review tasks, schedules and execution history.", href: "/work", permission: "agents.use", icon: ClipboardList },
@@ -273,6 +293,7 @@ function MetricCard({
 
 export function GrowthPartnerControlCenter({
   state,
+  capabilityAccess,
   memories,
   canManageMemory,
   canConfigure,
@@ -287,6 +308,7 @@ export function GrowthPartnerControlCenter({
   safetyControls,
 }: {
   state: GrowthPartnerControlState | null;
+  capabilityAccess: GrowthPartnerCapabilityAccess[];
   memories: GrowthPartnerMemory[];
   canManageMemory: boolean;
   canConfigure: boolean;
@@ -312,6 +334,7 @@ export function GrowthPartnerControlCenter({
   const lastUpdated = formatDate(state?.updatedAt ?? null, timezone);
   const canPrepareBrain = canConfigure && hasSubmittedOnboarding && !hasAnyBrain;
   const latestVersion = state?.draftVersion ?? state?.currentVersion ?? null;
+  const capabilityAccessByKey = new Map(capabilityAccess.map((item) => [item.key, item]));
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-7 pb-10">
@@ -411,20 +434,47 @@ export function GrowthPartnerControlCenter({
       <section data-aqi-target="growth-partner.brain">
         <SectionHeading
           title="One partner, six capabilities"
-          description="These are capability areas inside one AI Growth Partner identity, not separate profiles or chats. Availability depends on approved permissions and connected tools."
+          description="These capabilities belong to one Growth Partner identity. Readiness combines your access, the Partner's saved Allowed actions and its runtime check; connected services, limits and approvals are checked again when work starts."
         />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {capabilityAreas.map(({ title, description, icon: Icon }) => (
-            <Card key={title} className="border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
-              <CardContent className="flex gap-3 p-4 sm:p-5">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
-                <div>
-                  <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {capabilityAreas.map(({ key, title, description, icon: Icon, capabilityKeys }) => {
+            const items = capabilityKeys.map((capabilityKey) => capabilityAccessByKey.get(capabilityKey)).filter((item): item is GrowthPartnerCapabilityAccess => Boolean(item));
+            const availableCount = items.filter((item) => item.status === "available").length;
+            const hasAccessBlock = items.some((item) => item.status === "permission_required" || item.status === "disabled");
+            const summary = items.length > 0 && availableCount === items.length
+              ? { label: "Ready to request", tone: "success" as const }
+              : availableCount > 0
+                ? { label: `${availableCount} of ${items.length} available`, tone: "warning" as const }
+                : hasAccessBlock
+                  ? { label: "Access needed", tone: "warning" as const }
+                  : { label: "Setup needs review", tone: "neutral" as const };
+            return (
+              <Card key={key} data-capability-domain={key} className="border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
+                <CardHeader className="items-start">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle>{title}</CardTitle>
+                    <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
+                  </div>
+                  <Badge tone={summary.tone}>{summary.label}</Badge>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {items.map((item) => {
+                    const status = capabilityStatusInfo[item.status];
+                    return (
+                      <div key={item.key} className="rounded-lg border border-line bg-surface-2/40 px-3 py-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[13px] font-medium text-ink">{item.label}</p>
+                          <Badge tone={status.tone}>{status.label}</Badge>
+                        </div>
+                        <p className="mt-1 text-[12px] leading-relaxed text-muted">{item.detail}</p>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </section>
 
