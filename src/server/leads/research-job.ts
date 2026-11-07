@@ -44,6 +44,7 @@ import {
   type ResearchSourceBundle,
   type ResearchSourceRunnerDependencies,
 } from "@/server/leads/research-source-runner";
+import { getResearchSourcePolicy } from "@/server/leads/research-source-policy";
 
 /**
  * The Lead Hunter research handler.
@@ -76,7 +77,19 @@ interface ResearchSetup {
   hermesRunId: string | null;
 }
 
-class ResearchBlocked extends Error {}
+class ResearchBlocked extends Error {
+  constructor(message: string, readonly code = "agent_unavailable") {
+    super(message);
+    this.name = "ResearchBlocked";
+  }
+}
+
+function missingGrowthPartnerDiscoverySource() {
+  return new ResearchBlocked(
+    "No approved discovery source is enabled in AI Growth Partner settings. Enable and budget an approved source before running prospect research. No external source or AI research run was started.",
+    "source_policy_required",
+  );
+}
 
 const counter = (progress: Record<string, unknown>, key: string) => {
   const value = Number(progress[key]);
@@ -288,6 +301,10 @@ export async function runLeadResearchJob(
       }
       const conn = await loadConnection(db, job.agent_instance_id);
       if (!conn) throw new ResearchBlocked(employeeName + " is not connected, so no research was started.");
+      if (conn.roleKey === "growth_partner") {
+        const discoveryPolicy = await getResearchSourcePolicy(db, job.org_id, "openstreetmap");
+        if (!discoveryPolicy?.enabled) throw missingGrowthPartnerDiscoverySource();
+      }
       const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id);
       if (!runInstructions.versionId) throw new ResearchBlocked(employeeName + " has no applied configuration, so no research was started.");
       const targeting = targetingSchema.safeParse(request.criteria);
@@ -338,7 +355,7 @@ export async function runLeadResearchJob(
     const blocked = err instanceof ResearchBlocked;
     await markRequestFailed(job, context.workerId, {
       status: blocked ? "blocked" : "failed",
-      code: blocked ? "agent_unavailable" : "setup_failed",
+      code: blocked && err instanceof ResearchBlocked ? err.code : "setup_failed",
       message: blocked ? err.message : "The research could not be prepared. No provider run was started.",
       requestId,
       agentRunId,
@@ -392,6 +409,10 @@ export async function runLeadResearchJob(
       counters.searches += 1;
       counters.pagesReviewed += sourceBundle.pagesReviewed;
       await noteProgress(job, context.workerId, counters, "extracting");
+    } else if (setup.sourcePlatform === "growth_partner") {
+      // Recheck after collection so a concurrent source-policy disable cannot fall through to an
+      // ordinary Hermes run with web tools available.
+      throw missingGrowthPartnerDiscoverySource();
     }
     const started = await startAgentRun(job.agent_instance_id, job.org_id, setup.conn, {
       input: setup.input,
@@ -418,7 +439,10 @@ export async function runLeadResearchJob(
       await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
       return;
     }
-    const message = err instanceof AppError
+    const blocked = err instanceof ResearchBlocked || err instanceof AgentRunNotReadyError;
+    const message = err instanceof ResearchBlocked
+      ? err.message
+      : err instanceof AppError
       ? `The approved research source could not be used: ${err.message} No alternate source was tried.`
       : err instanceof AgentRunNotReadyError
       ? err.message
@@ -426,8 +450,8 @@ export async function runLeadResearchJob(
         ? employeeName + "'s Hermes connection is unavailable, so no research was started."
         : "The research run could not be started. No provider run was accepted.";
     await markRequestFailed(job, context.workerId, {
-      status: err instanceof AgentRunNotReadyError ? "blocked" : "failed",
-      code: err instanceof AppError ? "source_failed" : err instanceof AgentRunNotReadyError ? "agent_not_ready" : "run_not_started",
+      status: blocked ? "blocked" : "failed",
+      code: err instanceof ResearchBlocked ? err.code : err instanceof AppError ? "source_failed" : err instanceof AgentRunNotReadyError ? "agent_not_ready" : "run_not_started",
       message,
       requestId,
       agentRunId,

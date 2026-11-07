@@ -443,6 +443,82 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(requestCount + 1);
   }, 120_000);
 
+  it("blocks direct Partner research requests when all approved discovery sources are disabled", async () => {
+    await saveResearchSourcePolicy(context, "openstreetmap", {
+      enabled: false,
+      providerFeeUsdPerRequest: 0,
+      perJobRequestCap: 0,
+      perDayRequestCap: 0,
+      perJobSpendCapUsd: 0,
+      perDaySpendCapUsd: 0,
+      sourceConfig: {
+        endpoint: OSM_CONFIG.endpoint,
+        approvedEndpointHosts: OSM_CONFIG.approvedEndpointHosts,
+        userAgent: OSM_CONFIG.userAgent,
+        bounds: { south: 28.1, west: -81.6, north: 28.8, east: -81.1 },
+        maxResults: OSM_CONFIG.maxResults,
+        timeoutSeconds: 20,
+      },
+    });
+    await saveResearchSourcePolicy(context, "company_website", {
+      enabled: false,
+      providerFeeUsdPerRequest: 0,
+      perJobRequestCap: 0,
+      perDayRequestCap: 0,
+      perJobSpendCapUsd: 0,
+      perDaySpendCapUsd: 0,
+      sourceConfig: { approvedDomains: [...EXACT_DOMAINS], maxRequests: 4 },
+    });
+    const osmCallsBefore = osmFixtureCalls;
+    const pageReadsBefore = localPageReads;
+    const modelRunsBefore = mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs").length;
+    try {
+      const sent = await sendChatMessage(context, {
+        agentRole: "growth_partner",
+        conversationId: org.conversationId,
+        content: "Find 4 roofing contractors in the Orlando metropolitan area including Orlando, Winter Park and Kissimmee. Use only this synthetic fixture dataset; do not contact anyone.",
+        clientMessageId: crypto.randomUUID(),
+      });
+
+      expect(sent).toMatchObject({ conversationId: org.conversationId, runId: null, jobId: expect.any(String) });
+      expect(await waitForJob(sent.jobId!)).toMatchObject({ status: "blocked", stage: "blocked" });
+      const blockedJob = await getWorkJobView(context, sent.jobId!);
+      expect(blockedJob?.failureMessage).toMatch(/No approved discovery source is enabled/);
+      expect(blockedJob?.failureCode).toBe("source_policy_required");
+      expect(osmFixtureCalls).toBe(osmCallsBefore);
+      expect(localPageReads).toBe(pageReadsBefore);
+      expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(modelRunsBefore);
+    } finally {
+      await saveResearchSourcePolicy(context, "openstreetmap", {
+        enabled: true,
+        providerFeeUsdPerRequest: 0,
+        perJobRequestCap: 1,
+        perDayRequestCap: 1,
+        perJobSpendCapUsd: BUDGET.perJobSpendCapUsd,
+        perDaySpendCapUsd: BUDGET.perDaySpendCapUsd,
+        activationAcknowledged: true,
+        sourceConfig: {
+          endpoint: OSM_CONFIG.endpoint,
+          approvedEndpointHosts: OSM_CONFIG.approvedEndpointHosts,
+          userAgent: OSM_CONFIG.userAgent,
+          bounds: { south: 28.1, west: -81.6, north: 28.8, east: -81.1 },
+          maxResults: OSM_CONFIG.maxResults,
+          timeoutSeconds: 20,
+        },
+      });
+      await saveResearchSourcePolicy(context, "company_website", {
+        enabled: true,
+        providerFeeUsdPerRequest: 0,
+        perJobRequestCap: 100,
+        perDayRequestCap: 100,
+        perJobSpendCapUsd: BUDGET.perJobSpendCapUsd,
+        perDaySpendCapUsd: BUDGET.perDaySpendCapUsd,
+        activationAcknowledged: true,
+        sourceConfig: { approvedDomains: [...EXACT_DOMAINS], maxRequests: 4 },
+      });
+    }
+  }, 120_000);
+
   it("persists fixture research, qualification, CRM review and the report in one isolated partner thread", async () => {
     expect(fixtureLeads).toHaveLength(4);
     expect(EXACT_DOMAINS).toEqual([

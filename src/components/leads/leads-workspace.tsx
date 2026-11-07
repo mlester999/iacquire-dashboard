@@ -199,7 +199,7 @@ function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }
         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
           AI Growth Partner <AgentStatusBadge status={status} />
         </p>
-        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Ready to research from approved public sources." : "Research can be saved now, but nothing runs until AI Growth Partner is connected and online."}</p>
+        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Research uses only sources enabled with saved request and spend limits in AI Growth Partner settings. If no discovery source is enabled, the run stays blocked." : "Research can be saved now, but nothing runs until AI Growth Partner is connected and online."}</p>
       </div>
     </div>
   );
