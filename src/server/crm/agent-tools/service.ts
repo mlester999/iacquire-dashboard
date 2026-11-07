@@ -16,8 +16,9 @@ import { HANDLERS, type ToolContext, type ToolOutput, type WritePlan } from "@/s
 import { verifyAgentToolToken, type VerifiedAgentToken } from "@/server/crm/agent-tools/tokens";
 import { env } from "@/server/env";
 import { loadOrgContextForUser } from "@/server/tenancy/context";
-import { clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
-import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { clientBusinessProposalRequiredAbility, clientBusinessProposalsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { employeeAbilities } from "@/server/workforce/abilities";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, isWorkforceRoleKey, type AgentRoleKey } from "@/lib/agents";
 import type { Permission } from "@/lib/permissions";
 
 /**
@@ -482,6 +483,22 @@ export async function executeApprovedAgentToolCall(input: { orgId: string; appro
   if (!agent.enabled || !allowsTool(s, def)) return { status: "blocked", detail: `${agent.display_name} is no longer allowed to ${def.label.toLowerCase()}, so nothing was changed.` };
   const callRef = typeof a.callRef === "string" ? a.callRef.slice(0, 100) : input.approvalId;
   const base = { tool, startedAt, approvalId: input.approvalId, callRef, approved: true };
+
+  // The Growth Partner's CRM Allowed actions switch is checked again when a person approves a
+  // proposal. Turning the switch off after the request was created must still block execution.
+  const requiredAbility = agent.org_kind === "client" && a.forcedApproval === true && isWorkforceRoleKey(agent.role_key)
+    ? clientBusinessProposalRequiredAbility(agent.role_key, tool)
+    : null;
+  if (requiredAbility) {
+    const abilities = await withSystem((db) => employeeAbilities(db, input.orgId, agent.id, agent.role_key as AgentRoleKey | "growth_partner")).catch(() => null);
+    if (!abilities?.has(requiredAbility)) {
+      const detail = abilities === null
+        ? "Approved, but the Growth Partner's CRM permission could not be confirmed. Nothing was changed."
+        : "Approved, but CRM updates are switched off in this Growth Partner's Allowed actions. Nothing was changed.";
+      await safeLog(s, { ...base, outcome: "refused", result: "denied", detail });
+      return { status: "blocked", detail };
+    }
+  }
 
   const gate = await withSystem((db) => automationGate(db, { orgId: input.orgId, agentId: agent.id, scope: "job", approvalId: input.approvalId }));
   if (gate.decision !== "allow") {

@@ -46,6 +46,17 @@ export function clientBusinessProposalToolNamesForRole(role: WorkforceRoleKey): 
   return toolsForRole(role).filter((name) => AGENT_TOOLS[name].kind === "write" && !CLIENT_NEVER_OFFERED_TOOLS.includes(name));
 }
 
+const GROWTH_PARTNER_CRM_PROPOSALS: readonly AgentToolName[] = [
+  "update_contact", "apply_tag", "remove_tag", "create_opportunity", "move_opportunity_stage",
+];
+
+/** A Growth Partner CRM proposal is available only while the corresponding Allowed actions switch is on. */
+export function clientBusinessProposalRequiredAbility(role: WorkforceRoleKey, tool: AgentToolName): string | null {
+  return role === AI_GROWTH_PARTNER_ROLE_KEY && GROWTH_PARTNER_CRM_PROPOSALS.includes(tool)
+    ? "crm.request_update"
+    : null;
+}
+
 /** Names exposed to a client employee's model. The matrix is narrowed to read tools the role's scopes allow; proposals are added only when asked for. */
 export function clientBusinessMcpToolNamesForRole(role: WorkforceRoleKey, options: { proposals?: boolean } = {}): BusinessMcpToolName[] {
   // The client tier is the one place a client-only tool (list_opportunities) can be offered, so its own matrix is what decides, narrowed by the role's scopes.

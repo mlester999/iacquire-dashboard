@@ -57,7 +57,7 @@ export const ROLE_ABILITIES: Record<WorkforceRoleKey, readonly string[]> = {
   growth_partner: [
     "tasks.read", "research.public_web", "leads.stage_for_review",
     "calendar.read_availability", "appointments.read", "appointments.request_change",
-    "calendar.booking_rules.update", "calendar.create", "crm.read", "crm.read_opportunities", "crm.contacts.create", "drafts.create", "analytics.read",
+    "calendar.booking_rules.update", "calendar.create", "crm.read", "crm.read_opportunities", "crm.request_update", "crm.contacts.create", "drafts.create", "analytics.read",
   ],
 };
 

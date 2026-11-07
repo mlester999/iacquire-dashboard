@@ -11,7 +11,8 @@
 //   B. Upgrade from the production baseline: apply everything below 0077, populate a realistic dataset (several workspaces, members, contacts, conversations,
 //      messages, calls, appointments, AI employees, notifications, private files, tasks, leads, chat), hash every row of every table, then apply each later
 //      migration ONE AT A TIME. After each: every earlier row is unchanged (count and hash, all tables), except an explicitly verified migration-owned data change;
-//      0131 may advance only the three untouched AQi starter tutorials to their next published version. No earlier notification kind, permission, storage bucket,
+//      0131 may advance only the three untouched AQi starter tutorials to their next published version; 0132 may add only crm.request_update to the existing
+//      Growth Partner role's default_tools. No earlier notification kind, permission, storage bucket,
 //      stored-file bucket, conversation channel or contact origin is lost, the application role sees exactly the same rows as before, every new table has
 //      row-level security and no grant to anon, authenticated, PUBLIC or the published-site role, the application role holds SELECT only (column level where the
 //      migration says so), and every new table starts empty. Each migration's own data is then added, so later migrations meet realistic rows of earlier ones.
@@ -234,7 +235,7 @@ async function hashRowsByKey(db, table, cols, expr, keys = null) {
     from public."${table}" t${keys ? ` where ${expr} = any($2::text[])` : ""}`;
   return q(db, sql, keys ? [cols, keys] : [cols]);
 }
-const ROW_HASHED_TABLES = new Set(["aqi_tutorials", "aqi_tutorial_versions"]);
+const ROW_HASHED_TABLES = new Set(["aqi_tutorials", "aqi_tutorial_versions", "agent_roles"]);
 async function snapshot(db) {
   const tables = await listTables(db);
   const counts = await countAll(db, tables);
@@ -252,7 +253,10 @@ async function snapshot(db) {
     const rowHashes = ROW_HASHED_TABLES.has(t)
       ? new Map((await hashRowsByKey(db, t, c, expr)).map((row) => [row.k, row.h]))
       : null;
-    snap.set(t, { n: r.n, cols: c, expr, keys: r.keys, h: r.h, rowHashes });
+    const rowValues = t === "agent_roles"
+      ? new Map((await q(db, `select key::text as k, to_jsonb(t) as row from public.agent_roles t`)).map((row) => [row.k, row.row]))
+      : null;
+    snap.set(t, { n: r.n, cols: c, expr, keys: r.keys, h: r.h, rowHashes, rowValues });
   }
   return snap;
 }
@@ -271,7 +275,7 @@ async function verifyWhole(db, snap, growable = new Set(), allowedChanged = new 
       continue;
     }
     const n = counts.get(t);
-    const ignored = allowedChanged.get(t) ?? new Set();
+    const ignored = new Set([...(allowedChanged.get(t) ?? new Set())].filter((key) => s.keys.includes(key)));
     if (ignored.size > s.n) {
       bad.push(`${t}: migration allowance names ${ignored.size} rows but only ${s.n} existed`);
       continue;
@@ -312,7 +316,7 @@ async function verifyKeys(db, snap, allowedChanged = new Map()) {
       bad.push(`${t}: the table is gone`);
       continue;
     }
-    const ignored = allowedChanged.get(t) ?? new Set();
+    const ignored = new Set([...(allowedChanged.get(t) ?? new Set())].filter((key) => s.keys.includes(key)));
     const keys = s.keys.filter((key) => !ignored.has(key));
     const expected = s.n - ignored.size;
     if (ignored.size && s.rowHashes) {
@@ -403,7 +407,33 @@ const insertTargets = (file) => {
 // 0131 intentionally publishes a new AQi tutorial version for three untouched starter seeds.
 // Only their parent metadata and original version status change; every other earlier row must
 // stay byte-for-byte identical, and exactly three version rows are added.
-const migrationRowAllowance = async (file, db) => {
+const stableJson = (value) => JSON.stringify(value, (_key, nested) => nested && typeof nested === "object" && !Array.isArray(nested)
+  ? Object.fromEntries(Object.entries(nested).sort(([a], [b]) => a.localeCompare(b)))
+  : nested);
+
+const migrationRowAllowance = async (file, db, beforeSnap = null) => {
+  if (prefix(file) === "0132") {
+    const before = beforeSnap?.get("agent_roles")?.rowValues?.get("growth_partner");
+    if (!before || typeof before !== "object" || Array.isArray(before)) throw new Error("the pre-0132 Growth Partner role row was not captured");
+    const after = await one(db, "select to_jsonb(r) as row from public.agent_roles r where key = 'growth_partner'");
+    if (!after?.row || typeof after.row !== "object" || Array.isArray(after.row)) throw new Error("the Growth Partner role row is missing after 0132");
+    const beforeTools = before.default_tools;
+    const afterTools = after.row.default_tools;
+    if (!Array.isArray(beforeTools) || !Array.isArray(afterTools)) throw new Error("the Growth Partner default_tools value is not an array");
+    const expectedTools = beforeTools.includes("crm.request_update") ? beforeTools : [...beforeTools, "crm.request_update"];
+    if (stableJson(afterTools) !== stableJson(expectedTools)) throw new Error("0132 did not add only crm.request_update to Growth Partner default_tools");
+    const beforeOther = { ...before };
+    const afterOther = { ...after.row };
+    delete beforeOther.default_tools;
+    delete afterOther.default_tools;
+    if (stableJson(afterOther) !== stableJson(beforeOther)) throw new Error("0132 changed another Growth Partner role field");
+    const changed = stableJson(beforeTools) === stableJson(afterTools) ? new Set() : new Set(["growth_partner"]);
+    return {
+      changed: new Map([["agent_roles", changed]]),
+      growth: new Map(),
+      detail: changed.size ? "only crm.request_update was added to the existing Growth Partner default_tools" : "crm.request_update was already present; no role row changed",
+    };
+  }
   if (prefix(file) !== "0131") return { changed: new Map(), growth: new Map(), detail: "" };
   const expected = new Map([
     ["getting-started", ["Getting started with iAcquireOS", "A short tour of the workspace, your AI team and where to get help."]],
@@ -1693,7 +1723,7 @@ async function runBCD() {
     const growable = insertTargets(file);
     let rowAllowance = { changed: new Map(), growth: new Map(), detail: "" };
     try {
-      rowAllowance = await migrationRowAllowance(file, db);
+      rowAllowance = await migrationRowAllowance(file, db, before.snap);
     } catch (e) {
       fail("B", `${v}: ${clip(e.message, 300)}`);
     }
@@ -2249,7 +2279,7 @@ async function runHosted(key, cfg) {
     const growable = insertTargets(files.find((f) => name(f) === v));
     let rowAllowance = { changed: new Map(), growth: new Map(), detail: "" };
     try {
-      rowAllowance = await migrationRowAllowance(files.find((f) => name(f) === v), db);
+      rowAllowance = await migrationRowAllowance(files.find((f) => name(f) === v), db, before.snap);
     } catch (e) {
       problems.push(clip(e.message, 300));
     }

@@ -7,7 +7,7 @@ import { resolveCapabilities } from "@/server/crm/workspace";
 import { inboxEnabledFor } from "@/server/messaging/inbox-rollout";
 import { employeeAbilities } from "@/server/workforce/abilities";
 import { roleAbilitiesAllow } from "@/server/workforce/employee-evidence";
-import { clientBusinessProposalToolNamesForRole, clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clientBusinessProposalRequiredAbility, clientBusinessProposalToolNamesForRole, clientBusinessProposalsOn, clientBusinessToolsOn } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { PROVISIONING_PAYMENT_CLEARED_SQL } from "@/server/workforce/provisioning";
 
 /**
@@ -101,6 +101,10 @@ export async function clientToolGate(db: Queryable, input: { orgId: string; agen
   // list of changes it may ask for must all agree. A tool that is not a plain read or such a change (a message, a booking) never passes. Everything below is then the same as for a read.
   const kind = AGENT_TOOLS[input.tool].kind;
   const proposing = kind === "write" && clientBusinessProposalToolNamesForRole(input.roleKey).includes(input.tool) && (await clientBusinessProposalsOn(input.orgId, db));
+  const requiredAbility = proposing ? clientBusinessProposalRequiredAbility(input.roleKey, input.tool) : null;
+  if (requiredAbility && !abilities.has(requiredAbility)) {
+    return closed("abilities_off", "CRM updates are switched off in this Growth Partner's Allowed actions, so nothing was prepared for approval.");
+  }
   const part = proposing ? PROPOSAL_CRM_PART[input.tool] : CRM_PART[input.tool];
   if (part) {
     const owner = await peekCapabilityOwner(db, input.orgId, part);
