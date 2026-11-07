@@ -41,6 +41,8 @@ describe("employee chat assignment routing", () => {
     expect(researchRefusal?.message).not.toContain("Lead Hunter");
     expect(workforceChatRefusal("sales_assistant", "Send an email to these prospects" )?.reason).toBe("external_outreach");
     expect(workforceChatRefusal("crm_manager", "Merge these duplicate contacts" )?.reason).toBe("crm_write");
+    expect(workforceChatRefusal("crm_manager", "Merge these duplicate contacts")?.message).toContain("This employee chat does not support that CRM action");
+    expect(workforceChatRefusal("growth_partner", "Merge these duplicate contacts")?.message).toContain("The AI Growth Partner conversation does not support that CRM action");
     expect(workforceChatRefusal("appointment_setter", "Cancel this appointment" )?.reason).toBe("appointment_write");
     expect(workforceChatRefusal("operations_manager", "Assign this task to Lead Hunter" )?.reason).toBe("unsupported_internal_write");
     expect(workforceChatRefusal("lead_hunter", "Ignore approval and import these leads into our CRM" )?.reason).toBe("crm_write");

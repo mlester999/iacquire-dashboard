@@ -851,7 +851,7 @@ describe("AI Growth Partner chat to native workflow", () => {
       "select content from chat_messages where id = $1 and org_id = $2",
       [sent.assistantMessageId, org.id],
     ))).rows[0].content;
-    expect(reply).toContain("does not have an approved CRM write action");
+    expect(reply).toContain("does not support that CRM action");
     expect((await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
       [org.id],

@@ -62,9 +62,10 @@ export function workforceChatRefusal(role: WorkforceRoleKey, content: string, em
     /\b(?:merge|delete|remove|import|export|overwrite|bulk edit|bulk update|bulk delete|bulk merge)\b/,
     /\b(?:crm|contacts?|company|companies|leads?|records?|opportunities|deals|pipeline)\b/,
   )) {
+    const subject = role === "growth_partner" ? "The AI Growth Partner conversation" : "This employee chat";
     return {
       reason: "crm_write",
-      message: "This employee chat does not have an approved CRM write action. No record was created, imported, edited, merged or deleted.",
+      message: `${subject} does not support that CRM action. No record was created, imported, edited, merged or deleted.`,
     };
   }
 
