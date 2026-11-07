@@ -30,6 +30,7 @@ const factDraftInputSchema = z.object({
   key: z.string().trim().min(1).max(120).refine((key) => !/[\u0000-\u001f\u007f]/.test(key) && !["__proto__", "prototype", "constructor"].includes(key)),
   valueText: z.string().max(16_000),
 }).strict();
+export type GrowthPartnerBusinessBrainFactDraftSource = "partner_control_center" | "permanent_growth_partner_chat";
 const activateVersionInputSchema = z.object({
   expectedCurrentVersion: z.number().int().positive().nullable(),
   version: z.number().int().positive(),
@@ -198,9 +199,14 @@ export async function getGrowthPartnerControlState(ctx: OrgContext): Promise<Gro
 }
 
 /** Saves one client-confirmed fact as a new draft version without changing the active snapshot. */
-export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, rawInput: unknown) {
+export async function saveGrowthPartnerBusinessBrainFactDraft(
+  ctx: OrgContext,
+  rawInput: unknown,
+  options: { submittedFrom?: GrowthPartnerBusinessBrainFactDraftSource } = {},
+) {
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only workspace owners and admins can edit the AI Growth Partner.");
   const input = factDraftInputSchema.parse(rawInput);
+  const submittedFrom = options.submittedFrom ?? "partner_control_center";
 
   return withSystem(async (db) => {
     const partner = (await db.query<{ id: string; current_version: number | null }>(
@@ -260,7 +266,7 @@ export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, r
        values ($1, $2, $3, $4::jsonb, $5::jsonb, 'client_edit', $6::jsonb, $7)
        returning id`,
       [partner.id, ctx.org.orgId, nextVersion, JSON.stringify(brain), JSON.stringify(personaSettingsSchema.parse(latest.persona_settings ?? {})), JSON.stringify({
-        submittedFrom: "partner_control_center",
+        submittedFrom,
         basedOnVersion: input.baseVersion,
         editedSection: input.section,
         editedFact: input.key,
@@ -275,7 +281,7 @@ export async function saveGrowthPartnerBusinessBrainFactDraft(ctx: OrgContext, r
       targetType: "ai_growth_partner_version",
       targetId: snapshot.id,
       result: "success",
-      metadata: { version: nextVersion, basedOnVersion: input.baseVersion, section: input.section, fact: input.key, activeVersionChanged: false },
+      metadata: { version: nextVersion, basedOnVersion: input.baseVersion, section: input.section, fact: input.key, submittedFrom, activeVersionChanged: false },
     }, db);
     return { id: snapshot.id, partnerId: partner.id, version: nextVersion, status: "draft" as const, activated: false as const };
   });

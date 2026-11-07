@@ -41,6 +41,7 @@ import { parseWorkforceChatCalendarCreateIntent, type WorkforceChatCalendarCreat
 import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
 import { parseWorkforceChatAppointmentChangeIntent, type WorkforceChatAppointmentChangeIntent } from "@/lib/workforce-chat-appointment-change-intent";
 import { parseWorkforceChatTargetingIntent } from "@/lib/workforce-chat-targeting-intent";
+import { parseWorkforceChatBusinessBrainIntent } from "@/lib/workforce-chat-business-brain-intent";
 import { parseWorkforceChatGoalIntent } from "@/lib/workforce-chat-goal-intent";
 import { parseWorkforceChatPreferencesIntent } from "@/lib/workforce-chat-preferences-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
@@ -84,6 +85,7 @@ import { getProfile, updateAiPreferences } from "@/server/settings/service";
 import { parseWorkforceChatOutboundControlIntent } from "@/lib/workforce-chat-outbound-control-intent";
 import { setClientPause } from "@/server/automation/controls";
 import { listGrowthPartnerGoalProgress, saveGrowthPartnerGoal } from "@/server/ai-growth-partner/goals";
+import { getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -930,6 +932,78 @@ async function handleChatTargetingIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The targeting service could not save the change just now.";
     return reply(`I couldn't update saved lead targeting: ${chatSafeText(message)} No settings were confirmed as changed.`);
+  }
+}
+
+async function handleChatBusinessBrainIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatBusinessBrainIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "draft") return reply("I couldn't identify one supported Business Brain field. No draft was saved.");
+  if (ctx.org.kind !== "client") return reply("Business Brain edits are available in client workspaces. No draft was saved.");
+  if (!ctx.can("agents.configure")) return reply("Only a workspace owner or admin can save Business Brain changes from chat. No draft was created.");
+
+  try {
+    const before = await getGrowthPartnerControlState(ctx);
+    const baseVersion = before?.draftVersion ?? before?.currentVersion;
+    const brain = before?.draftBusinessBrain ?? before?.currentBusinessBrain;
+    if (!before || baseVersion === null || baseVersion === undefined || !brain) {
+      return reply("The Business Brain does not have a saved version to edit yet. Finish Partner setup and generate its first version, then try again.");
+    }
+    const existing = brain.sections[input.intent.section][input.intent.key];
+    if (!existing) return reply("That Business Brain fact is no longer available. Refresh Partner Controls and try again.");
+
+    let expectedValue: unknown = input.intent.valueText;
+    if (Array.isArray(existing.value)) {
+      expectedValue = input.intent.valueText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    } else if (typeof existing.value === "object" && existing.value !== null) {
+      try {
+        expectedValue = JSON.parse(input.intent.valueText);
+      } catch {
+        return reply("That Business Brain field uses structured data. Save its value in the Partner Controls editor as JSON; no draft was created.");
+      }
+      if (typeof expectedValue !== "object" || expectedValue === null || Array.isArray(expectedValue)) {
+        return reply("That Business Brain field needs a JSON object. No draft was created.");
+      }
+    }
+
+    const matches = existing.state === "client_confirmed" && existing.clientOverride
+      && JSON.stringify(existing.value) === JSON.stringify(expectedValue);
+    if (matches) {
+      return before.draftVersion
+        ? reply(`Those ${input.intent.label} are already saved in Business Brain draft version ${before.draftVersion}. Review and activate that draft in Partner Controls.`)
+        : reply(`Those ${input.intent.label} are already active in Business Brain version ${before.currentVersion}. No new draft was created.`);
+    }
+
+    const saved = await saveGrowthPartnerBusinessBrainFactDraft(ctx, {
+      baseVersion,
+      section: input.intent.section,
+      key: input.intent.key,
+      valueText: input.intent.valueText,
+    }, { submittedFrom: "permanent_growth_partner_chat" });
+    const after = await getGrowthPartnerControlState(ctx);
+    const verifiedFact = after?.draftBusinessBrain?.sections[input.intent.section][input.intent.key];
+    const verified = after?.draftVersion === saved.version
+      && after.currentVersion === before.currentVersion
+      && verifiedFact?.state === "client_confirmed"
+      && verifiedFact.clientOverride
+      && JSON.stringify(verifiedFact.value) === JSON.stringify(expectedValue);
+    if (!verified) {
+      return reply(`I saved Business Brain draft version ${saved.version}, but could not verify its saved value and active version. Check Partner Controls before activating it.`, systemNoticeMarker());
+    }
+    return reply(`Saved ${input.intent.label} in Business Brain draft version ${saved.version}. It is not active yet; review and activate it in Partner Controls when it is correct.`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The Business Brain service could not confirm the saved draft.";
+    return reply(`I couldn't save that Business Brain change. ${chatSafeText(message)} No draft was confirmed.`, systemNoticeMarker());
   }
 }
 
@@ -2239,6 +2313,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || parseWorkforceChatAppointmentPolicyIntent(role, content).kind !== "none"
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
+      || parseWorkforceChatBusinessBrainIntent(role, content).kind !== "none"
       || parseWorkforceChatTargetingIntent(role, content).kind !== "none"
       || parseWorkforceChatGoalIntent(role, content).kind !== "none"
       || parseWorkforceChatPreferencesIntent(role, content).kind !== "none"
@@ -2584,6 +2659,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: appointmentChangeIntent,
+    });
+  }
+  const businessBrainIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatBusinessBrainIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (businessBrainIntent.kind !== "none" && !refusal) {
+    return handleChatBusinessBrainIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: businessBrainIntent,
     });
   }
   const targetingIntent = !input.regenerateMessageId && !namedOtherRole
