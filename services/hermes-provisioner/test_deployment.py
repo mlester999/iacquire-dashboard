@@ -112,6 +112,39 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
 
+    def test_acceptance_workflow_requires_manual_confirmation_and_pins_helper_image(self):
+        workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
+        self.assertEqual(set(workflow["on"]), {"workflow_dispatch"})
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+        dispatch = workflow["on"]["workflow_dispatch"]
+        confirmation = dispatch["inputs"]["confirm_external_execution"]
+        self.assertEqual(confirmation["type"], "choice")
+        self.assertEqual(confirmation["required"], "true")
+        self.assertEqual(confirmation["options"], ["RUN_SYNTHETIC_HERMES_ACCEPTANCE"])
+
+        job = workflow["jobs"]["build-and-accept"]
+        self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
+        self.assertIn(
+            "github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE'",
+            job["if"],
+        )
+        runner_check = next(step for step in job["steps"] if step.get("name") == "Verify runner and branch scope")
+        self.assertIn('[[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]', runner_check["run"])
+        self.assertIn(
+            '[[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]',
+            runner_check["run"],
+        )
+
+        helper_image = "docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d"
+        overlay_path = ROOT / "compose.portal-acceptance.yaml"
+        overlay = yaml.load(overlay_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        service = overlay["services"]["portal-acceptance"]
+        self.assertEqual(service["image"], helper_image)
+        self.assertEqual(service["platform"], "linux/amd64")
+        self.assertIn(f"docker pull {helper_image}", workflow_text)
+
     def test_acceptance_bind_file_modes_support_dropped_caps_without_widening_reads(self):
         hermes = self.services["hermes-client"]
         self.assertNotIn("DAC_OVERRIDE", hermes["cap_add"])

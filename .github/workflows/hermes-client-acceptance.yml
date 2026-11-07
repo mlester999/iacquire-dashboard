@@ -1,9 +1,14 @@
 name: Synthetic client Hermes acceptance
 
 on:
-  push:
-    branches:
-      - codex/ai-growth-partner
+  workflow_dispatch:
+    inputs:
+      confirm_external_execution:
+        description: Runs an isolated synthetic acceptance on a hosted runner, downloads locked dependencies and pinned images, and consumes GitHub Actions minutes.
+        required: true
+        type: choice
+        options:
+          - RUN_SYNTHETIC_HERMES_ACCEPTANCE
 
 permissions:
   contents: read
@@ -14,6 +19,7 @@ concurrency:
 
 jobs:
   build-and-accept:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE'
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -34,12 +40,15 @@ jobs:
 
       - name: Verify runner and branch scope
         shell: bash
+        env:
+          HERMES_ACCEPTANCE_CONFIRMATION: ${{ github.event.inputs.confirm_external_execution }}
         run: |
           set -euo pipefail
           [[ "$RUNNER_OS" == Linux ]]
           [[ "$(lsb_release -rs)" == "24.04" ]]
           [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
-          [[ "$GITHUB_EVENT_NAME" == push ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
+          [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
           docker buildx inspect --bootstrap >/dev/null
           docker compose version >/dev/null
 
@@ -105,7 +114,7 @@ jobs:
 
       - name: Pull the isolated Node acceptance runtime
         shell: bash
-        run: docker pull node:22-bookworm-slim
+        run: docker pull docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
       - name: Run compatibility and worker security tests in the candidate image
         shell: bash

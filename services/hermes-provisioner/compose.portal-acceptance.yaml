@@ -1,7 +1,8 @@
 services:
   portal-acceptance:
     profiles: [acceptance]
-    image: node:22-bookworm-slim
+    image: docker.io/library/node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+    platform: linux/amd64
     pull_policy: never
     network_mode: service:hermes-client
     restart: "no"
