@@ -9,6 +9,7 @@ import { runAllCollectors } from "@/server/ops/collectors";
 import { JOBS } from "@/server/ops/tick";
 import { getSystemHealth, provisioningHealth, provisioningSummary } from "@/server/admin/health";
 import { PROVISIONER_LIVENESS_JOB, recordProvisionerClaimSeen } from "@/server/workforce/provisioning-watchdog";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 import { readyToRequeue, requeueAs } from "./support/requeue";
 
@@ -32,7 +33,9 @@ async function world(name: string, roles: string[] = ["lead_hunter"]): Promise<W
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const ids: Record<string, string> = {};
-  for (const role of roles) ids[role] = await agentId(org.id, role);
+  for (const role of roles) ids[role] = role === "growth_partner"
+    ? await withSystem((db) => ensureGrowthPartnerRuntime(org.id, db))
+    : await agentId(org.id, role);
   return { org, owner, ids };
 }
 
@@ -131,7 +134,7 @@ describe("the provisioning collector", () => {
     const rows = await open();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ dedupe_key: `provisioning:failed:${a.org.id}`, severity: "critical", org_id: a.org.id, client_visible: false, source: "hermes" });
-    expect(rows[0].title).toContain("2 AI employee profile jobs have failed after 3 attempts");
+    expect(rows[0].title).toContain("2 AI runtime profile jobs have failed after 3 attempts");
     expect(rows[0].title).toContain("Ops Failed Co A");
     await check();
     expect(await open()).toHaveLength(1);
@@ -163,8 +166,18 @@ describe("the provisioning collector", () => {
     await q("update agent_provisioning_jobs set status = 'failed', attempt_count = 3 where id = $1", [jobId]);
     await check();
     expect((await open()).map((i) => i.dedupe_key)).toEqual([`provisioning:failed:${w.org.id}`]);
-    expect((await open())[0].title).toContain("1 AI employee profile job has failed");
+    expect((await open())[0].title).toContain("1 AI runtime profile job has failed");
     expect((await withSystem((db) => provisioningHealth(db))).failed).toBe(1);
+  });
+
+  it("names the single Growth Partner in the Super Admin provisioning incident", async () => {
+    const w = await world("Ops Growth Partner Co", ["growth_partner"]);
+    await addJob(w, "growth_partner", "failed", { attempts: 3 });
+    await check();
+
+    const incident = (await open()).find((row) => row.org_id === w.org.id)!;
+    expect(incident.title).toBe("AI Growth Partner setup failed after 3 attempts (Ops Growth Partner Co)");
+    expect(incident.detail).toContain("AI Growth Partner remains in setup");
   });
 
   it("reports a request nobody has claimed, a first check that never passed, and nothing for a young job, only while the provisioner is on", async () => {
@@ -180,7 +193,7 @@ describe("the provisioning collector", () => {
     expect(keys).toEqual([`provisioning:health:${w.org.id}`, `provisioning:stalled:${w.org.id}`, "provisioning:worker-silent"].sort());
     const stalled = (await open()).find((i) => i.dedupe_key.startsWith("provisioning:stalled:"))!;
     expect(stalled).toMatchObject({ severity: "warning", org_id: w.org.id, client_visible: false });
-    expect(stalled.title).toContain("1 AI employee setup request has waited more than 30 minutes");
+    expect(stalled.title).toContain("1 AI runtime profile setup request has waited more than 30 minutes");
     // Put right: the request is claimed, and the first check passes.
     await q("update agent_provisioning_jobs set status = 'in_progress' where org_id = $1 and agent_instance_id = $2", [w.org.id, w.ids.lead_hunter]);
     await q("update agent_provisioning_jobs set status = 'succeeded' where org_id = $1 and agent_instance_id = $2", [w.org.id, w.ids.crm_manager]);

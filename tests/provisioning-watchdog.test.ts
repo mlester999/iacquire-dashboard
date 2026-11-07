@@ -8,6 +8,7 @@ import type { HealthResult } from "@/server/workforce/service";
 import { provisionerWorkerSilence, recordProvisionerClaimSeen, runProvisioningWatchdog, PROVISIONER_LIVENESS_JOB } from "@/server/workforce/provisioning-watchdog";
 import { addMember, agentId, createOrg, createUser } from "./support/fixtures";
 import { readyToRequeue, requeueAs } from "./support/requeue";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 
 type JobStatus = "requested" | "in_progress" | "awaiting_health_check" | "succeeded" | "failed" | "cancelled";
 
@@ -23,7 +24,9 @@ async function world(name: string, roles: string[] = ["lead_hunter"]): Promise<W
   const owner = await createUser();
   await addMember(org.id, owner.id, "owner");
   const ids: Record<string, string> = {};
-  for (const role of roles) ids[role] = await agentId(org.id, role);
+  for (const role of roles) ids[role] = role === "growth_partner"
+    ? await withSystem((db) => ensureGrowthPartnerRuntime(org.id, db))
+    : await agentId(org.id, role);
   return { org, owner, ids };
 }
 
@@ -159,8 +162,8 @@ describe("a failure that arrived from the worker", () => {
     const agency = (await notices(w.org.id)).filter((n) => n.audience === "agency");
     expect(agency).toHaveLength(2);
     expect(agency.map((n) => n.title).sort()).toEqual([
-      "Callback Co: Lead Hunter setup failed after 3 attempts",
-      "Callback Co: Sales Assistant configuration update failed after 3 attempts",
+      "Callback Co: Previous profile · Lead Hunter setup failed after 3 attempts",
+      "Callback Co: Previous profile · Sales Assistant configuration update failed after 3 attempts",
     ]);
     expect(agency.find((n) => n.title.includes("Lead Hunter"))?.body).toContain("canary_failed");
     expect((await job(terminal)).status).toBe("failed"); // announcing changes no state
@@ -168,6 +171,30 @@ describe("a failure that arrived from the worker", () => {
     const second = await runProvisioningWatchdog({ now: new Date() });
     expect(second.announced).toBe(0);
     expect(await notices(w.org.id)).toHaveLength(4);
+  });
+
+  it("uses the single Growth Partner identity in owner failure notices and stalled setup alerts", async () => {
+    const failedWorld = await world("Growth Partner Failure Co", ["growth_partner"]);
+    await addJob(failedWorld, "growth_partner", {
+      status: "failed",
+      attempts: 3,
+      detail: "Restricted Hermes profile setup failed (canary_failed). Review the isolated host result before retrying.",
+    });
+    await runProvisioningWatchdog({ now: new Date() });
+    const failedNotices = await notices(failedWorld.org.id);
+    expect(failedNotices.find((notice) => notice.audience === "agency")?.title).toBe("Growth Partner Failure Co: AI Growth Partner setup failed after 3 attempts");
+    expect(failedNotices.find((notice) => notice.audience === "client")?.title).toBe("AI Growth Partner is taking longer to set up than expected");
+    expect(JSON.stringify(failedNotices)).not.toMatch(/AI employee|Lead Hunter/);
+
+    const queuedWorld = await world("Growth Partner Queue Co", ["growth_partner"]);
+    const queuedId = await addJob(queuedWorld, "growth_partner", { status: "requested" });
+    await ageJob(queuedId, 40);
+    enableProvisioner();
+    await dropLiveness();
+    await runProvisioningWatchdog({ now: new Date() });
+    expect((await notices(queuedWorld.org.id, "provisioning-stalled:%")).find((notice) => notice.audience === "agency")?.title)
+      .toBe("Growth Partner Queue Co: AI Growth Partner setup is stalled");
+    await withSystem((db) => db.query("update agent_provisioning_jobs set status = 'succeeded' where org_id = $1 and id = $2", [queuedWorld.org.id, queuedId]));
   });
 
   it("carries no profile name, key or free text from an agency note into any notice", async () => {

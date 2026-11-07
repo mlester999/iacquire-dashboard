@@ -14,6 +14,7 @@ import { GET as healthRoute } from "@/app/api/health/route";
 import { emailIncludesBody, emailedElsewhere, parseEmailPreference, sanitizeErrorText, shouldEmail } from "@/lib/ops";
 import { agencyUser, createOrg, createUser, addMember, ctxFor } from "./support/fixtures";
 import { messagingOrg, type MessagingOrg } from "./support/messaging";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 
 let m: MessagingOrg;
 let other: Awaited<ReturnType<typeof createOrg>>;
@@ -326,15 +327,33 @@ describe("health checks read recorded evidence and close their own incidents", (
     expect(await open("credits:reservations")).toMatchObject([{ status: "resolved" }]);
   });
 
-  it("flags unavailable AI employees to the client and says what is held back", async () => {
+  it("flags an unavailable retained runtime profile to the client and says what is held back", async () => {
     await withSystem((db) => db.query("update agent_instances set status = 'error' where org_id = $1 and role_key = 'lead_hunter'", [m.org.id]));
     await run("hermes:");
-    const inc = (await listIncidentsForAgency(m.superAdmin)).find((i) => i.title.includes("AI employee") && i.orgId === m.org.id)!;
+    const inc = (await listIncidentsForAgency(m.superAdmin)).find((i) => i.title.includes("AI runtime profile is unavailable") && i.orgId === m.org.id)!;
     expect(inc).toMatchObject({ clientVisible: true, severity: "warning" });
-    expect(inc.safeActions.join(" ")).toMatch(/does not start new work/);
+    expect(inc.safeActions.join(" ")).toMatch(/remains blocked/);
     await withSystem((db) => db.query("update agent_instances set status = 'online' where org_id = $1 and role_key = 'lead_hunter'", [m.org.id]));
     await run("hermes:");
     expect((await open(`hermes:agents:${m.org.id}`))[0].status).toBe("resolved");
+  });
+
+  it("names the single Growth Partner in client-visible runtime incidents", async () => {
+    const partnerOrg = await createOrg({ name: "Growth Partner Ops Co" });
+    const runtimeId = await withSystem((db) => ensureGrowthPartnerRuntime(partnerOrg.id, db));
+    await withSystem((db) => db.query("update agent_instances set status = 'error' where id = $1 and org_id = $2", [runtimeId, partnerOrg.id]));
+
+    await run("hermes:");
+    const inc = (await listIncidentsForAgency(m.superAdmin)).find((i) => i.orgId === partnerOrg.id)!;
+    expect(inc).toMatchObject({
+      subject: "AI Growth Partner",
+      title: "The AI Growth Partner is unavailable (Growth Partner Ops Co)",
+      clientVisible: true,
+      severity: "warning",
+    });
+    expect(inc.detail).toContain("AI Growth Partner runtime");
+    expect(inc.title).not.toMatch(/AI employee/i);
+    expect(inc.safeActions.join(" ")).toContain("Work that needs an unavailable AI runtime remains blocked.");
   });
 
   it("flags a scheduled job that keeps failing", async () => {

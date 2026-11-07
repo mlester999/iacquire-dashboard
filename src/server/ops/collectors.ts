@@ -3,6 +3,7 @@ import type { Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { applyCollector, type CollectorResult, type Observation } from "@/server/ops/incidents";
 import { sanitizeErrorText } from "@/lib/ops";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import { customerPaymentObservations } from "@/server/customer-payments/health";
 import { WORKER_SILENT_MINUTES, newestJobOfEmployeeSql, provisionerWorkerSilence } from "@/server/workforce/provisioning-watchdog";
 
@@ -238,18 +239,31 @@ async function ghlMappings(db: Queryable): Promise<Observation[]> {
 }
 
 async function agents(db: Queryable): Promise<Observation[]> {
-  const { rows } = await db.query<{ org_id: string; n: number; name: string }>(
-    `select a.org_id, count(*)::int as n, o.name from agent_instances a join organizations o on o.id = a.org_id
+  const { rows } = await db.query<{ org_id: string; n: number; partner_n: number; name: string }>(
+    `select a.org_id, count(*)::int as n,
+            count(*) filter (where a.role_key = $1)::int as partner_n, o.name
+       from agent_instances a join organizations o on o.id = a.org_id
      where a.enabled and a.status in ('error', 'offline') and o.status = 'active' group by a.org_id, o.name`,
+    [AI_GROWTH_PARTNER_ROLE_KEY],
   );
-  return rows.map((a) => ({
-    key: `hermes:agents:${a.org_id}`, source: "hermes" as const, orgId: a.org_id, subject: "AI employees", severity: "warning" as const,
-    title: `${a.n} AI employee${a.n === 1 ? " is" : "s are"} unavailable (${a.name})`,
-    detail: "The last health check could not reach the employee's profile.",
-    clientVisible: true,
-    safeActions: ["An employee that is not ready does not start new work."],
-    guidance: "Your AI employees are being checked. Work resumes automatically once they respond.",
-  }));
+  return rows.map((a) => {
+    const singlePartner = a.n === 1 && a.partner_n === 1;
+    return {
+      key: `hermes:agents:${a.org_id}`, source: "hermes" as const, orgId: a.org_id,
+      subject: singlePartner ? "AI Growth Partner" : "AI runtime profiles", severity: "warning" as const,
+      title: singlePartner
+        ? `The AI Growth Partner is unavailable (${a.name})`
+        : `${a.n} AI runtime profile${a.n === 1 ? " is" : "s are"} unavailable (${a.name})`,
+      detail: singlePartner
+        ? "The last health check could not reach the AI Growth Partner runtime."
+        : "The last health check could not reach one or more AI runtime profiles.",
+      clientVisible: true,
+      safeActions: ["Work that needs an unavailable AI runtime remains blocked."],
+      guidance: singlePartner
+        ? "The AI Growth Partner is being checked. Work that needs its runtime remains blocked until a health check passes."
+        : "iAcquire is checking the affected runtime profiles. Work that needs an unavailable profile remains blocked until a health check passes.",
+    };
+  });
 }
 
 async function failedRuns(db: Queryable, now: Date): Promise<Observation[]> {
@@ -279,54 +293,77 @@ async function provisioning(db: Queryable, now: Date): Promise<Observation[]> {
 
   // Jobs that used all three attempts: closed as failed (by the worker or the watchdog), or on their last attempt with a lease that ran out and not yet closed. Only an employee's
   // newest job counts: a requeue opens a new job and leaves the old failed one behind, which must not hold the incident open once the employee is back.
-  const failed = await db.query<{ org_id: string; n: number; name: string }>(
-    `select j.org_id, count(*)::int as n, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+  const failed = await db.query<{ org_id: string; n: number; partner_n: number; name: string }>(
+    `select j.org_id, count(*)::int as n,
+            count(*) filter (where a.role_key = $2)::int as partner_n, o.name
+       from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+       join organizations o on o.id = j.org_id
       where j.kind in ('provision', 'sync') and j.attempt_count >= 3
         and (j.status = 'failed' or (j.status = 'in_progress' and (j.lease_expires_at is null or j.lease_expires_at <= $1::timestamptz)))
         and ${newestJobOfEmployeeSql("j")}
       group by j.org_id, o.name`,
-    [now.toISOString()],
+    [now.toISOString(), AI_GROWTH_PARTNER_ROLE_KEY],
   );
   for (const r of failed.rows) {
+    const singlePartner = r.n === 1 && r.partner_n === 1;
     out.push({
-      key: `provisioning:failed:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee setup", severity: "critical",
-      title: `${r.n} AI employee profile job${r.n === 1 ? " has" : "s have"} failed after 3 attempts (${r.name})`,
-      detail: "The restricted worker used all of its attempts. The employee stays in setup until the job is reviewed and requeued.",
+      key: `provisioning:failed:${r.org_id}`, source: "hermes", orgId: r.org_id,
+      subject: singlePartner ? "AI Growth Partner" : "AI runtime profiles", severity: "critical",
+      title: singlePartner
+        ? `AI Growth Partner setup failed after 3 attempts (${r.name})`
+        : `${r.n} AI runtime profile job${r.n === 1 ? " has" : "s have"} failed after 3 attempts (${r.name})`,
+      detail: singlePartner
+        ? "The restricted worker used all of its attempts. The AI Growth Partner remains in setup until the job is reviewed and requeued."
+        : "The restricted worker used all of its attempts. The affected runtime profiles remain in setup until their jobs are reviewed and requeued.",
       evidence: { failed: r.n },
-      guidance: "Open the client's page, review the isolated host result, then requeue the job.",
+      guidance: "Open the client's page, review the isolated host result, then requeue the profile job.",
     });
   }
   if (!config.HERMES_PROVISIONER_ENABLED) return out;
 
   // Requests nobody has picked up, and employees that never got their first health check.
-  const queued = await db.query<{ org_id: string; n: number; oldest: Date; name: string }>(
-    `select j.org_id, count(*)::int as n, min(j.updated_at) as oldest, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+  const queued = await db.query<{ org_id: string; n: number; partner_n: number; oldest: Date; name: string }>(
+    `select j.org_id, count(*)::int as n,
+            count(*) filter (where a.role_key = $2)::int as partner_n, min(j.updated_at) as oldest, o.name
+       from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+       join organizations o on o.id = j.org_id
       where j.kind in ('provision', 'sync') and j.status = 'requested' and j.updated_at <= $1::timestamptz and o.status = 'active'
       group by j.org_id, o.name`,
-    [waitingSince],
+    [waitingSince, AI_GROWTH_PARTNER_ROLE_KEY],
   );
   for (const r of queued.rows) {
+    const singlePartner = r.n === 1 && r.partner_n === 1;
     out.push({
-      key: `provisioning:stalled:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee setup", severity: "warning",
-      title: `${r.n} AI employee setup request${r.n === 1 ? " has" : "s have"} waited more than ${stall} minutes (${r.name})`,
+      key: `provisioning:stalled:${r.org_id}`, source: "hermes", orgId: r.org_id,
+      subject: singlePartner ? "AI Growth Partner" : "AI runtime profiles", severity: "warning",
+      title: singlePartner
+        ? `AI Growth Partner setup request has waited more than ${stall} minutes (${r.name})`
+        : `${r.n} AI runtime profile setup request${r.n === 1 ? " has" : "s have"} waited more than ${stall} minutes (${r.name})`,
       detail: "Nothing has claimed these requests. The worker may be stopped, the gateway may not be verified, or the workspace may be on hold.",
       evidence: { waiting: r.n, oldest: new Date(r.oldest).toISOString() },
       guidance: "Check the worker's last claim, the client runtime's gateway, and whether the workspace is paused or its payment is cleared.",
     });
   }
-  const checks = await db.query<{ org_id: string; n: number; oldest: Date; name: string }>(
-    `select j.org_id, count(*)::int as n, min(j.updated_at) as oldest, o.name from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+  const checks = await db.query<{ org_id: string; n: number; partner_n: number; oldest: Date; name: string }>(
+    `select j.org_id, count(*)::int as n,
+            count(*) filter (where a.role_key = $2)::int as partner_n, min(j.updated_at) as oldest, o.name
+       from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+       join organizations o on o.id = j.org_id
       where j.kind in ('provision', 'sync') and j.status = 'awaiting_health_check' and j.updated_at <= $1::timestamptz and o.status = 'active'
       group by j.org_id, o.name`,
-    [waitingSince],
+    [waitingSince, AI_GROWTH_PARTNER_ROLE_KEY],
   );
   for (const r of checks.rows) {
+    const singlePartner = r.n === 1 && r.partner_n === 1;
     out.push({
-      key: `provisioning:health:${r.org_id}`, source: "hermes", orgId: r.org_id, subject: "AI employee first check", severity: "warning",
-      title: `${r.n} AI employee${r.n === 1 ? " is" : "s are"} still waiting for the first health check after ${stall} minutes (${r.name})`,
+      key: `provisioning:health:${r.org_id}`, source: "hermes", orgId: r.org_id,
+      subject: singlePartner ? "AI Growth Partner" : "AI runtime profiles", severity: "warning",
+      title: singlePartner
+        ? `AI Growth Partner is still waiting for the first health check after ${stall} minutes (${r.name})`
+        : `${r.n} AI runtime profile${r.n === 1 ? " is" : "s are"} still waiting for the first health check after ${stall} minutes (${r.name})`,
       detail: "The profile was built on the host, but the portal's own connection check has not passed. The job stays open until it does.",
       evidence: { waiting: r.n, oldest: new Date(r.oldest).toISOString() },
-      guidance: "Open the employee and read the last health check result; run the check again after fixing what it names.",
+      guidance: "Open the runtime profile and read the last health check result; run the check again after fixing what it names.",
     });
   }
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
-import { AGENT_BY_KEY, isAgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import { sanitizeErrorText } from "@/lib/ops";
 import { env } from "@/server/env";
 import { recordAudit } from "@/server/audit";
@@ -120,8 +120,7 @@ function failureCodeOf(detail: string | null): string | null {
  * announcement, while a repeated pass cannot repeat this one. The audit row is what the next pass reads to know it was announced.
  */
 async function announceFailedJob(db: Queryable, job: FailedJob): Promise<void> {
-  const meta = isAgentRoleKey(job.role_key) ? AGENT_BY_KEY[job.role_key] : null;
-  const role = meta?.shortName ?? "AI employee";
+  const role = isWorkforceRoleKey(job.role_key) ? workforceIdentityLabel(job.role_key) : "AI runtime profile";
   const updating = job.kind === "sync";
   const code = failureCodeOf(job.detail);
   const key = `provisioning-failed:${job.id}:${Math.floor(new Date(job.updated_at).getTime() / 1000)}`;
@@ -224,9 +223,12 @@ async function noticeStalledQueue(now: Date): Promise<number> {
   if (!config.HERMES_PROVISIONER_ENABLED) return 0;
   return withSystem(async (db) => {
     const cutoff = new Date(now.getTime() - config.HERMES_PROVISIONER_STALL_MINUTES * 60_000).toISOString();
-    const { rows: waiting } = await db.query<{ org_id: string; org_name: string; n: number }>(
-      `select j.org_id, o.name as org_name, count(*)::int as n
-         from agent_provisioning_jobs j join organizations o on o.id = j.org_id
+    const { rows: waiting } = await db.query<{ org_id: string; org_name: string; n: number; partner_n: number }>(
+      `select j.org_id, o.name as org_name, count(*)::int as n,
+              count(*) filter (where a.role_key = 'growth_partner')::int as partner_n
+         from agent_provisioning_jobs j
+         join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+         join organizations o on o.id = j.org_id
         where j.kind in ('provision', 'sync') and j.status = 'requested' and j.updated_at <= $1::timestamptz and o.status = 'active'
         group by j.org_id, o.name order by min(j.updated_at), j.org_id
         limit $2`,
@@ -242,10 +244,12 @@ async function noticeStalledQueue(now: Date): Promise<number> {
       gatewayOk ? null : "the client Hermes gateway is not connected and verified",
     ].filter(Boolean).join("; ");
     for (const w of waiting) {
+      const singlePartner = w.n === 1 && w.partner_n === 1;
+      const workLabel = singlePartner ? "AI Growth Partner setup" : "AI runtime profile setup";
       await notifyAgency(db, w.org_id, {
         kind: "setup_issue",
         severity: "warning",
-        title: `${w.org_name}: AI employee setup is stalled`,
+        title: `${w.org_name}: ${workLabel} is stalled`,
         body: `${w.n} request${w.n === 1 ? " has" : "s have"} waited more than ${config.HERMES_PROVISIONER_STALL_MINUTES} minutes: ${why}. Nothing was changed.`,
         link: `/admin/clients/${w.org_id}`,
         dedupeKey: `provisioning-stalled:${w.org_id}:${day}`,
