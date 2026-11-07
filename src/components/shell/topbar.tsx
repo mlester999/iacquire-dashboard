@@ -62,7 +62,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const router = useRouter();
   const shell = useShell();
   const partnerChatHref = shell.org.kind === "client" ? "/growth-partner/conversation" : "/chat/operations-manager";
-  const partnerChatLabel = shell.org.kind === "client" ? "My AI Growth Partner" : "Ask your AI team";
+  const partnerChatLabel = shell.org.kind === "client" ? "My AI Growth Partner" : "Ask iAcquire Operations Manager";
   const { requestLogout } = useLogoutConfirmation();
   const [navigationOpen, setNavigationOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");

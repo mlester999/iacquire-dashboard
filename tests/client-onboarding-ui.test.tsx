@@ -290,9 +290,9 @@ describe("the existing AI profiles banner", () => {
     expect(within(card("lead_hunter")).getByText("In progress")).toBeTruthy();
     expect(card("lead_hunter").textContent).toContain(hunterItem.detail);
     expect(within(card("lead_hunter")).getByRole("link").getAttribute("href")).toBe(`/employees/${AGENT_BY_KEY.lead_hunter.slug}`);
-    // A role the judge finished opens chat; it is not called "ready" by a count of anything else.
+    // Completed checks remain attached to the preserved record; client work still uses one Growth Partner conversation.
     expect(within(card("crm_manager")).getByText("Done")).toBeTruthy();
-    expect(within(card("crm_manager")).getByRole("link").getAttribute("href")).toBe(`/chat/${AGENT_BY_KEY.crm_manager.slug}`);
+    expect(within(card("crm_manager")).getByRole("link").getAttribute("href")).toBe(`/employees/${AGENT_BY_KEY.crm_manager.slug}`);
   });
 
   it("counts nothing when the judge could not be read, and shows no count of its own", () => {
@@ -302,11 +302,14 @@ describe("the existing AI profiles banner", () => {
     expect(screen.getAllByText("Action required")).toHaveLength(6);
   });
 
-  it("labels retained records as existing profiles and explains that cutover needs approval", () => {
+  it("labels retained records as previous role profiles and keeps them out of chat", () => {
     render(<OnboardedBanner nativeCrm crmGuide readiness={null} />);
-    expect(screen.getByRole("status", { name: "Existing AI profiles" })).toBeTruthy();
-    expect(screen.getByText("Existing AI profiles preserved")).toBeTruthy();
+    const records = screen.getByRole("status", { name: "Previous role profiles" });
+    expect(screen.getByText("Previous role profiles preserved")).toBeTruthy();
     expect(screen.getByText(/Moving this workspace to one AI Growth Partner requires its own runtime and permission checks plus your approval/)).toBeTruthy();
+    const profileLinks = within(records).getAllByRole("link").filter((link) => link.getAttribute("href")?.startsWith("/employees/"));
+    expect(profileLinks).toHaveLength(6);
+    expect(within(records).queryByRole("link", { name: /Open chat/ })).toBeNull();
     expect(document.body.textContent).not.toMatch(/six AI employees/i);
   });
 });

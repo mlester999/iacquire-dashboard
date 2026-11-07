@@ -59,4 +59,17 @@ describe("the top bar breadcrumb", () => {
     cleanup();
     expect(breadcrumbAt("/proposals/new")).toContain("Proposals");
   });
+
+  it("names the single internal profile that the Super Admin action opens", () => {
+    const agencyShell: ShellData = {
+      ...shell,
+      user: { ...shell.user, platformRole: "agency_super_admin" },
+      org: { ...shell.org, kind: "agency", name: "iAcquire" },
+    };
+    render(<ShellProvider value={agencyShell}><TooltipProvider><Topbar onOpenMenu={() => {}} /></TooltipProvider></ShellProvider>);
+    const links = screen.getAllByRole("link", { name: "Ask iAcquire Operations Manager" });
+    expect(links).toHaveLength(2);
+    expect(links.every((link) => link.getAttribute("href") === "/chat/operations-manager")).toBe(true);
+    expect(screen.queryByText("Ask your AI team")).toBeNull();
+  });
 });

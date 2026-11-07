@@ -47,7 +47,7 @@ function Metric({ label, value, definition }: { label: string; value: React.Reac
 function AskAnalyst({ prompt, canChat }: { prompt: string; canChat: boolean }) {
   if (!canChat) return null;
   return (
-    <Link href={`/chat/growth-partner?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-primary transition hover:bg-primary-soft">
+    <Link href={`/growth-partner/conversation?q=${encodeURIComponent(prompt)}`} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-primary transition hover:bg-primary-soft">
       <Sparkles className="size-3.5" /> Ask AI Growth Partner
     </Link>
   );

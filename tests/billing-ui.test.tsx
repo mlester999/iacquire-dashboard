@@ -181,7 +181,7 @@ describe("what the client sees while the setup payment is unconfirmed", () => {
   it("never overwrites what a recorded provisioning request says", () => {
     banner(false, [{ role: "lead_hunter", status: "in_progress", detail: null }]);
     expect(screen.getAllByText("Waiting for setup payment")).toHaveLength(5);
-    expect(screen.getAllByText("Provisioning")).toHaveLength(1);
+    expect(screen.getAllByText("Previous setup in progress")).toHaveLength(1);
   });
 });
 

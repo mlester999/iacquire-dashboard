@@ -43,11 +43,12 @@ describe("permanent Growth Partner conversation UI", () => {
       conversation: { id: "shared-thread-id", title: "AI Growth Partner", lastMessageAt: null, createdAt: "2026-11-07T00:00:00.000Z" },
       messages: [],
       hasMore: false,
-    }} timeZone="America/New_York" nowIso="2026-11-07T01:00:00.000Z" />);
+    }} initialInput="Review the latest qualified leads." timeZone="America/New_York" nowIso="2026-11-07T01:00:00.000Z" />);
 
     expect(screen.getByRole("heading", { name: "Permanent conversation" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /new chat|new conversation|create conversation/i })).toBeNull();
     expect(screen.queryByText(/new chat|new conversation|create conversation/i)).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Message the AI Growth Partner" })).toHaveProperty("value", "Review the latest qualified leads.");
 
     fireEvent.change(screen.getByRole("textbox", { name: "Message the AI Growth Partner" }), { target: { value: "Keep using the shared thread." } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

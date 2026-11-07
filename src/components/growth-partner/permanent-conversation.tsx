@@ -114,10 +114,12 @@ async function* readGrowthPartnerEvents(response: Response): AsyncGenerator<Grow
 
 export function PermanentGrowthPartnerConversation({
   initial,
+  initialInput,
   timeZone,
   nowIso,
 }: {
   initial: ConversationSnapshot | null;
+  initialInput?: string;
   timeZone: string;
   nowIso: string;
 }) {
@@ -127,7 +129,7 @@ export function PermanentGrowthPartnerConversation({
   const [results, setResults] = React.useState<SearchResult[] | null>(null);
   const [loadingOlder, setLoadingOlder] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
-  const [input, setInput] = React.useState("");
+  const [input, setInput] = React.useState(initialInput ?? "");
   const [sending, setSending] = React.useState(false);
   const now = new Date(nowIso);
 

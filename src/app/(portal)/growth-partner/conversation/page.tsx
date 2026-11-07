@@ -5,7 +5,8 @@ import { requireOrgContext } from "@/server/tenancy/context";
 
 export const metadata = { title: "Permanent Conversation" };
 
-export default async function GrowthPartnerConversationPage() {
+export default async function GrowthPartnerConversationPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
+  const { q } = await searchParams;
   const ctx = await requireOrgContext();
   if (ctx.org.kind !== "client") {
     redirect(ctx.user.platformRole === "agency_super_admin" ? "/admin/employees" : ctx.user.platformRole === "agency_staff" ? "/admin/employees/clients" : "/no-workspace");
@@ -22,5 +23,5 @@ export default async function GrowthPartnerConversationPage() {
     hasMore: conversation.hasMore,
   } : null;
 
-  return <PermanentGrowthPartnerConversation initial={initial} timeZone={ctx.org.timezone} nowIso={new Date().toISOString()} />;
+  return <PermanentGrowthPartnerConversation initial={initial} initialInput={typeof q === "string" ? q.slice(0, 2000) : undefined} timeZone={ctx.org.timezone} nowIso={new Date().toISOString()} />;
 }

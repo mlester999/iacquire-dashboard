@@ -268,7 +268,7 @@ export function AppointmentsView({ appointments, timeZone, lastSync, canRefresh,
               <p className="text-[14px] font-semibold">AI Growth Partner</p>
               <p className="mt-0.5 text-[13px] leading-relaxed text-muted">Ask about availability or prepare a booking. It only offers times your calendar reports as free, and unless you allow it to book on its own, you confirm each one in Approvals.</p>
               {partnerReady ? (
-                <ButtonLink href="/chat/growth-partner" variant="secondary" size="sm" className="mt-3">
+                <ButtonLink href="/growth-partner/conversation" variant="secondary" size="sm" className="mt-3">
                   Ask AI Growth Partner
                 </ButtonLink>
               ) : (
