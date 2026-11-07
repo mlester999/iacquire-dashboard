@@ -5,7 +5,7 @@ import { AppError } from "@/server/errors";
 import { CONTENT_WITHHELD_NOTICE, contentSessionScope } from "@/server/admin/client-content-policy";
 import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, minutesBetween, newCardId, plural } from "@/server/aqi/ops/tools/helpers";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, WORKFORCE_ROLE_KEYS, workforceIdentityLabel, type WorkforceRoleKey } from "@/lib/agents";
 import {
   OPS_EMPLOYEE_STATE_LABEL,
   type OpsEmployeeRow,
@@ -68,7 +68,7 @@ export function deriveEmployeeState(e: EmployeeEvidence, now: Date): { state: Op
   }
   if (e.orgSuspended) return { state: "blocked", evidence: `The workspace is suspended.${staleRun}` };
   if (e.agencyPause) return { state: "blocked", evidence: `The agency emergency pause is active for this workspace.${staleRun}` };
-  if (e.mode === "paused") return { state: "blocked", evidence: `The employee's operating mode is paused.${staleRun}` };
+  if (e.mode === "paused") return { state: "blocked", evidence: `This profile's operating mode is paused.${staleRun}` };
   if (e.blockedApprovals > 0) return { state: "blocked", evidence: `${plural(e.blockedApprovals, "approved action")} could not execute and ${e.blockedApprovals === 1 ? "is" : "are"} marked blocked.` };
   if (e.pendingApprovals > 0) {
     const waited = ageHours(e.oldestPendingAt, now);
@@ -89,21 +89,27 @@ export function deriveEmployeeState(e: EmployeeEvidence, now: Date): { state: Op
 const SEVERITY: OpsEmployeeState[] = ["failed", "offline", "blocked", "waiting_for_approval", "setup_required", "working", "queued", "unknown", "scheduled", "idle"];
 
 interface AgentDbRow {
-  id: string; org_id: string; org: string; org_status: string; display_name: string; role_key: string; status: string; mode: string; enabled: boolean;
+  id: string; org_id: string; org: string; org_kind: string; org_status: string; display_name: string; role_key: WorkforceRoleKey; status: string; mode: string; enabled: boolean;
   last_health_ok: boolean | null; last_health_check_at: Date | null; last_health_detail: string | null;
   running_since: Date | null; queued: number; pending: number; oldest_pending: Date | null; blocked_approvals: number;
   outcome_status: string | null; outcome_at: Date | null; last_success_at: Date | null; agency_pause: boolean | null; total: string;
 }
 
+function profileIdentity(role: WorkforceRoleKey, orgKind: string, storedName: string | null | undefined): string {
+  if (role === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
+  if (orgKind === "agency") return `Internal profile · ${AGENT_BY_KEY[role].shortName}`;
+  return workforceIdentityLabel(role, storedName);
+}
+
 export const workforceStatus = defineReadTool({
   id: "workforce.status",
-  title: "AI Employee status",
-  description: "Evidence-based status of Hermes AI Employees (working, queued, waiting for approval, blocked, idle, offline, setup required, failed or unknown) for the platform, a client or one employee.",
+  title: "AI Growth Partner and profile status",
+  description: "Evidence-based status of client AI Growth Partners and retained profiles, plus internal profiles (working, queued, waiting for approval, blocked, idle, offline, setup required, failed or unknown).",
   group: "workforce",
   roles: SUPER,
   permission: "agency.workforce.view",
   scopes: ["platform", "tenant", "employee", "workflow", "ticket"],
-  input: z.object({ limit: z.number().int().min(1).max(20).default(12), role: z.enum(AGENT_ROLE_KEYS).optional() }).strict(),
+  input: z.object({ limit: z.number().int().min(1).max(20).default(12), role: z.enum(WORKFORCE_ROLE_KEYS).optional() }).strict(),
   idempotent: true,
   audit: { action: "aqi.ops_tool_run", sensitive: false },
   timeoutMs: 12_000,
@@ -112,7 +118,7 @@ export const workforceStatus = defineReadTool({
     const agentId = ctx.scope.type === "employee" ? ctx.scope.id : null;
     if (orgId) await ctx.authorizeOrg(orgId, "workforce.status");
     const { rows } = await readSystem((db) => db.query<AgentDbRow>(
-      `select a.id, a.org_id, o.name as org, o.status as org_status, a.display_name, a.role_key, a.status, a.mode, a.enabled,
+      `select a.id, a.org_id, o.name as org, o.kind as org_kind, o.status as org_status, a.display_name, a.role_key, a.status, a.mode, a.enabled,
               a.last_health_ok, a.last_health_check_at, a.last_health_detail,
               r.running_since, coalesce(r.queued, 0)::int as queued,
               coalesce(ap.pending, 0)::int as pending, ap.oldest_pending, coalesce(ap.blocked, 0)::int as blocked_approvals,
@@ -153,23 +159,26 @@ export const workforceStatus = defineReadTool({
     const ranked = [...derived].sort((a, b) => SEVERITY.indexOf(a.state) - SEVERITY.indexOf(b.state));
     const shown = ranked.slice(0, args.limit);
     const mapRow = (d: (typeof derived)[number]): OpsEmployeeRow => ({
-      id: d.row.id, name: clean(d.row.display_name, 40), role: d.row.role_key.replace(/_/g, " "), org: clean(d.row.org, 60), orgId: d.row.org_id, state: d.state, evidence: d.evidence,
+      id: d.row.id, name: clean(d.row.display_name, 40), role: profileIdentity(d.row.role_key, d.row.org_kind, d.row.display_name), org: clean(d.row.org, 60), orgId: d.row.org_id, state: d.state, evidence: d.evidence,
       lastRunAt: iso(d.row.outcome_at), lastSuccessAt: iso(d.row.last_success_at), href: `/admin/clients/${d.row.org_id}/provisioning`,
     });
     const notes = [
       "Scheduled work is not reported: the verified Hermes API exposes no schedule or cron inventory and this platform stores none, so a future job cannot be shown without inventing it.",
-      "Idle means nothing is running or waiting and a recent health check succeeded. It does not mean the employee is working continuously.",
+      "Idle means nothing is running or waiting and a recent health check succeeded. It does not mean the profile is working continuously.",
     ];
+    const title = agentId && derived[0]
+      ? `${profileIdentity(derived[0].row.role_key, derived[0].row.org_kind, derived[0].row.display_name)} status`
+      : orgId ? "AI profiles for this client" : "AI runtime profiles across the platform";
     const card: OpsEmployeesCard = {
-      id: newCardId(), kind: "employees", title: agentId ? "AI Employee" : orgId ? "AI Employees for this client" : "AI Employees across clients", asOf: new Date().toISOString(),
+      id: newCardId(), kind: "employees", title, asOf: new Date().toISOString(),
       source: "agent_instances, agent_runs, approval_requests, automation_pauses", refresh: { toolId: "workforce.status", args }, counts, rows: shown.map(mapRow), truncated: derived.length > shown.length, notes,
     };
     const countText = SEVERITY.filter((s) => counts[s]).map((s) => `${counts[s]} ${OPS_EMPLOYEE_STATE_LABEL[s].toLowerCase()}`).join(", ");
     return {
-      summary: derived.length ? `${plural(derived.length, "AI Employee")}: ${countText}. ${shown.filter((d) => !["idle"].includes(d.state)).slice(0, 5).map((d) => `${clean(d.row.display_name, 30)} (${clean(d.row.org, 40)}) is ${OPS_EMPLOYEE_STATE_LABEL[d.state].toLowerCase()}: ${d.evidence}`).join(" ")}` : "No AI Employees matched.",
-      data: { total: derived.length, counts, employees: shown.map((d) => ({ id: d.row.id, name: d.row.display_name, role: d.row.role_key, client: d.row.org, state: d.state, evidence: d.evidence, mode: d.row.mode, lastRunOutcome: d.row.outcome_status, lastRunAt: iso(d.row.outcome_at), lastSuccessAt: iso(d.row.last_success_at) })), notes },
+      summary: derived.length ? `${plural(derived.length, "AI runtime profile")}: ${countText}. ${shown.filter((d) => !["idle"].includes(d.state)).slice(0, 5).map((d) => `${profileIdentity(d.row.role_key, d.row.org_kind, d.row.display_name)} for ${clean(d.row.org, 40)} is ${OPS_EMPLOYEE_STATE_LABEL[d.state].toLowerCase()}: ${d.evidence}`).join(" ")}` : "No AI runtime profiles matched.",
+      data: { total: derived.length, counts, profiles: shown.map((d) => ({ id: d.row.id, name: d.row.display_name, identity: profileIdentity(d.row.role_key, d.row.org_kind, d.row.display_name), roleKey: d.row.role_key, client: d.row.org, state: d.state, evidence: d.evidence, mode: d.row.mode, lastRunOutcome: d.row.outcome_status, lastRunAt: iso(d.row.outcome_at), lastSuccessAt: iso(d.row.last_success_at) })), notes },
       cards: [card],
-      evidence: { label: "AI Employee status", source: "Hermes workforce records (agent_instances, agent_runs, approval_requests, automation_pauses)", href: "/admin/employees/clients" },
+      evidence: { label: "AI runtime profile status", source: "Hermes workforce records (agent_instances, agent_runs, approval_requests, automation_pauses)", href: "/admin/employees/clients" },
       unavailable: [notes[0]],
     };
   },
@@ -179,8 +188,8 @@ export const workforceStatus = defineReadTool({
 
 export const workforceRuns = defineReadTool({
   id: "workforce.runs",
-  title: "Recent AI Employee runs",
-  description: "The latest runs of one AI Employee or of a client's employees, with outcome, error class, tools used and duration.",
+  title: "Recent AI runtime runs",
+  description: "The latest runs of one AI Growth Partner or runtime profile, with outcome, error class, tools used and duration.",
   group: "workforce",
   roles: SUPER,
   permission: "agency.workforce.view",
@@ -191,17 +200,17 @@ export const workforceRuns = defineReadTool({
   timeoutMs: 10_000,
   async run(ctx, args) {
     const orgId = ctx.scope.orgId;
-    if (!orgId) throw new AppError("invalid_input", "Select a client or an AI Employee first.");
+    if (!orgId) throw new AppError("invalid_input", "Select a client or AI runtime profile first.");
     await ctx.authorizeOrg(orgId, "workforce.runs");
     const agentId = ctx.scope.type === "employee" ? ctx.scope.id : null;
     const { rows } = await readSystem((db) => db.query<{
       id: string; status: string; purpose: string; error_code: string | null; error_message: string | null; started_at: Date; finished_at: Date | null;
-      total_tokens: number | null; display_name: string; role_key: string; tools: Array<{ tool: string; status: string; ms: number | null }>;
+      total_tokens: number | null; display_name: string; role_key: WorkforceRoleKey; org_kind: string; tools: Array<{ tool: string; status: string; ms: number | null }>;
     }>(
-      `select r.id, r.status, r.purpose, r.error_code, r.error_message, r.started_at, r.finished_at, r.total_tokens, a.display_name, a.role_key,
+      `select r.id, r.status, r.purpose, r.error_code, r.error_message, r.started_at, r.finished_at, r.total_tokens, a.display_name, a.role_key, o.kind as org_kind,
               coalesce((select json_agg(json_build_object('tool', t.tool_name, 'status', t.status, 'ms', t.duration_ms) order by t.started_at)
                           from (select * from tool_executions x where x.run_id = r.id order by x.started_at limit 6) t), '[]'::json) as tools
-         from agent_runs r join agent_instances a on a.id = r.agent_instance_id
+         from agent_runs r join agent_instances a on a.id = r.agent_instance_id join organizations o on o.id = r.org_id
         where r.org_id = $1 and ($2::uuid is null or r.agent_instance_id = $2) and r.purpose <> 'health_check'
         order by r.started_at desc limit $3`,
       [orgId, agentId, args.limit],
@@ -220,16 +229,16 @@ export const workforceRuns = defineReadTool({
         : "No runs are recorded.",
       events: rows.slice().reverse().map((r) => ({
         at: iso(r.started_at)!,
-        label: `${clean(r.display_name, 30)} · ${r.purpose.replace("_", " ")} · ${r.status}`,
+        label: `${profileIdentity(r.role_key, r.org_kind, r.display_name)} · ${r.purpose.replace("_", " ")} · ${r.status}`,
         detail: [r.error_code ? `error ${clean(r.error_code, 40)}` : null, r.error_message ? clean(r.error_message, 160) : null, r.tools.length ? `tools: ${r.tools.map((t) => `${clean(t.tool, 30)} ${t.status}`).join(", ")}` : null].filter(Boolean).join(" · ") || undefined,
         tone: r.status === "completed" ? "success" : ["failed", "timeout", "interrupted"].includes(r.status) ? "danger" : r.status === "running" || r.status === "queued" ? "warning" : "neutral",
       })),
     };
     return {
-      summary: rows.length ? `${card.verdict} ${failures.slice(0, 3).map((r) => `${clean(r.display_name, 30)} ${r.status} at ${iso(r.started_at)}: ${clean(r.error_message ?? r.error_code, 140) || "no error detail recorded"}`).join("; ")}` : "No runs are recorded for this selection.",
-      data: { runs: rows.map((r) => ({ id: r.id, employee: r.display_name, role: r.role_key, purpose: r.purpose, status: r.status, errorCode: r.error_code, errorMessage: r.error_message, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at), tokens: r.total_tokens, tools: r.tools })) },
+      summary: rows.length ? `${card.verdict} ${failures.slice(0, 3).map((r) => `${profileIdentity(r.role_key, r.org_kind, r.display_name)} ${r.status} at ${iso(r.started_at)}: ${clean(r.error_message ?? r.error_code, 140) || "no error detail recorded"}`).join("; ")}` : "No runs are recorded for this selection.",
+      data: { runs: rows.map((r) => ({ id: r.id, profile: profileIdentity(r.role_key, r.org_kind, r.display_name), role: r.role_key, purpose: r.purpose, status: r.status, errorCode: r.error_code, errorMessage: r.error_message, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at), tokens: r.total_tokens, tools: r.tools })) },
       cards: [card],
-      evidence: { label: "Recent AI Employee runs", source: "agent_runs and tool_executions", href: `/admin/clients/${orgId}/provisioning` },
+      evidence: { label: "Recent AI runtime runs", source: "agent_runs and tool_executions", href: `/admin/clients/${orgId}/provisioning` },
       unavailable: ["Run transcripts and message content are not read. Only run outcome, error class, tool names and timings are available."],
     };
   },
@@ -240,7 +249,7 @@ export const workforceRuns = defineReadTool({
 export const workforceApprovals = defineReadTool({
   id: "workforce.approvals",
   title: "Pending approvals",
-  description: "Approval requests raised by AI Employees that are still waiting for the client's decision, oldest first.",
+  description: "Approval requests raised by an AI Growth Partner or retained profile that are waiting for the client's decision, oldest first.",
   group: "workforce",
   roles: SUPER,
   permission: "agency.workforce.view",
@@ -252,8 +261,8 @@ export const workforceApprovals = defineReadTool({
   async run(ctx, args) {
     const orgId = ctx.scope.type === "platform" ? null : ctx.scope.orgId;
     if (orgId) await ctx.authorizeOrg(orgId, "workforce.approvals");
-    const { rows } = await readSystem((db) => db.query<{ id: string; kind: string; title: string; risk: string; created_at: Date; expires_at: Date | null; org: string; org_id: string; employee: string | null; total: string; high: string }>(
-      `select q.id, q.kind, q.title, q.risk, q.created_at, q.expires_at, o.name as org, q.org_id, a.display_name as employee,
+    const { rows } = await readSystem((db) => db.query<{ id: string; kind: string; title: string; risk: string; created_at: Date; expires_at: Date | null; org: string; org_kind: string; org_id: string; employee: string | null; role_key: WorkforceRoleKey | null; total: string; high: string }>(
+      `select q.id, q.kind, q.title, q.risk, q.created_at, q.expires_at, o.name as org, o.kind as org_kind, q.org_id, a.display_name as employee, a.role_key,
               count(*) over ()::text as total, (count(*) filter (where q.risk in ('high', 'critical')) over ())::text as high
          from approval_requests q join organizations o on o.id = q.org_id left join agent_instances a on a.id = q.agent_instance_id
         where q.status = 'pending' and ($1::uuid is null or q.org_id = $1) and app.user_can_access_org($2, q.org_id)
@@ -269,8 +278,8 @@ export const workforceApprovals = defineReadTool({
     const table: OpsTableCard = {
       id: newCardId(), kind: "table", title: "Approvals waiting for a decision", asOf: new Date().toISOString(), source: "Approval queue (approval_requests)", refresh: { toolId: "workforce.approvals", args },
       caption: total ? `${rows.length} of ${total}, oldest first. The client's owners and managers decide these; AQi can only report them.` : undefined, truncated: total > rows.length,
-      columns: [{ key: "client", label: "Client" }, { key: "employee", label: "Employee" }, { key: "request", label: "Request" }, { key: "risk", label: "Risk" }, { key: "waiting", label: "Waiting", align: "right" }],
-      rows: rows.map((r) => ({ client: clean(r.org, 50), employee: clean(r.employee, 30) || "—", request: `${r.kind.replace(/_/g, " ")}: ${clean(r.title, 70)}`, risk: r.risk, waiting: `${ageHours(r.created_at, ctx.now)} h`, _href: `/admin/clients/${r.org_id}` })),
+      columns: [{ key: "client", label: "Client" }, { key: "profile", label: "AI profile" }, { key: "request", label: "Request" }, { key: "risk", label: "Risk" }, { key: "waiting", label: "Waiting", align: "right" }],
+      rows: rows.map((r) => ({ client: clean(r.org, 50), profile: r.role_key ? profileIdentity(r.role_key, r.org_kind, r.employee) : "—", request: `${r.kind.replace(/_/g, " ")}: ${clean(r.title, 70)}`, risk: r.risk, waiting: `${ageHours(r.created_at, ctx.now)} h`, _href: `/admin/clients/${r.org_id}` })),
     };
     const metrics: OpsMetricsCard = {
       id: newCardId(), kind: "metrics", title: "Approval queue", asOf: new Date().toISOString(), source: "Approval queue (approval_requests)",
@@ -278,7 +287,7 @@ export const workforceApprovals = defineReadTool({
     };
     return {
       summary: total ? `${plural(total, "approval")} pending${rows[0] ? `; the oldest (${clean(rows[0].org, 40)}, ${rows[0].kind.replace(/_/g, " ")}) has waited ${ageHours(rows[0].created_at, ctx.now)} hours` : ""}.` : "No approvals are waiting.",
-      data: { total, approvals: rows.map((r) => ({ client: r.org, employee: r.employee, kind: r.kind, title: r.title, risk: r.risk, waitingHours: ageHours(r.created_at, ctx.now), expiresAt: iso(r.expires_at) })) },
+      data: { total, approvals: rows.map((r) => ({ client: r.org, profile: r.role_key ? profileIdentity(r.role_key, r.org_kind, r.employee) : null, kind: r.kind, title: r.title, risk: r.risk, waitingHours: ageHours(r.created_at, ctx.now), expiresAt: iso(r.expires_at) })) },
       cards: [metrics, table],
       evidence: { label: "Pending approvals", source: "approval_requests", href: "/admin/employees/clients" },
       ...(withheld ? { unavailable: [`${plural(withheld, "approval title")} withheld: the stricter staff-access rule is on and there is no support session on that client.`] } : {}),

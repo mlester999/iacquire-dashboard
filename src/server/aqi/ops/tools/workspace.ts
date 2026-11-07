@@ -4,6 +4,7 @@ import { readSystem } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { defineReadTool } from "@/server/aqi/ops/tool";
 import { ageHours, clean, iso, metric, newCardId, num, plural } from "@/server/aqi/ops/tools/helpers";
+import { workforceIdentityLabel, type WorkforceRoleKey } from "@/lib/agents";
 import type { OpsHealthState, OpsTableCard, OpsWorkspaceCard, OpsScopePickerCard } from "@/lib/aqi/ops/types";
 import { isRuntimeOnline } from "@/lib/employee-runtime";
 import { LAUNCH_STATE_LABEL } from "@/lib/launch-readiness";
@@ -131,14 +132,14 @@ export const workspaceFind = defineReadTool({
 interface SummaryOrg { id: string; name: string; status: string; kind: string; created_at: Date; onboarding_completed_at: Date | null; timezone: string; is_demo: boolean }
 interface SetupTask { title: string; status: string; section: string; service: string | null; blocked_reason: string | null; updated_at: Date; required: boolean }
 interface ConnectionRow { provider: string; status: string; last_error: string | null; last_success_at: Date | null; last_failure_at: Date | null }
-interface AgentRow { id: string; display_name: string; role_key: string; status: string; mode: string; enabled: boolean; last_health_ok: boolean | null; last_health_check_at: Date | null }
+interface AgentRow { id: string; display_name: string; role_key: WorkforceRoleKey; status: string; mode: string; enabled: boolean; last_health_ok: boolean | null; last_health_check_at: Date | null }
 interface ChannelRow { channel: string; enabled: boolean; registration_status: string; sender_verified_at: Date | null }
 
 /** One tenant's operational readiness. Operational metadata only: no contacts, messages, conversations or CRM records. */
 export const workspaceSummary = defineReadTool({
   id: "workspace.summary",
   title: "Client workspace readiness",
-  description: "Onboarding progress, blockers, integration status, messaging channels and AI Employee setup for the selected client.",
+  description: "Onboarding progress, blockers, integration status, messaging channels and AI Growth Partner or retained profile setup for the selected client.",
   group: "workspace",
   roles: SUPER,
   permission: "agency.workforce.view",
@@ -197,7 +198,7 @@ export const workspaceSummary = defineReadTool({
     const waiting = tasks.filter((x) => x.status === "waiting_for_client");
     for (const t of waiting.slice(0, 3)) blockers.push({ title: `Waiting on the client: ${clean(t.title, 90)}`, detail: `Last updated ${ageHours(t.updated_at, ctx.now)} hours ago.`, href: `${base}/setup` });
     for (const c of connections.filter((x) => ["error", "needs_attention", "disconnected"].includes(x.status))) blockers.push({ title: `${c.provider} connection is ${c.status.replace("_", " ")}`, detail: clean(c.last_error, 200) || "The last check did not succeed.", href: `${base}/integrations` });
-    for (const a of agents.filter((x) => x.enabled && ["error", "offline", "setup_required"].includes(x.status))) blockers.push({ title: `${clean(a.display_name, 40)} (${a.role_key.replace(/_/g, " ")}) is ${a.status.replace("_", " ")}`, detail: a.last_health_check_at ? `Last health check ${ageHours(a.last_health_check_at, ctx.now)} hours ago.` : "No health check has been recorded.", href: `${base}/provisioning` });
+    for (const a of agents.filter((x) => x.enabled && ["error", "offline", "setup_required"].includes(x.status))) blockers.push({ title: `${workforceIdentityLabel(a.role_key, a.display_name)} is ${a.status.replace("_", " ")}`, detail: a.last_health_check_at ? `Last health check ${ageHours(a.last_health_check_at, ctx.now)} hours ago.` : "No health check has been recorded.", href: `${base}/provisioning` });
     if (launch && launch.state !== "ready_to_launch" && launch.needsIacquire > 0) blockers.push({ title: `Launch is waiting on iAcquire: ${clean(launch.topBlocker?.label, 90) || "an item"}`, detail: `${plural(launch.needsIacquire, "required item")} wait on iAcquire (${LAUNCH_STATE_LABEL[launch.state]}, ${launch.percent}%), in this state since ${iso(new Date(launch.since))}.`, href: `${base}/setup` });
     if (f.agency_pause) blockers.push({ title: "Agency emergency pause is active", detail: "Customer-facing automation is held for this workspace until a Super Admin resumes it.", href: base });
     if (f.calendars_attention) blockers.push({ title: `${plural(f.calendars_attention, "calendar connection")} need attention`, detail: "Calendar sync failed or needs the client to reconnect.", href: `${base}/integrations` });
@@ -209,14 +210,14 @@ export const workspaceSummary = defineReadTool({
       metric("Launch readiness", launch ? `${launch.percent}% · ${LAUNCH_STATE_LABEL[launch.state]}` : "Nothing recorded yet", launch ? `${launch.passed} of ${launch.total} checks passed` : "Recorded once the client has submitted and something changes", launch ? undefined : "unknown"),
       metric("Setup state", f.setup_state ? f.setup_state.replace(/_/g, " ") : "Not started", f.setup_state ? `${required} open required task${required === 1 ? "" : "s"} shown` : "No Setup Center record", f.setup_state ? undefined : "unknown"),
       metric("Integrations", `${connections.filter((c) => ["connected", "permission_limited"].includes(c.status)).length} of ${connections.length} healthy`, connections.length ? undefined : "No connections recorded", connections.length ? undefined : "not_configured"),
-      metric("AI Employees", `${agents.filter((a) => isRuntimeOnline(a.status)).length} of ${agents.filter((a) => a.enabled).length} online`, "From their last health check"),
+      metric("Growth Partner and retained profiles", `${agents.filter((a) => isRuntimeOnline(a.status)).length} of ${agents.filter((a) => a.enabled).length} online`, "From their last health checks"),
       metric("Pending approvals", f.approvals_pending),
       metric("Open incidents", f.incidents_open, undefined, f.incidents_open ? "degraded" : undefined),
       metric("Open support requests", f.tickets_open),
     ];
     const state: OpsHealthState = !f.setup_state && !connections.length ? "unknown" : blockers.length ? "degraded" : "healthy";
     const card: OpsWorkspaceCard = {
-      id: newCardId(), kind: "workspace", title: clean(org.name, 80), asOf: new Date().toISOString(), source: "Setup Center, integrations, AI Employees, messaging channels",
+      id: newCardId(), kind: "workspace", title: clean(org.name, 80), asOf: new Date().toISOString(), source: "Setup Center, integrations, AI runtime profiles, messaging channels",
       refresh: { toolId: "workspace.summary", args: {} }, orgId, name: clean(org.name, 80), status: org.status, state, metrics, blockers,
       links: [
         { label: "Open client", href: base }, { label: "Setup Center", href: `${base}/setup` }, { label: "Integrations", href: `${base}/integrations` },
@@ -233,7 +234,7 @@ export const workspaceSummary = defineReadTool({
         launch: launchFields(launch),
         setup: { state: f.setup_state, responsible: f.responsible, openRequiredTasks: tasks.map((t) => ({ title: t.title, status: t.status, section: t.section, service: t.service, blockedReason: t.blocked_reason, updatedHoursAgo: ageHours(t.updated_at, ctx.now) })) },
         integrations: connections.map((c) => ({ provider: c.provider, status: c.status, lastError: c.last_error, lastSuccessAt: iso(c.last_success_at), lastFailureAt: iso(c.last_failure_at) })),
-        aiEmployees: agents.map((a) => ({ name: a.display_name, role: a.role_key, status: a.status, mode: a.mode, enabled: a.enabled, lastHealthOk: a.last_health_ok, lastHealthCheckAt: iso(a.last_health_check_at) })),
+        aiProfiles: agents.map((a) => ({ name: a.display_name, identity: workforceIdentityLabel(a.role_key, a.display_name), role: a.role_key, status: a.status, mode: a.mode, enabled: a.enabled, lastHealthOk: a.last_health_ok, lastHealthCheckAt: iso(a.last_health_check_at) })),
         messagingChannels: channels.map((c) => ({ channel: c.channel, enabled: c.enabled, registration: c.registration_status, senderVerified: Boolean(c.sender_verified_at) })),
         counts: { pendingApprovals: num(f.approvals_pending), openIncidents: num(f.incidents_open), openSupportRequests: num(f.tickets_open), calendarConnectionsNeedingAttention: num(f.calendars_attention) },
         automationPaused: { agency: f.agency_pause === true, client: f.client_pauses },
@@ -241,7 +242,7 @@ export const workspaceSummary = defineReadTool({
         notIncluded: "Contacts, conversations, message content and CRM records are deliberately not read.",
       },
       cards: [card],
-      evidence: { label: `Workspace readiness: ${clean(org.name, 50)}`, source: "Setup Center, integration connections, AI Employees, messaging channels, incidents, support tickets (metadata only)", href: base },
+      evidence: { label: `Workspace readiness: ${clean(org.name, 50)}`, source: "Setup Center, integration connections, AI runtime profiles, messaging channels, incidents, support tickets (metadata only)", href: base },
       unavailable: ["Private client conversations and CRM record contents are not read by AQi Operations. Use the audited support session in the client's CRM when a record must be inspected."],
     };
   },

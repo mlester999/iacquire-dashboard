@@ -36,6 +36,7 @@ describe("read requests, in more than one phrasing", () => {
     ["Why hasn't this client finished setup?", tenant, ["workspace.summary"]],
     // Hermes workforce
     ["Which AI employees failed today?", PLATFORM_SCOPE, ["workforce.status"]],
+    ["How is the AI Growth Partner doing?", PLATFORM_SCOPE, ["workforce.status"]],
     ["Are any bots offline?", PLATFORM_SCOPE, ["workforce.status"]],
     ["Show Hermes status", PLATFORM_SCOPE, ["workforce.status"]],
     ["What is waiting for my approval?", PLATFORM_SCOPE, ["workforce.approvals"]],
@@ -93,7 +94,9 @@ describe("read requests, in more than one phrasing", () => {
     for (const [message, role] of [
       ["Why did the Lead Hunter stop?", "lead_hunter"], ["what is the appointment setter doing", "appointment_setter"], ["Is the Sales Assistant online?", "sales_assistant"],
       ["Show the CRM manager's runs", "crm_manager"], ["Did the Operations Manager fail?", "operations_manager"], ["How is the performance analyst?", "performance_analyst"],
+      ["How is the AI Growth Partner doing?", "growth_partner"],
     ] as const) expect(plan(message).calls, message).toContainEqual({ toolId: "workforce.status", args: { role } });
+    expect(plan("How is this client's AI Growth Partner doing? Include retained profiles if enabled.").calls).toContainEqual({ toolId: "workforce.status", args: {} });
   });
 });
 

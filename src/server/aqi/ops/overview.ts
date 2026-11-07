@@ -68,11 +68,11 @@ export async function getOpsOverview(now = new Date()): Promise<OpsOverview> {
       href: "/admin/health", ask: "Which background jobs are failing?",
     }),
     tile({
-      key: "employees", label: "AI Employees needing attention", value: num(r.agents_down),
+      key: "employees", label: "AI runtime profiles needing attention", value: num(r.agents_down),
       state: r.agents_enabled === 0 ? "not_configured" : r.agents_down || r.runs_failed ? "degraded" : "healthy",
-      headline: r.agents_enabled === 0 ? "No employees" : `${r.agents_down} offline or in error`,
-      detail: `${r.agents_enabled} enabled, ${r.agents_setup} still in setup, ${r.runs_failed} failed run${r.runs_failed === 1 ? "" : "s"} in 24 h, ${r.runs_running} running now.`,
-      href: "/admin/employees/clients", ask: "Which AI Employees failed today?",
+      headline: r.agents_enabled === 0 ? "No runtime profiles" : `${r.agents_down} offline or in error`,
+      detail: `${r.agents_enabled} enabled profile${r.agents_enabled === 1 ? "" : "s"} across Growth Partners, retained client profiles and internal profiles; ${r.agents_setup} still in setup, ${r.runs_failed} failed run${r.runs_failed === 1 ? "" : "s"} in 24 h, ${r.runs_running} running now.`,
+      href: "/admin/employees/clients", ask: "Which runtime profiles failed today?",
     }),
     tile({
       key: "approvals", label: "Pending approvals", value: num(r.approvals), state: r.approvals_stale ? "degraded" : "healthy",

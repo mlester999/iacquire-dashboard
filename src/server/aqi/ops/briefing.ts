@@ -103,10 +103,10 @@ export async function composeBriefing(input: ComposeBriefingInput): Promise<Brie
   const failedRunTotal = runs.reduce((n, r) => n + num(r.failed), 0);
   sources.add("Hermes runs (agent_runs, agent_instances)");
   sections.push({
-    key: "hermes", title: "Failed Hermes executions", state: failedRunTotal || agentsDown ? "degraded" : "healthy",
+    key: "hermes", title: "Hermes runtime status", state: failedRunTotal || agentsDown ? "degraded" : "healthy",
     items: [
-      { text: failedRunTotal ? `${plural(failedRunTotal, "AI run")} failed in the period: ${runs.map((r) => `${clean(r.org, 40)} ${r.failed}`).join(", ")}.` : "No AI runs failed in the period.", href: "/admin/employees/clients" },
-      ...(agentsDown ? [{ text: `${plural(agentsDown, "enabled AI Employee")} reported offline or in error at their last health check.`, href: "/admin/employees/clients" }] : []),
+      { text: failedRunTotal ? `${plural(failedRunTotal, "AI runtime run")} failed in the period: ${runs.map((r) => `${clean(r.org, 40)} ${r.failed}`).join(", ")}.` : "No AI runtime runs failed in the period.", href: "/admin/employees/clients" },
+      ...(agentsDown ? [{ text: `${plural(agentsDown, "enabled AI runtime profile")} reported offline or in error at their last health check.`, href: "/admin/employees/clients" }] : []),
     ],
   });
 

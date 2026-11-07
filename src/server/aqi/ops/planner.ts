@@ -46,7 +46,7 @@ const RX = {
   health: /\b(health|healthy|unhealthy|(system|platform|service|overall|production) status|slow|slowness|latency|incidents?|outages?|down|degraded|performance|production (issue|problem)|failing|failures?|errors?|database|db|scheduler|background jobs?|cron|queues?|backlog|stuck|crm (is )?slow|services?|broken|not working|is (it|everything|the \w+) (up|ok|okay|fine|working)|(anything|something|what'?s) (wrong|broken)|on fire)\b/i,
   jobs: /\b(jobs?|scheduler|cron|background|worker|tick)\b/i,
   workspace: /\b(onboard\w*|workspace|tenant|clients?|setup|set up|blockers?|blocked|configur\w+|readiness|activation|provision\w*|go(ing)? live|launch\w*)\b/i,
-  workforce: /\b(hermes|ai employees?|employees?|lead hunter|appointment setter|sales assistant|crm manager|analyst|operations manager|workforce|working on|runs?|executions?|bots?|agents?)\b/i,
+  workforce: /\b(hermes|ai employees?|employees?|growth partner|partner runtime|retained profiles?|lead hunter|appointment setter|sales assistant|crm manager|analyst|operations manager|workforce|working on|runs?|executions?|bots?|agents?)\b/i,
   approvals: /\b(approvals?|approve|waiting (for )?(my |our |your )?(approval|review)|needs? (my |our )?(approval|review)|pending approval|awaiting approval)\b/i,
   support: /\b(tickets?|support|requests?|complaints?|complain\w*|bug reports?|feedback|escalat\w+|sla|queue|unresolved)\b/i,
   duplicates: /\b(duplicates?|same (issue|problem)|related|group|cluster|recurring)\b/i,
@@ -98,12 +98,15 @@ function issueBody(message: string): string {
 }
 
 const EMPLOYEE_ROLES: Array<[RegExp, string]> = [
+  [/AI Growth Partner|Growth Partner/i, "growth_partner"],
   [/lead hunter/i, "lead_hunter"], [/appointment setter/i, "appointment_setter"], [/sales assistant/i, "sales_assistant"],
   [/crm manager/i, "crm_manager"], [/operations manager/i, "operations_manager"], [/(performance )?analyst/i, "performance_analyst"],
 ];
 
-/** The AI Employee role a question names, so "Why did the Lead Hunter stop?" looks at Lead Hunters rather than everyone. */
+/** The runtime profile a question names, so a Growth Partner question is not broadened to every profile. */
 export function employeeRole(text: string): string | null {
+  // Combined requests must inspect every enabled profile, including retained ones.
+  if (/growth partner/i.test(text) && /retained profiles?/i.test(text)) return null;
   return EMPLOYEE_ROLES.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 }
 
@@ -276,14 +279,14 @@ export function suggestOpsQuestions(scope: OpsScope, intents: readonly string[])
   const key = opsScopeKey(scope);
   const platform = [
     "Are there any production incidents right now?",
-    "Which AI Employees failed today?",
+    "Which AI Growth Partners or retained profiles failed today?",
     "Which support tickets are unresolved and urgent?",
     "Show unusual administrative activity this week",
     "Generate an operations briefing",
   ];
   const byType: Record<string, string[]> = {
-    tenant: ["What is blocking this client's onboarding?", "Which integrations are failing for this client?", "What are this client's AI Employees doing?", "Show this client's open support tickets"],
-    employee: ["Why did this employee stop?", "What is this employee waiting for?", "Show this employee's recent runs"],
+    tenant: ["What is blocking this client's onboarding?", "Which integrations are failing for this client?", "How is this client's AI Growth Partner doing?", "Show this client's open support tickets"],
+    employee: ["Why did this profile stop?", "What is this profile waiting for?", "Show this profile's recent runs"],
     ticket: ["Are there duplicates of this ticket?", "Draft a reply to this ticket", "Should this ticket be escalated?"],
     incident: ["How long has this incident been open?", "Which clients does this incident affect?"],
     workflow: ["Why did this workflow fail?", "Show recent runs of this workflow"],

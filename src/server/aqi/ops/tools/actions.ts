@@ -191,7 +191,7 @@ export const automationAgencyPause = defineActionTool({
         ? [
             `Applies the agency emergency pause to ${clean(org.name, 80)}: customer-facing messages and new autonomous AI work are held.`,
             "Business owners and managers of this client receive an in-app notice that iAcquire paused automation.",
-            "Private chat with the client's AI employees keeps working.",
+            "The client's permanent AI Growth Partner conversation remains available.",
             `Your reason is stored in the audit log: “${clean(args.reason, 200)}”.`,
           ]
         : [

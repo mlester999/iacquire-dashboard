@@ -4,6 +4,7 @@ import { submitRequest } from "@/server/support/service";
 import { createOpsRun, type OpsRun, type OpsToolOutcome } from "@/server/aqi/ops/executor";
 import { resolveOpsScope } from "@/server/aqi/ops/scope";
 import { deriveEmployeeState, type EmployeeEvidence } from "@/server/aqi/ops/tools/workforce";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { PLATFORM_SCOPE, type OpsScope } from "@/lib/aqi/ops/types";
 import { supportWorld, type SupportWorld } from "./support/support-world";
 
@@ -98,11 +99,21 @@ describe("AQi Operations read tools against the real schema", () => {
 
   it("narrows AI Employees to one role and refuses an unknown role", async () => {
     const hunters = await runTool(PLATFORM_SCOPE, "workforce.status", { role: "lead_hunter" });
-    const employees = (hunters.outcome.data as { employees: Array<{ role: string }> }).employees;
-    expect(employees.length).toBeGreaterThan(0);
-    expect(employees.every((e) => e.role === "lead_hunter")).toBe(true);
+    const profiles = (hunters.outcome.data as { profiles: Array<{ roleKey: string }> }).profiles;
+    expect(profiles.length).toBeGreaterThan(0);
+    expect(profiles.every((e) => e.roleKey === "lead_hunter")).toBe(true);
     const bad = await runTool(PLATFORM_SCOPE, "workforce.status", { role: "root" });
     expect(bad.outcome.run.status).toBe("error");
+  });
+
+  it("reports the unified runtime with its AI Growth Partner identity", async () => {
+    const partnerId = await withSystem((db) => ensureGrowthPartnerRuntime(w.org.id, db));
+    const { outcome } = await runTool(PLATFORM_SCOPE, "workforce.status", { role: "growth_partner" });
+    const data = outcome.data as { profiles: Array<{ id: string; roleKey: string; identity: string }> };
+    expect(data.profiles).toContainEqual(expect.objectContaining({ id: partnerId, roleKey: "growth_partner", identity: "AI Growth Partner" }));
+    const card = outcome.cards.find((item) => item.kind === "employees");
+    expect(card?.title).toBe("AI runtime profiles across the platform");
+    if (card?.kind === "employees") expect(card.rows.find((row) => row.id === partnerId)?.role).toBe("AI Growth Partner");
   });
 
   it("reports AQi Operations' own tool runs from the audit log, not from estimates", async () => {
@@ -276,11 +287,11 @@ describe("AI Employee status derivation", () => {
   it("derives states from stored evidence for a real client", async () => {
     const tenant = await resolveOpsScope(w.agency.superAdmin, { type: "tenant", id: w.org.id });
     const { outcome } = await runTool(tenant, "workforce.status", { limit: 20 });
-    const employees = (outcome.data as { employees: Array<{ role: string; state: string; evidence: string }> }).employees;
-    expect(employees.find((e) => e.role === "sales_assistant")?.state).toBe("failed");
-    expect(employees.find((e) => e.role === "lead_hunter")?.state).toBe("waiting_for_approval");
-    expect(employees.find((e) => e.role === "lead_hunter")?.evidence).toMatch(/approval/);
-    expect(employees.every((e) => e.state !== "scheduled")).toBe(true);
+    const profiles = (outcome.data as { profiles: Array<{ roleKey: string; state: string; evidence: string }> }).profiles;
+    expect(profiles.find((e) => e.roleKey === "sales_assistant")?.state).toBe("failed");
+    expect(profiles.find((e) => e.roleKey === "lead_hunter")?.state).toBe("waiting_for_approval");
+    expect(profiles.find((e) => e.roleKey === "lead_hunter")?.evidence).toMatch(/approval/);
+    expect(profiles.every((e) => e.state !== "scheduled")).toBe(true);
     expect((outcome.data as { notes: string[] }).notes.join(" ")).toMatch(/not reported/);
   });
 });

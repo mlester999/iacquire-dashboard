@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Building2, Check, ChevronsUpDown, Globe2, Loader2, Search, Siren, Ticket, UserCog, X } from "lucide-react";
+import { Bot, Building2, Check, ChevronsUpDown, Globe2, Loader2, Search, Siren, Ticket, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { Input } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,7 @@ interface Option { type: OpsScopeType; id: string; label: string; detail: string
 const ICON: Record<OpsScopeType, React.ReactNode> = {
   platform: <Globe2 className="size-4" aria-hidden />,
   tenant: <Building2 className="size-4" aria-hidden />,
-  employee: <UserCog className="size-4" aria-hidden />,
+  employee: <Bot className="size-4" aria-hidden />,
   workflow: <Search className="size-4" aria-hidden />,
   ticket: <Ticket className="size-4" aria-hidden />,
   incident: <Siren className="size-4" aria-hidden />,
@@ -110,7 +110,7 @@ export function OpsScopePicker({ scope, onChange, disabled, openSignal }: { scop
       <PopoverContent align="start" className="w-[min(380px,calc(100vw-24px))] p-2" onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-          <Input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, tickets, incidents, employees" className="pl-9" aria-label="Search for an investigation context" aria-controls={listId} />
+          <Input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search clients, tickets, incidents, AI profiles" className="pl-9" aria-label="Search for an investigation context" aria-controls={listId} />
         </div>
         <p className="px-1 pb-1 pt-2 text-[12px] leading-snug text-muted">Selecting a client is an audited access to that workspace. AQi reads operational metadata only.</p>
         <ul id={listId} className="scrollbar-thin max-h-72 overflow-y-auto" aria-label="Contexts" aria-busy={status === "loading"}>

@@ -43,7 +43,7 @@ const iso = (value: Date | string) => (value instanceof Date ? value : new Date(
 function capabilityText(role: string): string {
   const groups = new Set(toolsForRole(role).filter((t) => t.kind === "read").map((t) => t.group));
   const label: Record<string, string> = {
-    health: "platform health, incidents and scheduled jobs", workspace: "client workspaces and onboarding blockers", workforce: "Hermes AI Employee status, runs and approvals",
+    health: "platform health, incidents and scheduled jobs", workspace: "client workspaces and onboarding blockers", workforce: "AI Growth Partner and retained profile status, runs and approvals",
     support: "support tickets, duplicates and priorities", security: "audit and security events", business: "usage, cost and revenue figures",
     integrations: "integration and message-delivery failures", release: "the running release and migrations", product: "what clients request most", briefing: "operations briefings",
   };
@@ -161,7 +161,7 @@ export async function* runOpsTurn(viewer: AqiViewer, input: OpsTurnInput, signal
   try {
     // Fixed answers: nothing to investigate, so nothing is asked of the model and nothing is invented.
     const fixed = plan.clarification
-      ?? (plan.intents.includes("smalltalk") ? "Hello. I'm AQi Operations. Ask me to investigate platform health, a client's setup, AI Employee runs, support tickets, security events, costs or integration failures. Select a client or record above to scope an investigation."
+      ?? (plan.intents.includes("smalltalk") ? "Hello. I'm AQi Operations. Ask me to investigate platform health, a client's setup, AI Growth Partner and retained profile runs, support tickets, security events, costs or integration failures. Select a client or record above to scope an investigation."
         : plan.intents.includes("help") || (plan.intents.includes("general") && !planned.length && !plan.action)
           ? `${plan.intents.includes("help") ? "" : "I couldn't map that to something I can check with verified data. "}I can investigate ${capabilityText(user.platformRole) || "the platform"}. Every answer is built from recorded evidence with its source and time, and any change I propose waits for your confirmation.`
           : null);

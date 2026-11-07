@@ -32,7 +32,11 @@ interface ScopeRow {
 const QUERIES: Record<Exclude<OpsScopeType, "platform">, string> = {
   tenant: `select o.id, o.name as label, o.id as org_id, o.name as org_name, app.user_can_access_org($2, o.id) as allowed
            from organizations o where o.id = $1`,
-  employee: `select a.id, a.display_name || ' (' || a.role_key || ')' as label, a.org_id, o.name as org_name, app.user_can_access_org($2, a.org_id) as allowed
+  employee: `select a.id,
+                    case when a.role_key = 'growth_partner' then 'AI Growth Partner'
+                         when o.kind = 'agency' then 'Internal profile · ' || a.display_name
+                         else 'Previous profile · ' || a.display_name end as label,
+                    a.org_id, o.name as org_name, app.user_can_access_org($2, a.org_id) as allowed
              from agent_instances a join organizations o on o.id = a.org_id where a.id = $1`,
   workflow: `select w.id, w.name as label, w.org_id, o.name as org_name, app.user_can_access_org($2, w.org_id) as allowed
              from crm_workflows w join organizations o on o.id = w.org_id where w.id = $1`,
@@ -93,10 +97,14 @@ export async function searchOpsScopes(
          and ($4::boolean = false or o.name ilike $2 or o.slug ilike $2)
        order by o.updated_at desc limit ${SEARCH_LIMIT})
      union all
-     (select 'employee', a.id, a.display_name || ' (' || a.role_key || ')', o.name
+     (select 'employee', a.id,
+             case when a.role_key = 'growth_partner' then 'AI Growth Partner'
+                  when o.kind = 'agency' then 'Internal profile · ' || a.display_name
+                  else 'Previous profile · ' || a.display_name end, o.name
         from agent_instances a join organizations o on o.id = a.org_id
        where $5::boolean and $4::boolean and app.user_can_access_org($1, a.org_id)
-         and (a.display_name ilike $2 or a.role_key ilike $2 or o.name ilike $2)
+         and (a.display_name ilike $2 or a.role_key ilike $2 or o.name ilike $2 or
+              (a.role_key = 'growth_partner' and 'growth partner' ilike $2))
        order by a.updated_at desc limit ${SEARCH_LIMIT})
      union all
      (select 'ticket', t.id, t.ref || ' · ' || left(t.subject, 70), o.name

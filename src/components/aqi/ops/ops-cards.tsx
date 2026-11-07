@@ -207,7 +207,7 @@ function Employees({ card }: { card: OpsEmployeesCard }) {
           ))}
         </ul>
       )}
-      {card.truncated && <p className="mt-2 text-[12px] text-muted">Showing the employees that most need attention first.</p>}
+      {card.truncated && <p className="mt-2 text-[12px] text-muted">Showing the runtime profiles that most need attention first.</p>}
       <Disclosure summary="How these states are determined">
         <ul className="list-disc space-y-1 pl-4">{card.notes.map((n) => <li key={n}>{n}</li>)}</ul>
       </Disclosure>

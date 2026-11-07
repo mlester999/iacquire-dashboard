@@ -133,15 +133,15 @@ export async function collectPlatformHealth(now: Date): Promise<PlatformHealthRe
     add("ai_provider", "AI provider", !llm ? "not_configured" : llm === "connected" ? "healthy" : llm === "error" ? "unavailable" : "degraded",
       !llm ? "No platform AI provider connection is recorded." : `Last verified connection status: ${clean(llm, 40)} (a recorded status, not a live probe).`, "/admin/integrations");
 
-    // "Healthy" needs employees that actually passed a health check: employees still in setup are neither up nor down.
-    add("hermes", "Hermes AI workforce", snapshot.agents_total === 0 ? "not_configured" : snapshot.agents_down > 0 ? "degraded" : snapshot.agents_online === 0 ? "unknown" : "healthy",
+    // "Healthy" needs runtime profiles that actually passed a health check: profiles still in setup are neither up nor down.
+    add("hermes", "Hermes AI runtime profiles", snapshot.agents_total === 0 ? "not_configured" : snapshot.agents_down > 0 ? "degraded" : snapshot.agents_online === 0 ? "unknown" : "healthy",
       snapshot.agents_total === 0
-        ? "No enabled AI employees are recorded."
+        ? "No enabled AI runtime profiles are recorded."
         : snapshot.agents_down > 0
-          ? `${snapshot.agents_down} of ${snapshot.agents_total} enabled employees reported offline or in error at their last health check.`
+          ? `${snapshot.agents_down} of ${snapshot.agents_total} enabled AI runtime profiles reported offline or in error at their last health check.`
           : snapshot.agents_online === 0
-            ? `${snapshot.agents_total} enabled employees, but none has passed a health check yet (they are still in setup), so nothing can be said about their availability.`
-            : `${snapshot.agents_online} of ${snapshot.agents_total} enabled employees online at their last health check; none reported down.`, "/admin/employees/clients");
+            ? `${snapshot.agents_total} enabled AI runtime profiles, but none has passed a health check yet (they may still be in setup), so nothing can be said about their availability.`
+            : `${snapshot.agents_online} of ${snapshot.agents_total} enabled AI runtime profiles online at their last health check; none reported down.`, "/admin/employees/clients");
 
     add("integrations", "Integrations", snapshot.integrations_total === 0 ? "not_configured" : snapshot.integrations_bad > 0 ? "degraded" : "healthy",
       snapshot.integrations_total === 0 ? "No integration connections are recorded." : snapshot.integrations_bad > 0 ? `${snapshot.integrations_bad} of ${snapshot.integrations_total} connections are in error or need attention.` : `${snapshot.integrations_total} connections, none in error.`, "/admin/integrations");
