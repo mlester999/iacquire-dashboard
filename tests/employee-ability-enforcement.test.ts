@@ -104,6 +104,7 @@ describe("the reviewed ability tables (pure)", () => {
       expect([...CHAT_ACTION_ABILITIES[action]]).toEqual([...def.abilities]);
     }
     expect([...CHAT_ACTION_ABILITIES["chat:targeting_update"]]).toEqual(["research.public_web"]);
+    expect([...CHAT_ACTION_ABILITIES["chat:messaging_hours_update"]]).toEqual([]);
     expect([...CHAT_ACTION_ABILITIES["chat:partner_goal_update"]]).toEqual([]);
     expect([...CHAT_ACTION_ABILITIES["chat:crm_contact_create"]]).toEqual(["crm.contacts.create"]);
     expect([...CHAT_ACTION_ABILITIES["chat:appointment_policy_update"]]).toEqual(["calendar.booking_rules.update"]);

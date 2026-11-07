@@ -7,6 +7,7 @@ import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHea
 import { sendChatMessage } from "@/server/chat/service";
 import { withSystem } from "@/server/db";
 import { RATE_LIMITS } from "@/server/security/rate-limit";
+import { getMessagingSettings, updateMessagingSettings } from "@/server/messaging/inbox";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 
@@ -142,4 +143,70 @@ describe("Business Brain edits from the permanent Growth Partner conversation", 
     await resetAgentMessageRateLimit(owner.id);
     await resetAgentMessageRateLimit(member.id);
   });
+
+  it("updates Messaging hours from the permanent chat, synchronizes the active Brain and draft, and enforces owner permissions", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const ctx = ctxFor(owner, org, "owner");
+    const before = await getGrowthPartnerControlState(ctx);
+    expect(before?.draftVersion).toBe(2);
+    const requestStart = mock.requests.length;
+    const result = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set messaging business hours to Mon-Fri 09:00-17:00; Sat-Sun closed",
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(result).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+    const reply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [result.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(reply).toContain("Saved Messaging hours as Monday 09:00–17:00");
+    expect(reply).toContain("synchronized the active Business Brain version 3");
+    expect(reply).toContain("Draft version 4 was also aligned");
+    expect(reply).toContain("calendar host availability is separate");
+    expect(await getMessagingSettings(ctx)).toMatchObject({
+      businessHours: { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] },
+      autoReplyEnabled: false,
+    });
+
+    const after = await getGrowthPartnerControlState(ctx);
+    expect(after).toMatchObject({ currentVersion: 3, draftVersion: 4 });
+    expect(after?.currentBusinessBrain?.sections.businessOperations.operatingHours).toMatchObject({
+      value: "Monday 09:00–17:00; Tuesday 09:00–17:00; Wednesday 09:00–17:00; Thursday 09:00–17:00; Friday 09:00–17:00",
+      state: "client_confirmed",
+      clientOverride: true,
+    });
+    expect(after?.draftBusinessBrain?.sections.businessIdentity.serviceAreas.value).toBe("Orlando metropolitan area\nWinter Park\nKissimmee");
+    expect(after?.draftBusinessBrain?.sections.businessOperations.operatingHours.value).toBe(after?.currentBusinessBrain?.sections.businessOperations.operatingHours.value);
+
+    const audits = (await withSystem((db) => db.query<{ action: string; metadata: Record<string, unknown> }>(
+      "select action, metadata from audit_logs where org_id = $1 and action in ('messaging.settings_changed', 'ai_growth_partner.business_brain_settings_synced', 'ai_growth_partner.business_brain_draft_rebased') order by id",
+      [org.id],
+    ))).rows;
+    expect(audits.map((entry) => entry.action)).toEqual(expect.arrayContaining([
+      "messaging.settings_changed",
+      "ai_growth_partner.business_brain_settings_synced",
+      "ai_growth_partner.business_brain_draft_rebased",
+    ]));
+
+    const settingsBeforeDenied = await getMessagingSettings(ctx);
+    await resetAgentMessageRateLimit(member.id);
+    const denied = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Set messaging business hours to Mon-Fri 08:00-16:00",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("Only a workspace owner or manager");
+    await expect(updateMessagingSettings(ctxFor(member, org, "member"), { businessHours: { mon: [["08:00", "16:00"]] } }))
+      .rejects.toMatchObject({ code: "forbidden" });
+    expect(await getMessagingSettings(ctx)).toEqual(settingsBeforeDenied);
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+    await resetAgentMessageRateLimit(owner.id);
+    await resetAgentMessageRateLimit(member.id);
+  }, 120_000);
 });

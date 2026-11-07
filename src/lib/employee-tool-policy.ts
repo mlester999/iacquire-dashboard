@@ -28,6 +28,7 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceR
   "chat:booking_request": { label: "Prepare an appointment booking for confirmation", roles: ["appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:appointment_change": { label: "Prepare an appointment cancellation or reschedule for approval", roles: ["appointment_setter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:targeting_update": { label: "Update saved lead targeting rules", roles: ["lead_hunter", AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:messaging_hours_update": { label: "Update workspace Messaging business hours", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:partner_preferences_update": { label: "Change persistent AI Growth Partner communication preferences", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:partner_goal_update": { label: "Set a measurable AI Growth Partner goal", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:outbound_control": { label: "Pause or resume all outbound AI actions for this workspace", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
@@ -102,6 +103,8 @@ export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   "chat:booking_request": ["appointments.request_change"],
   "chat:appointment_change": ["appointments.request_change"],
   "chat:targeting_update": ["research.public_web"],
+  // A person explicitly changes their workspace Messaging settings; no autonomous messaging ability is needed.
+  "chat:messaging_hours_update": [],
   // This is a direct, owner-authorized workspace settings change, not an autonomous employee tool.
   "chat:partner_preferences_update": [],
   // Goal edits are directly authorized workspace settings changes, not autonomous employee actions.

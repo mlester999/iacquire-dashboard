@@ -56,7 +56,9 @@ import {
   type WorkforceScheduleWindow,
 } from "@/lib/workforce-chat-schedule-intent";
 import { nextWorkforceScheduleOccurrence, validateWorkforceScheduleRule, type WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
-import { validateBusinessHours, type Weekday } from "@/lib/messaging";
+import { describeBusinessHours, validateBusinessHours, type Weekday } from "@/lib/messaging";
+import { hoursKey } from "@/lib/onboarding/business-profile";
+import { parseWorkforceChatMessagingHoursIntent } from "@/lib/workforce-chat-messaging-hours-intent";
 import { formatSlot } from "@/lib/appointments";
 import { saveScheduleInTransaction, setScheduleEnabledInTransaction, type ScheduleCadence } from "@/server/workforce/schedules";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
@@ -86,6 +88,7 @@ import { parseWorkforceChatOutboundControlIntent } from "@/lib/workforce-chat-ou
 import { setClientPause } from "@/server/automation/controls";
 import { listGrowthPartnerGoalProgress, saveGrowthPartnerGoal } from "@/server/ai-growth-partner/goals";
 import { getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { getMessagingSettings, updateMessagingSettings } from "@/server/messaging/inbox";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -1004,6 +1007,68 @@ async function handleChatBusinessBrainIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The Business Brain service could not confirm the saved draft.";
     return reply(`I couldn't save that Business Brain change. ${chatSafeText(message)} No draft was confirmed.`, systemNoticeMarker());
+  }
+}
+
+async function handleChatMessagingHoursIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatMessagingHoursIntent> },
+): Promise<SendResult> {
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (input.intent.kind === "clarification") return reply(input.intent.message);
+  if (input.intent.kind !== "update") return reply("I couldn't identify a complete Messaging hours change. No settings were changed.");
+  if (ctx.org.kind !== "client") return reply("Messaging hours can only be changed in a client workspace. No settings were changed.");
+  if (!ctx.can("messaging.configure")) return reply("Only a workspace owner or manager can change Messaging hours. No settings were changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:messaging_hours_update"))) {
+    return reply("This AI Growth Partner can't change Messaging hours from chat right now. No settings were changed.");
+  }
+
+  const expected = describeBusinessHours(input.intent.businessHours);
+  const hasConfirmedHours = (brain: NonNullable<Awaited<ReturnType<typeof getGrowthPartnerControlState>>>["currentBusinessBrain"] | null | undefined) => {
+    const fact = brain?.sections.businessOperations.operatingHours;
+    return fact?.state === "client_confirmed" && fact.clientOverride && fact.value === expected;
+  };
+  try {
+    const beforeSettings = await getMessagingSettings(ctx);
+    const beforeControl = await getGrowthPartnerControlState(ctx);
+    const settingsAlreadyMatch = hoursKey(beforeSettings.businessHours) === hoursKey(input.intent.businessHours);
+    const activeAlreadyMatches = hasConfirmedHours(beforeControl?.currentBusinessBrain);
+    const draftAlreadyMatches = !beforeControl?.draftBusinessBrain || hasConfirmedHours(beforeControl.draftBusinessBrain);
+    if (settingsAlreadyMatch && activeAlreadyMatches && draftAlreadyMatches) {
+      return reply(`Messaging hours are already saved as ${expected} and match the active Business Brain${beforeControl?.draftVersion ? ` and draft version ${beforeControl.draftVersion}` : ""}. These hours control Messaging follow-up windows and replies when business-hours-only is enabled; calendar host availability is separate.`);
+    }
+
+    await updateMessagingSettings(ctx, { businessHours: input.intent.businessHours });
+    const [afterSettings, afterControl] = await Promise.all([
+      getMessagingSettings(ctx),
+      getGrowthPartnerControlState(ctx),
+    ]);
+    if (hoursKey(afterSettings.businessHours) !== hoursKey(input.intent.businessHours)) {
+      return reply("Messaging hours were submitted, but I couldn't verify the saved schedule afterward. Check Messaging settings before relying on the change.", systemNoticeMarker());
+    }
+
+    if (!afterControl?.currentVersion || !afterControl.currentBusinessBrain) {
+      return reply(`Saved Messaging hours as ${expected}. Partner setup has no active Business Brain version yet, so there was nothing active to sync. These hours control Messaging follow-up windows and replies when business-hours-only is enabled; calendar host availability is separate.`, serverMarker("approved_write"));
+    }
+    if (!hasConfirmedHours(afterControl.currentBusinessBrain)) {
+      return reply("Messaging hours were saved, but I couldn't verify them in the active Business Brain. Check Partner Controls before relying on its operating-hours context.", systemNoticeMarker());
+    }
+    if (beforeControl?.draftBusinessBrain && !hasConfirmedHours(afterControl.draftBusinessBrain)) {
+      return reply("Messaging hours and the active Business Brain were updated, but I couldn't verify the saved draft was rebased. Review the draft in Partner Controls before activating it.", systemNoticeMarker());
+    }
+
+    const draftNote = afterControl.draftVersion ? ` Draft version ${afterControl.draftVersion} was also aligned.` : "";
+    return reply(`Saved Messaging hours as ${expected} and synchronized the active Business Brain${afterControl.currentVersion ? ` version ${afterControl.currentVersion}` : ""}.${draftNote} These hours control Messaging follow-up windows and replies when business-hours-only is enabled; calendar host availability is separate.`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The Messaging settings service could not verify the saved schedule.";
+    return reply(`I couldn't confirm the Messaging hours change. ${chatSafeText(message)} No change was confirmed.`, systemNoticeMarker());
   }
 }
 
@@ -2314,6 +2379,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentChangeIntent(role, content).kind !== "none"
       || parseWorkforceChatBusinessBrainIntent(role, content).kind !== "none"
+      || parseWorkforceChatMessagingHoursIntent(role, content).kind !== "none"
       || parseWorkforceChatTargetingIntent(role, content).kind !== "none"
       || parseWorkforceChatGoalIntent(role, content).kind !== "none"
       || parseWorkforceChatPreferencesIntent(role, content).kind !== "none"
@@ -2670,6 +2736,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: businessBrainIntent,
+    });
+  }
+  const messagingHoursIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatMessagingHoursIntent(input.agentRole, prepared.userContent)
+    : { kind: "none" as const };
+  if (messagingHoursIntent.kind !== "none" && !refusal) {
+    return handleChatMessagingHoursIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: messagingHoursIntent,
     });
   }
   const targetingIntent = !input.regenerateMessageId && !namedOtherRole

@@ -3,10 +3,13 @@
 // the other and a questionnaire edit made after the first submission now applies. Automatic replies are never switched on by any of it. Embedded Postgres, real migrations.
 import { describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { formatHours } from "@/lib/onboarding/engine";
 import { parseProfileSnapshot } from "@/lib/onboarding/business-profile";
 import { getMessagingSettings, updateMessagingSettings } from "@/server/messaging/inbox";
+import { getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { getOnboardingSession, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { submitRealOnboarding } from "./support/billing";
 
@@ -171,6 +174,65 @@ describe("a Settings > Messaging edit and the answers it comes from", () => {
     expect(await snapshotOf(b.org.id)).toEqual(bSnapshot);
     expect((await settingsOf(b.org.id)).followup_preset).toBe("balanced");
   }, 120_000);
+
+  it("synchronizes Messaging hours into the active Business Brain, rebases its draft, and stays tenant isolated", async () => {
+    const client = await submitRealOnboarding({ name: "Messaging Brain Sync Roofing", clearPayment: true, withGrowthPartner: true });
+    const before = await getGrowthPartnerControlState(client.ctx);
+    expect(before?.currentBusinessBrain).toBeTruthy();
+    const draft = await saveGrowthPartnerBusinessBrainFactDraft(client.ctx, {
+      baseVersion: before!.currentVersion!,
+      section: "businessIdentity",
+      key: "serviceAreas",
+      valueText: "Austin metropolitan area\nRound Rock",
+    }, { submittedFrom: "permanent_growth_partner_chat" });
+
+    const other = await createOrg({ name: "Messaging Brain Sync Neighbor" });
+    const otherOwner = await createUser();
+    await addMember(other.id, otherOwner.id, "owner");
+    const otherAgent = await withSystem((db) => ensureGrowthPartnerRuntime(other.id, db));
+    const otherPartner = await withSystem(async (db) => {
+      const partner = (await db.query<{ id: string }>("select id from ai_growth_partners where org_id = $1 and runtime_agent_instance_id = $2", [other.id, otherAgent])).rows[0].id;
+      await db.query(
+        `insert into ai_growth_partner_versions (partner_id, org_id, version, business_brain, source, created_by)
+         values ($1, $2, 1, $3::jsonb, 'onboarding', $4)`,
+        [partner, other.id, JSON.stringify(emptyBusinessBrain()), otherOwner.id],
+      );
+      await db.query("update ai_growth_partners set current_version = 1 where id = $1 and org_id = $2", [partner, other.id]);
+      return partner;
+    });
+    const otherBrainBefore = (await rows<{ business_brain: unknown }>(
+      "select business_brain from ai_growth_partner_versions where org_id = $1 and partner_id = $2 and version = 1",
+      [other.id, otherPartner],
+    ))[0].business_brain;
+
+    const hours = { tue: [["10:00", "16:00"]] };
+    await updateMessagingSettings(client.ctx, { businessHours: hours });
+    const after = await getGrowthPartnerControlState(client.ctx);
+    expect(after?.currentVersion).toBeGreaterThan(before!.currentVersion!);
+    expect(after?.draftVersion).toBeGreaterThan(draft.version);
+    expect(after?.currentBusinessBrain?.sections.businessOperations.operatingHours).toMatchObject({
+      value: "Tuesday 10:00–16:00",
+      state: "client_confirmed",
+      clientOverride: true,
+    });
+    expect(after?.draftBusinessBrain?.sections.businessOperations.operatingHours.value).toBe("Tuesday 10:00–16:00");
+    expect(after?.draftBusinessBrain?.sections.businessIdentity.serviceAreas.value).toBe("Austin metropolitan area\nRound Rock");
+    expect(await rows<{ business_brain: unknown }>(
+      "select business_brain from ai_growth_partner_versions where org_id = $1 and partner_id = $2 and version = 1",
+      [other.id, otherPartner],
+    )).toMatchObject([{ business_brain: otherBrainBefore }]);
+    expect((await rows<{ current_version: number }>("select current_version from ai_growth_partners where org_id = $1 and id = $2", [other.id, otherPartner]))[0].current_version).toBe(1);
+
+    const versionCount = Number((await rows<{ count: number }>(
+      "select count(*)::int as count from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
+      [client.org.id, after!.id],
+    ))[0].count);
+    await updateMessagingSettings(client.ctx, { businessHours: hours });
+    expect(Number((await rows<{ count: number }>(
+      "select count(*)::int as count from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
+      [client.org.id, after!.id],
+    ))[0].count)).toBe(versionCount);
+  }, 180_000);
 
   it("records in the audit row what the edit did", async () => {
     const c = await submitRealOnboarding({ name: "Audit Messaging Roofing", clearPayment: true });

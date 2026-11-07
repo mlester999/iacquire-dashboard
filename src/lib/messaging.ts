@@ -238,7 +238,7 @@ export function localParts(date: Date, timeZone: string): { weekday: Weekday; mi
 
 /** No hours defined means the business is treated as always open; the interface warns when that is the case. */
 export function isWithinBusinessHours(hours: BusinessHours | null | undefined, now: Date, timeZone: string): boolean {
-  if (!hours || !Object.keys(hours).length) return true;
+  if (!hours || !Object.values(hours).some((windows) => windows?.length)) return true;
   const { weekday, minutes } = localParts(now, timeZone);
   return (hours[weekday] ?? []).some(([from, to]) => minutes >= toMinutes(from) && minutes < toMinutes(to));
 }
@@ -279,6 +279,21 @@ export function validateBusinessHours(input: unknown): BusinessHours | null {
     out[day as Weekday] = clean;
   }
   return out;
+}
+
+const BUSINESS_HOUR_DAY_LABELS: Readonly<Record<Weekday, string>> = {
+  sun: "Sunday", mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday",
+};
+
+/** A stable, readable representation shared by settings, Business Brain sync, and chat confirmations. */
+export function describeBusinessHours(input: BusinessHours): string {
+  const hours = validateBusinessHours(input);
+  if (hours === null) throw new Error("Cannot describe invalid business hours.");
+  const days = (["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const)
+    .filter((day) => hours[day]?.length)
+    .map((day) => `${BUSINESS_HOUR_DAY_LABELS[day]} ${hours[day]!.map(([from, to]) => `${from}–${to}`).join(", ")}`);
+  if (days.length) return days.join("; ");
+  return "24/7";
 }
 
 export const DEFAULT_FOLLOWUP_TEXT = (businessName: string, step: number) =>

@@ -9,6 +9,7 @@ import {
   preserveClientOverrides,
   type BusinessBrain,
 } from "@/lib/ai-growth-partner";
+import { describeBusinessHours, validateBusinessHours, type BusinessHours } from "@/lib/messaging";
 import { recordAudit } from "@/server/audit";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -76,6 +77,152 @@ function applyBusinessProfileFacts(brain: BusinessBrain, values: ProfileValues, 
   }
   if (updated.length) next.generatedAt = now;
   return { brain: BusinessBrainSchema.parse(next), changed: updated };
+}
+
+function applyMessagingHoursFact(brain: BusinessBrain, hours: string, now: string): { brain: BusinessBrain; changed: boolean } {
+  const next = structuredClone(brain);
+  const existing = next.sections.businessOperations.operatingHours;
+  if (existing.value === hours && existing.state === "client_confirmed" && existing.clientOverride) return { brain, changed: false };
+  next.sections.businessOperations.operatingHours = {
+    value: hours,
+    state: "client_confirmed",
+    provenance: [...existing.provenance, {
+      source: "client_confirmed" as const,
+      sourceId: "messaging_settings.business_hours",
+      evidenceUrl: null,
+      observedAt: now,
+    }].slice(-50),
+    updatedAt: now,
+    clientOverride: true,
+  };
+  next.generatedAt = now;
+  return { brain: BusinessBrainSchema.parse(next), changed: true };
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/** Keeps the active Brain and any saved draft aligned with the owner's Messaging business-hours setting. */
+export async function syncGrowthPartnerOperatingHoursFromMessaging(
+  db: Queryable,
+  input: { orgId: string; actorUserId: string; actorKind: "agency" | "user"; businessHours: BusinessHours },
+): Promise<{ status: "updated" | "unchanged" | "not_ready"; activeVersion: number | null; draftVersion: number | null }> {
+  const hours = validateBusinessHours(input.businessHours);
+  if (hours === null) throw new AppError("invalid_input", "Business hours could not be synchronized because the saved schedule is invalid.");
+  const partner = (await db.query<{ id: string; current_version: number | null }>(
+    `select p.id, p.current_version from ai_growth_partners p
+     join organizations o on o.id = p.org_id
+     where p.org_id = $1 and o.kind = 'client' and not o.is_demo
+     for update of p`,
+    [input.orgId],
+  )).rows[0];
+  if (!partner || partner.current_version === null) return { status: "not_ready", activeVersion: null, draftVersion: null };
+
+  const active = (await db.query<{ version: number; business_brain: unknown; persona_settings: unknown }>(
+    `select version, business_brain, persona_settings from ai_growth_partner_versions
+     where org_id = $1 and partner_id = $2 and version = $3`,
+    [input.orgId, partner.id, partner.current_version],
+  )).rows[0];
+  if (!active) throw new AppError("conflict", "The active Business Brain could not be found. Review it before changing business hours.");
+  const parsedActive = BusinessBrainSchema.safeParse(active.business_brain);
+  if (!parsedActive.success) throw new AppError("conflict", "The active Business Brain needs review before business hours can be synchronized.");
+
+  const latest = (await db.query<{
+    version: number;
+    business_brain: unknown;
+    persona_settings: unknown;
+    source: string;
+    source_metadata: unknown;
+  }>(
+    `select version, business_brain, persona_settings, source, source_metadata
+     from ai_growth_partner_versions where org_id = $1 and partner_id = $2
+     order by version desc limit 1`,
+    [input.orgId, partner.id],
+  )).rows[0];
+  const hasDraft = Boolean(latest && Number(latest.version) > Number(partner.current_version));
+  let draftBrain: BusinessBrain | null = null;
+  if (hasDraft) {
+    const parsedDraft = BusinessBrainSchema.safeParse(latest!.business_brain);
+    if (!parsedDraft.success) throw new AppError("conflict", "The saved Business Brain draft needs review before business hours can be synchronized.");
+    draftBrain = parsedDraft.data;
+  }
+
+  const now = new Date().toISOString();
+  const value = describeBusinessHours(hours);
+  const activeUpdate = applyMessagingHoursFact(parsedActive.data, value, now);
+  const draftUpdate = draftBrain ? applyMessagingHoursFact(draftBrain, value, now) : null;
+  const rebaseDraft = hasDraft && Boolean(activeUpdate.changed || draftUpdate?.changed);
+  if (!activeUpdate.changed && !rebaseDraft) {
+    return { status: "unchanged", activeVersion: Number(partner.current_version), draftVersion: hasDraft ? Number(latest!.version) : null };
+  }
+
+  let nextVersion = Number((await db.query<{ next: number }>(
+    "select coalesce(max(version), 0)::int + 1 as next from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
+    [input.orgId, partner.id],
+  )).rows[0].next);
+  let activeVersion = Number(partner.current_version);
+  let draftVersion: number | null = hasDraft ? Number(latest!.version) : null;
+
+  if (activeUpdate.changed) {
+    activeVersion = nextVersion++;
+    const snapshot = (await db.query<{ id: string }>(
+      `insert into ai_growth_partner_versions
+         (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, 'client_edit', $6::jsonb, $7) returning id`,
+      [partner.id, input.orgId, activeVersion, JSON.stringify(activeUpdate.brain), JSON.stringify(active.persona_settings ?? {}), JSON.stringify({
+        submittedFrom: "workspace_settings",
+        syncKind: "messaging_hours",
+        basedOnVersion: Number(active.version),
+        setting: "businessHours",
+      }), input.actorUserId],
+    )).rows[0];
+    const pointer = await db.query(
+      "update ai_growth_partners set current_version = $3 where id = $1 and org_id = $2 and current_version = $4 returning id",
+      [partner.id, input.orgId, activeVersion, partner.current_version],
+    );
+    if (!pointer.rowCount) throw new AppError("conflict", "The active Business Brain changed while business hours were being saved. Refresh and try again.");
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      action: "ai_growth_partner.business_brain_settings_synced",
+      targetType: "ai_growth_partner_version",
+      targetId: snapshot.id,
+      result: "success",
+      metadata: { version: activeVersion, basedOnVersion: Number(active.version), syncKind: "messaging_hours", activeVersionChanged: true },
+    }, db);
+  }
+
+  if (draftUpdate?.changed || rebaseDraft) {
+    draftVersion = nextVersion;
+    const metadata = metadataRecord(latest!.source_metadata);
+    const draft = (await db.query<{ id: string }>(
+      `insert into ai_growth_partner_versions
+         (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7::jsonb, $8) returning id`,
+      [partner.id, input.orgId, draftVersion, JSON.stringify(draftUpdate!.brain), JSON.stringify(latest!.persona_settings ?? active.persona_settings ?? {}), latest!.source, JSON.stringify({
+        ...metadata,
+        submittedFrom: "workspace_settings",
+        syncKind: "messaging_hours",
+        basedOnVersion: Number(latest!.version),
+        setting: "businessHours",
+        rebasedAt: now,
+      }), input.actorUserId],
+    )).rows[0];
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      action: "ai_growth_partner.business_brain_draft_rebased",
+      targetType: "ai_growth_partner_version",
+      targetId: draft.id,
+      result: "success",
+      metadata: { version: draftVersion, basedOnVersion: Number(latest!.version), syncKind: "messaging_hours", activeVersionChanged: activeUpdate.changed },
+    }, db);
+  }
+
+  return { status: activeUpdate.changed || rebaseDraft ? "updated" : "unchanged", activeVersion, draftVersion };
 }
 
 export interface GrowthPartnerControlState {

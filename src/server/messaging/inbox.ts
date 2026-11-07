@@ -13,6 +13,7 @@ import { getConversationListItem, listConversationsPage, type ConversationFilter
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
 import { unconfirmedOutcome, validateBusinessHours, type BusinessHours, type Channel, type CustomFollowUp, type FollowUpPreset, type MessageStatus } from "@/lib/messaging";
 import { syncMessagingToAnswers } from "@/server/onboarding/profile-sync";
+import { syncGrowthPartnerOperatingHoursFromMessaging } from "@/server/ai-growth-partner/service";
 import { hoursKey } from "@/lib/onboarding/business-profile";
 import { describeConversationEvent, isConversationOutcome, type ConversationOutcome } from "@/lib/inbox";
 import type { OrgContext } from "@/server/tenancy/context";
@@ -676,7 +677,16 @@ export async function updateMessagingSettings(ctx: OrgContext, input: MessagingS
        where org_id = $1`,
       [ctx.org.orgId, input.autoReplyEnabled ?? null, input.replyBusinessHoursOnly ?? null, hours ? JSON.stringify(hours) : null, input.followUpPreset ?? null, input.followUpCustom !== undefined, custom ? JSON.stringify(custom) : null, input.ownerTimeoutUrgentSeconds ?? null, input.ownerTimeoutNormalSeconds ?? null, ctx.user.id],
     );
-    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "messaging.settings_changed", targetType: "messaging_settings", targetId: ctx.org.orgId, result: "success", metadata: { autoReply: input.autoReplyEnabled, preset: input.followUpPreset, hoursChanged: hours ? hoursKey(hours) !== hoursKey(validateBusinessHours(was ?? {})) : false, replyBusinessHoursOnly: input.replyBusinessHoursOnly, followUpPreset: input.followUpPreset } }, db);
+    const hoursChanged = hours ? hoursKey(hours) !== hoursKey(validateBusinessHours(was ?? {})) : false;
+    if (hours !== undefined && hours !== null) {
+      await syncGrowthPartnerOperatingHoursFromMessaging(db, {
+        orgId: ctx.org.orgId,
+        actorUserId: ctx.user.id,
+        actorKind: ctx.user.platformRole !== "none" ? "agency" : "user",
+        businessHours: hours,
+      });
+    }
+    await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "messaging.settings_changed", targetType: "messaging_settings", targetId: ctx.org.orgId, result: "success", metadata: { autoReply: input.autoReplyEnabled, preset: input.followUpPreset, hoursChanged, replyBusinessHoursOnly: input.replyBusinessHoursOnly, followUpPreset: input.followUpPreset } }, db);
   });
 }
 
