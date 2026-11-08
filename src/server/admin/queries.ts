@@ -26,6 +26,31 @@ export interface ProvisioningEvent {
   at: Date;
 }
 
+/** Count-only snapshot used to review a future, separately approved tenant migration. */
+export interface GrowthPartnerMigrationInventory {
+  legacyProfiles: number;
+  enabledLegacyProfiles: number;
+  boundHermesProfiles: number;
+  unrevokedCredentialReferences: number;
+  profilesWithActiveConfig: number;
+  configReviewsWaiting: number;
+  approvedKnowledgeSections: number;
+  knowledgeSectionsWaiting: number;
+  retainedKnowledgeDocuments: number;
+  legacyConversations: number;
+  legacyMessages: number;
+  schedules: number;
+  enabledSchedules: number;
+  workJobs: number;
+  openWorkJobs: number;
+  openApprovals: number;
+  connectedIntegrationStatuses: number;
+  memberPermissionOverrides: number;
+  workspaceFeatureOverrides: number;
+  growthPartnerIdentities: number;
+  permanentGrowthPartnerConversations: number;
+}
+
 export interface TenantDetail {
   access: {
     team: boolean;
@@ -101,6 +126,8 @@ export interface TenantDetail {
     runs_30d: number;
     failed_30d: number;
   } | null;
+  /** Available only to Super Admins with workforce access. This has no secrets or content. */
+  migrationInventory: GrowthPartnerMigrationInventory | null;
   heldVersions: ReviewVersionView[];
   /** A waiting section edit (content is the waiting text; the approved text is untouched and still in use) or text held by the older code. */
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
@@ -160,6 +187,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       integrations: accessRow?.integrations === true,
       setup: accessRow?.setup === true,
     };
+    const canViewMigrationInventory = access.workforce && user.platformRole === "agency_super_admin";
     const canViewPayments = accessRow?.billing === true;
     const { rows: org } = await db.query<TenantDetail["org"]>(
       "select id, name, slug, status, kind, is_demo, industry, website, timezone, created_at, onboarding_completed_at, suspended_reason from organizations where id = $1",
@@ -218,6 +246,37 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
        where p.org_id = $1`,
       [orgId],
     );
+    const migrationInventory = canViewMigrationInventory
+      ? await db.query<GrowthPartnerMigrationInventory>(
+          `with legacy_profiles as (
+             select id, enabled, hermes_profile, credential_id, active_config_version_id
+             from agent_instances where org_id = $1 and role_key = any($2::text[])
+           )
+           select
+             (select count(*)::int from legacy_profiles) as "legacyProfiles",
+             (select count(*)::int from legacy_profiles where enabled) as "enabledLegacyProfiles",
+             (select count(*)::int from legacy_profiles where hermes_profile is not null) as "boundHermesProfiles",
+             (select count(*)::int from legacy_profiles a join integration_credentials c on c.id = a.credential_id and c.org_id = $1 where c.revoked_at is null) as "unrevokedCredentialReferences",
+             (select count(*)::int from legacy_profiles a where exists (select 1 from agent_config_versions v where v.id = a.active_config_version_id and v.agent_instance_id = a.id and v.org_id = $1 and v.status = 'applied')) as "profilesWithActiveConfig",
+             (select count(*)::int from agent_config_versions v join legacy_profiles a on a.id = v.agent_instance_id where v.org_id = $1 and v.status in ('pending_approval', 'pending_agency_review')) as "configReviewsWaiting",
+             (select count(*)::int from company_knowledge where org_id = $1 and review_status = 'approved') as "approvedKnowledgeSections",
+             (select count(*)::int from company_knowledge where org_id = $1 and (pending_content is not null or review_status = 'pending_agency_review')) as "knowledgeSectionsWaiting",
+             (select count(*)::int from knowledge_documents where org_id = $1 and status <> 'deleted') as "retainedKnowledgeDocuments",
+             (select count(*)::int from chat_conversations c join legacy_profiles a on a.id = c.agent_instance_id where c.org_id = $1 and c.deleted_at is null) as "legacyConversations",
+             (select count(*)::int from chat_messages m join chat_conversations c on c.id = m.conversation_id join legacy_profiles a on a.id = c.agent_instance_id where m.org_id = $1 and c.deleted_at is null) as "legacyMessages",
+             (select count(*)::int from ai_work_schedules s join legacy_profiles a on a.id = s.agent_instance_id where s.org_id = $1) as schedules,
+             (select count(*)::int from ai_work_schedules s join legacy_profiles a on a.id = s.agent_instance_id where s.org_id = $1 and s.enabled) as "enabledSchedules",
+             (select count(*)::int from ai_work_jobs j join legacy_profiles a on a.id = j.agent_instance_id where j.org_id = $1) as "workJobs",
+             (select count(*)::int from ai_work_jobs j join legacy_profiles a on a.id = j.agent_instance_id where j.org_id = $1 and j.status in ('queued', 'running', 'waiting_for_approval', 'blocked')) as "openWorkJobs",
+             (select count(*)::int from approval_requests where org_id = $1 and (status in ('pending', 'changes_requested') or execution_status in ('queued', 'running', 'blocked'))) as "openApprovals",
+             (select count(*)::int from integration_status where org_id = $1 and status = 'connected') as "connectedIntegrationStatuses",
+             (select count(*)::int from member_permission_overrides where org_id = $1) as "memberPermissionOverrides",
+             (select count(*)::int from org_features where org_id = $1) as "workspaceFeatureOverrides",
+             (select count(*)::int from ai_growth_partners where org_id = $1) as "growthPartnerIdentities",
+             (select count(*)::int from chat_conversations where org_id = $1 and growth_partner_id in (select id from ai_growth_partners where org_id = $1) and deleted_at is null) as "permanentGrowthPartnerConversations"`,
+          [orgId, AGENT_ROLE_KEYS],
+        )
+      : null;
     const heldKnowledge = await db.query<TenantDetail["heldKnowledge"][number]>(
       `select section, coalesce(pending_content, content) as content,
               case when pending_content is not null then pending_flags else risk_flags end as risk_flags, updated_at
@@ -316,6 +375,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       invitations: access.team ? invitations.rows : [],
       agents: access.workforce ? agents.rows : [],
       growthPartner: access.workforce ? growthPartner.rows[0] ?? null : null,
+      migrationInventory: canViewMigrationInventory ? migrationInventory?.rows[0] ?? null : null,
       heldVersions,
       heldKnowledge: access.workforce && contentAccess.permitted
         ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))

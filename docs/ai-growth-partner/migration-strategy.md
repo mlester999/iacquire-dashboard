@@ -34,3 +34,7 @@ Migration rehearsals and synthetic-tenant acceptance are development checks. The
 ## Remaining acceptance evidence
 
 The current development implementation has synthetic tenant and chat tests, plus migration rehearsal coverage. It does not yet prove migration against a real tenant runtime, external CRM/calendar providers, a production scheduler, or a customer-approved cutover. Those require a separately authorized staging or production acceptance run and must be reported as real provider evidence rather than inferred from a green setup badge.
+
+## Current read-only inventory aid
+
+The Super Admin client detail includes tenant-scoped record counts for retained role profiles, Hermes profile and credential references, configuration review state, approved and waiting company knowledge, retained knowledge documents, legacy conversation/message history, schedules, open and total Work Board jobs, open approvals, connected integration status rows, member permission overrides, workspace feature overrides, and the Growth Partner identity/permanent conversation. The snapshot is restricted to Super Admins with workforce access, returns no credential values or business content, and makes no changes. It does not validate runtime reachability, credential validity, Hermes memory, external provider state, paid entitlements, or schedule effects; it is not a full migration report and does not create a candidate or establish cutover readiness.

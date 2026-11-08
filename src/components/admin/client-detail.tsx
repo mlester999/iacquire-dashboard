@@ -231,6 +231,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
   const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
   const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
+  const migration = data.migrationInventory;
   return (
     <div className="space-y-6">
       {data.growthPartner && (
@@ -264,6 +265,45 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
           </p></details>
         </CardContent>
       </Card>
+      {superAdmin && migration && (
+        <Card aria-label="Read-only migration inventory">
+          <CardHeader>
+            <div>
+              <CardTitle>Read-only migration inventory</CardTitle>
+              <CardDescription>Tenant-scoped record counts to support a future, separately reviewed cutover.</CardDescription>
+            </div>
+            <Badge tone="neutral">No changes made</Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <dl className="grid gap-x-5 gap-y-4 text-[13px] sm:grid-cols-2 xl:grid-cols-3">
+              {[
+                ["Previous profiles", `${migration.enabledLegacyProfiles} enabled · ${migration.legacyProfiles} total`],
+                ["Hermes profile references", `${migration.boundHermesProfiles} profiles`],
+                ["Unrevoked credential references", `${migration.unrevokedCredentialReferences} profiles`],
+                ["Active configurations", `${migration.profilesWithActiveConfig} profiles`],
+                ["Configuration reviews waiting", migration.configReviewsWaiting],
+                ["Business Brain sources", `${migration.approvedKnowledgeSections} approved sections · ${migration.knowledgeSectionsWaiting} waiting · ${migration.retainedKnowledgeDocuments} retained documents`],
+                ["Previous profile history", `${migration.legacyConversations} conversations · ${migration.legacyMessages} messages`],
+                ["Previous profile schedules", `${migration.enabledSchedules} enabled · ${migration.schedules} total`],
+                ["Previous profile jobs", `${migration.openWorkJobs} open · ${migration.workJobs} total`],
+                ["Approvals to resolve", migration.openApprovals],
+                ["Connected integration statuses", migration.connectedIntegrationStatuses],
+                ["Workspace access overrides", `${migration.memberPermissionOverrides} member · ${migration.workspaceFeatureOverrides} feature`],
+                ["Growth Partner identities", migration.growthPartnerIdentities],
+                ["Permanent Partner conversations", migration.permanentGrowthPartnerConversations],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <dt className="text-muted">{label}</dt>
+                  <dd className="mt-1 font-medium tabular-nums text-ink">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted">
+              These are persisted record counts only. Profile reachability, actual credential validity, runtime memory, external provider state, permissions and paid entitlements still need a separate review. This inventory does not create a Partner, copy data, pause work, change access, or perform a cutover.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       <section className="space-y-3" aria-label="Previous role profiles">
         <div><h3 className="text-[15px] font-semibold text-ink">Previous role profiles</h3><p className="mt-1 text-[13px] text-muted">Saved role settings, credentials, run history and profile controls remain available for review. New client work belongs to the AI Growth Partner.</p></div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
