@@ -23,12 +23,25 @@ from acceptance_harness import (
     _model_request_challenge,
     _portal_status_state,
     _synthetic_model_counters,
+    _hermes_memory_chat,
     verify_hermes_memory_after_restart,
 )
 from verify_portal_acceptance import VerificationError, read_private_text
 
 
 class AcceptanceFixtureTests(unittest.TestCase):
+    def test_hermes_memory_chat_reports_only_safe_transport_or_http_categories(self):
+        with patch("acceptance_harness.urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+            "http://127.0.0.1:8642/fake", 401, "private body excluded", {}, None,
+        )):
+            with self.assertRaisesRegex(ValueError, "^hermes_memory_http_401$"):
+                _hermes_memory_chat("http://127.0.0.1:8642", "synthetic-profile", "a" * 64, "session", "probe")
+
+        with patch("acceptance_harness.urllib.request.urlopen", side_effect=urllib.error.URLError("private transport detail")):
+            with self.assertRaisesRegex(ValueError, "^hermes_memory_transport_error$") as failure:
+                _hermes_memory_chat("http://127.0.0.1:8642", "synthetic-profile", "a" * 64, "session", "probe")
+        self.assertNotIn("private transport detail", str(failure.exception))
+
     def test_local_model_fixture_exercises_memory_tool_write_and_recall_protocol(self):
         model_key = "synthetic-model-key-not-for-diagnostics"
         challenge = "0123456789abcdef0123456789abcdef"

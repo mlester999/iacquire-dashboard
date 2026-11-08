@@ -287,11 +287,23 @@ def _hermes_memory_chat(base: str, profile: str, key: str, session_key: str, pro
     )
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
-            payload = json.loads(response.read(1_048_576).decode("utf-8"))
-            if response.status != 200 or response.headers.get("X-Hermes-Completed") == "false":
-                raise ValueError("hermes_memory_chat_failed")
+            status = response.status
+            completed = response.headers.get("X-Hermes-Completed")
+            response_body = response.read(1_048_576)
+    except urllib.error.HTTPError as error:
+        status = error.code if isinstance(error.code, int) and 400 <= error.code <= 599 else 0
+        raise ValueError(f"hermes_memory_http_{status}") from None
     except Exception:
-        raise ValueError("hermes_memory_chat_failed") from None
+        raise ValueError("hermes_memory_transport_error") from None
+    if status != 200:
+        safe_status = status if isinstance(status, int) and 400 <= status <= 599 else 0
+        raise ValueError(f"hermes_memory_http_{safe_status}")
+    if completed == "false":
+        raise ValueError("hermes_memory_completion_not_confirmed")
+    try:
+        payload = json.loads(response_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValueError("hermes_memory_response_invalid") from None
     choices = payload.get("choices") if isinstance(payload, dict) else None
     message = choices[0].get("message") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
     content = message.get("content") if isinstance(message, dict) else None
