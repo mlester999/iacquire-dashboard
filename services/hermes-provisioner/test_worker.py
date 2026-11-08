@@ -820,6 +820,28 @@ class RestrictedProvisionerTests(unittest.TestCase):
         with self.assertRaisesRegex(ProvisioningError, "profile_ownership_conflict"):
             self.provisioner.process(foreign)
 
+    def test_growth_partner_runtime_identity_is_accepted_and_legacy_roles_remain_valid(self):
+        legacy_roles = {
+            "operations_manager",
+            "lead_hunter",
+            "appointment_setter",
+            "sales_assistant",
+            "crm_manager",
+            "performance_analyst",
+        }
+        self.assertTrue(legacy_roles.issubset(worker_module.ROLE_KEYS))
+
+        soul = self.manifest["soul"].replace("AI Lead Hunter", "AI Growth Partner")
+        partner = new_manifest(
+            gatewayId=self.gateway_id,
+            role="growth_partner",
+            profile="c-northwind-0123456789ab-growth-partner",
+            soul=soul,
+            soulSha256=digest(soul.encode()),
+        )
+        parsed = parse_manifest(partner, self.gateway_id)
+        self.assertEqual(parsed.role, "growth_partner")
+
     def test_manifest_and_policy_reject_paths_unknown_tools_and_clone_requests(self):
         bad_name = dict(self.manifest, profile="../default")
         with self.assertRaisesRegex(ProvisioningError, "invalid_manifest"):

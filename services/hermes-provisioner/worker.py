@@ -46,6 +46,7 @@ UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 API_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 ROLE_KEYS = {
+    "growth_partner",
     "operations_manager",
     "lead_hunter",
     "appointment_setter",
