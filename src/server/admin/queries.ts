@@ -37,6 +37,14 @@ export interface GrowthPartnerMigrationInventory {
   approvedKnowledgeSections: number;
   knowledgeSectionsWaiting: number;
   retainedKnowledgeDocuments: number;
+  legacyProfileKnowledgeNotes: number;
+  approvedLegacyProfileKnowledgeNotes: number;
+  waitingLegacyProfileKnowledgeNotes: number;
+  retainedLegacyProfileDocuments: number;
+  releasedLegacyProfileDocuments: number;
+  heldLegacyProfileDocuments: number;
+  releasedSharedKnowledgeDocuments: number;
+  heldSharedKnowledgeDocuments: number;
   legacyConversations: number;
   legacyMessages: number;
   schedules: number;
@@ -262,6 +270,14 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
              (select count(*)::int from company_knowledge where org_id = $1 and review_status = 'approved') as "approvedKnowledgeSections",
              (select count(*)::int from company_knowledge where org_id = $1 and (pending_content is not null or review_status = 'pending_agency_review')) as "knowledgeSectionsWaiting",
              (select count(*)::int from knowledge_documents where org_id = $1 and status <> 'deleted') as "retainedKnowledgeDocuments",
+             (select count(*)::int from employee_knowledge_entries e join legacy_profiles a on a.id = e.agent_instance_id where e.org_id = $1) as "legacyProfileKnowledgeNotes",
+             (select count(*)::int from employee_knowledge_entries e join legacy_profiles a on a.id = e.agent_instance_id where e.org_id = $1 and e.status = 'approved' and e.content <> '') as "approvedLegacyProfileKnowledgeNotes",
+             (select count(*)::int from employee_knowledge_entries e join legacy_profiles a on a.id = e.agent_instance_id where e.org_id = $1 and e.status = 'pending_agency_review') as "waitingLegacyProfileKnowledgeNotes",
+             (select count(*)::int from knowledge_documents d join legacy_profiles a on a.id = d.agent_instance_id where d.org_id = $1 and d.status <> 'deleted') as "retainedLegacyProfileDocuments",
+             (select count(*)::int from knowledge_documents d join legacy_profiles a on a.id = d.agent_instance_id where d.org_id = $1 and d.status = 'ready' and d.extracted_text is not null and d.applied_at is not null) as "releasedLegacyProfileDocuments",
+             (select count(*)::int from knowledge_documents d join legacy_profiles a on a.id = d.agent_instance_id where d.org_id = $1 and d.status = 'ready' and d.extracted_text is null and d.applied_at is null and cardinality(d.risk_flags) > 0) as "heldLegacyProfileDocuments",
+             (select count(*)::int from knowledge_documents where org_id = $1 and agent_instance_id is null and status = 'ready' and extracted_text is not null and applied_at is not null) as "releasedSharedKnowledgeDocuments",
+             (select count(*)::int from knowledge_documents where org_id = $1 and agent_instance_id is null and status = 'ready' and extracted_text is null and applied_at is null and cardinality(risk_flags) > 0) as "heldSharedKnowledgeDocuments",
              (select count(*)::int from chat_conversations c join legacy_profiles a on a.id = c.agent_instance_id where c.org_id = $1 and c.deleted_at is null) as "legacyConversations",
              (select count(*)::int from chat_messages m join chat_conversations c on c.id = m.conversation_id join legacy_profiles a on a.id = c.agent_instance_id where m.org_id = $1 and c.deleted_at is null) as "legacyMessages",
              (select count(*)::int from ai_work_schedules s join legacy_profiles a on a.id = s.agent_instance_id where s.org_id = $1) as schedules,

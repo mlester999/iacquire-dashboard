@@ -53,8 +53,26 @@ describe("Growth Partner migration inventory", () => {
       );
       await db.query("insert into company_knowledge (org_id, section, content, review_status) values ($1, 'business_description', 'Private approved content', 'approved'), ($1, 'brand_voice', 'Private waiting content', 'pending_agency_review')", [org.id]);
       await db.query(
+        `insert into employee_knowledge_entries (org_id, agent_instance_id, title, content, status, risk_flags, created_by, updated_by)
+         values ($1, $2, 'Private approved note', 'Private approved note content', 'approved', '{}', $3, $3),
+                ($1, $4, 'Private waiting note', 'Private waiting note content', 'pending_agency_review', '{prompt_injection}', $3, $3)`,
+        [org.id, leadHunter, owner.id, crmManager],
+      );
+      await db.query(
         "insert into knowledge_documents (org_id, filename, mime_type, size_bytes, sha256, storage_key) values ($1, 'synthetic.pdf', 'application/pdf', 1, $2, $3)",
         [org.id, "a".repeat(64), `migration-inventory/${org.id}/synthetic.pdf`],
+      );
+      await db.query(
+        `insert into knowledge_documents (org_id, agent_instance_id, filename, mime_type, size_bytes, sha256, storage_key, status, extracted_text, applied_at)
+         values ($1, $2, 'released-role.pdf', 'application/pdf', 1, $3, $4, 'ready', 'Private released profile document', now()),
+                ($1, null, 'released-shared.pdf', 'application/pdf', 1, $5, $6, 'ready', 'Private released shared document', now())`,
+        [org.id, leadHunter, "b".repeat(64), `migration-inventory/${org.id}/released-role.pdf`, "c".repeat(64), `migration-inventory/${org.id}/released-shared.pdf`],
+      );
+      await db.query(
+        `insert into knowledge_documents (org_id, agent_instance_id, filename, mime_type, size_bytes, sha256, storage_key, status, risk_flags)
+         values ($1, $2, 'held-role.pdf', 'application/pdf', 1, $3, $4, 'ready', '{prompt_injection}'),
+                ($1, null, 'held-shared.pdf', 'application/pdf', 1, $5, $6, 'ready', '{prompt_injection}')`,
+        [org.id, crmManager, "d".repeat(64), `migration-inventory/${org.id}/held-role.pdf`, "e".repeat(64), `migration-inventory/${org.id}/held-shared.pdf`],
       );
       const conversation = (await db.query<{ id: string }>(
         "insert into chat_conversations (org_id, agent_instance_id, user_id, title, hermes_session_id) values ($1, $2, $3, 'Private legacy chat', $4) returning id",
@@ -88,11 +106,17 @@ describe("Growth Partner migration inventory", () => {
         "insert into ai_work_jobs (org_id, agent_instance_id, capability, title, idempotency_key, status) values ($1, $2, 'lead_generation_review', 'Other tenant work', $3, 'running')",
         [otherOrg.id, otherLeadHunter, `migration-inventory-${crypto.randomUUID()}`],
       );
-      return (await db.query<{ schedules: number; jobs: number; messages: number }>(
+      await db.query(
+        "insert into employee_knowledge_entries (org_id, agent_instance_id, title, content, status, created_by, updated_by) values ($1, $2, 'Other tenant note', 'Other tenant content', 'approved', $3, $3)",
+        [otherOrg.id, otherLeadHunter, owner.id],
+      );
+      return (await db.query<{ schedules: number; jobs: number; messages: number; notes: number; documents: number }>(
         `select
            (select count(*)::int from ai_work_schedules where org_id = $1) as schedules,
            (select count(*)::int from ai_work_jobs where org_id = $1) as jobs,
-           (select count(*)::int from chat_messages where org_id = $1) as messages`,
+           (select count(*)::int from chat_messages where org_id = $1) as messages,
+           (select count(*)::int from employee_knowledge_entries where org_id = $1) as notes,
+           (select count(*)::int from knowledge_documents where org_id = $1) as documents`,
         [org.id],
       )).rows[0];
     });
@@ -108,7 +132,15 @@ describe("Growth Partner migration inventory", () => {
       configReviewsWaiting: 1,
       approvedKnowledgeSections: 1,
       knowledgeSectionsWaiting: 1,
-      retainedKnowledgeDocuments: 1,
+      retainedKnowledgeDocuments: 5,
+      legacyProfileKnowledgeNotes: 2,
+      approvedLegacyProfileKnowledgeNotes: 1,
+      waitingLegacyProfileKnowledgeNotes: 1,
+      retainedLegacyProfileDocuments: 2,
+      releasedLegacyProfileDocuments: 1,
+      heldLegacyProfileDocuments: 1,
+      releasedSharedKnowledgeDocuments: 1,
+      heldSharedKnowledgeDocuments: 1,
       legacyConversations: 1,
       legacyMessages: 1,
       schedules: 2,
@@ -124,11 +156,13 @@ describe("Growth Partner migration inventory", () => {
     });
     expect(JSON.stringify(detail.migrationInventory)).not.toContain("Private");
     expect(JSON.stringify(detail.migrationInventory)).not.toContain("fixture-ciphertext");
-    expect(await withSystem(async (db) => (await db.query<{ schedules: number; jobs: number; messages: number }>(
+    expect(await withSystem(async (db) => (await db.query<{ schedules: number; jobs: number; messages: number; notes: number; documents: number }>(
       `select
          (select count(*)::int from ai_work_schedules where org_id = $1) as schedules,
          (select count(*)::int from ai_work_jobs where org_id = $1) as jobs,
-         (select count(*)::int from chat_messages where org_id = $1) as messages`,
+         (select count(*)::int from chat_messages where org_id = $1) as messages,
+         (select count(*)::int from employee_knowledge_entries where org_id = $1) as notes,
+         (select count(*)::int from knowledge_documents where org_id = $1) as documents`,
       [org.id],
     )).rows[0])).toEqual(before);
 
