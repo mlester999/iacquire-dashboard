@@ -51,6 +51,7 @@ const safeSeedErrors = new Set([
   "acceptance_onboarding_not_provisionable",
   "acceptance_seed_invalid",
   "AGGREGATE_ERROR_SEED_ERROR",
+  "unclassified_seed_error",
 ]);
 
 const safeProvisioningFailureCodes = new Set([

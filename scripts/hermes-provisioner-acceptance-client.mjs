@@ -34,6 +34,7 @@ const safeSeedErrors = new Set([
   "acceptance_onboarding_answers_rejected",
   "acceptance_onboarding_not_provisionable",
   "acceptance_seed_invalid",
+  "unclassified_seed_error",
   "DATABASE_INVALID_VALUE",
   "DATABASE_FOREIGN_KEY_VIOLATION",
   "DATABASE_UNIQUE_VIOLATION",
@@ -82,6 +83,8 @@ if (!response.ok) {
   if (payload?.error === "acceptance_seed_failed" &&
       safeSeedStages.has(payload.stage) && safeSeedErrors.has(payload.code)) {
     process.stderr.write(`PORTAL_ACCEPTANCE_SEED_FAILURE stage=${payload.stage} code=${payload.code}\n`);
+  } else if (payload?.error === "acceptance_request_failed" && safeSeedErrors.has(payload.code)) {
+    process.stderr.write(`PORTAL_ACCEPTANCE_ROUTE_FAILURE status=${response.status} code=${payload.code}\n`);
   } else {
     process.stderr.write(`PORTAL_ACCEPTANCE_REQUEST_FAILURE status=${response.status}\n`);
   }

@@ -577,8 +577,11 @@ const server = createServer({ cert, key }, async (req, res) => {
       }
     }
     return json(res, 404, { error: "not_found" });
-  } catch {
-    return json(res, 500, { error: "acceptance_request_failed" });
+  } catch (reason) {
+    return json(res, 500, {
+      error: "acceptance_request_failed",
+      code: safeAcceptanceSeedErrorCode(reason),
+    });
   }
 });
 
