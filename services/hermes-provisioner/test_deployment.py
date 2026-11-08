@@ -116,6 +116,9 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         workflow_text = workflow_path.read_text(encoding="utf-8")
         workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
+        self.assertIn("CANDIDATE_CONTAINER_START_ERROR:", workflow_text)
+        self.assertIn("CANDIDATE_TEST_RUNNER_ERROR_CLASS:", workflow_text)
+        self.assertIn("api[_-]?key", workflow_text)
         self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
         self.assertEqual(workflow["on"]["push"]["branches"], ["codex/hermes-gha-acceptance"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})

@@ -154,6 +154,26 @@ jobs:
                 echo "CANDIDATE_TEST_FAILURE: $failure_name"
               done <<< "$failure_names"
             fi
+            node --input-type=module - "$test_log" <<'NODE'
+          import fs from 'node:fs';
+
+          const log = fs.readFileSync(process.argv[2], 'utf8');
+          const lines = log.split(/\r?\n/);
+          const dockerError = lines.find((line) => /^(?:docker: )?Error response from daemon:|^OCI runtime .*failed:/.test(line));
+          const diagnostic = lines.find((line) => /^(?:ModuleNotFoundError|ImportError|PermissionError|FileNotFoundError|OSError|RuntimeError|SyntaxError|NameError):/.test(line));
+          if (dockerError) {
+            const safe = dockerError
+              .replace(/(Bearer\s+)\S+/gi, '$1[REDACTED]')
+              .replace(/((?:token|secret|password|api[_-]?key)[=: ]+)\S+/gi, '$1[REDACTED]')
+              .replace(/\/home\/runner\/work\/[^\s"']+/g, '[runner-workspace]')
+              .slice(0, 320);
+            console.log(`CANDIDATE_CONTAINER_START_ERROR: ${safe}`);
+          } else if (diagnostic) {
+            console.log(`CANDIDATE_TEST_RUNNER_ERROR_CLASS: ${diagnostic.split(':', 1)[0]}`);
+          } else if (!lines.some((line) => /^Ran [0-9]+ tests? /.test(line))) {
+            console.log(`CANDIDATE_TEST_RUNNER_NO_SUMMARY: output_lines=${lines.filter(Boolean).length}`);
+          }
+          NODE
             echo "CANDIDATE_COMPATIBILITY_FAIL: test details withheld to keep synthetic credential fixtures out of logs"
             exit 1
           fi
