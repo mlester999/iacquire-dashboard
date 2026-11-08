@@ -34,12 +34,13 @@ import {
   updateUsageLimitsAction,
   verifyGhlAction,
 } from "@/app/(admin)/admin/actions";
+import { prepareGrowthPartnerMigrationCandidateAction } from "@/app/(admin)/admin/migration-actions";
 import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
 import { setupStatusCopy } from "@/lib/billing-clearance";
 import type { AgencyPaymentView } from "@/server/billing/payments-view";
 import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
-import { AGENT_BY_KEY, workforceIdentityLabel } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, workforceIdentityLabel } from "@/lib/agents";
 import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
 
 type Detail = TenantDetail;
@@ -231,7 +232,21 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
   const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
   const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
+  const [prepareMigrationOpen, setPrepareMigrationOpen] = React.useState(false);
   const migration = data.migrationInventory;
+  const candidatePrepared = Boolean(
+    data.growthPartner?.status === "migration_required"
+    && data.growthPartner.runtime_agent_instance_id === null
+    && data.growthPartner.current_version === null
+    && data.growthPartner.latest_version === null
+    && migration?.permanentGrowthPartnerConversations === 0,
+  );
+  const canPrepareMigration = Boolean(
+    superAdmin && data.access.workforceManage && migration
+    && data.org.kind === "client" && data.org.status === "active"
+    && migration.legacyProfiles === AGENT_ROLE_KEYS.length
+    && (migration.growthPartnerIdentities === 0 || candidatePrepared),
+  );
   return (
     <div className="space-y-6">
       {data.growthPartner && (
@@ -266,13 +281,13 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
         </CardContent>
       </Card>
       {superAdmin && migration && (
-        <Card aria-label="Read-only migration inventory">
+        <Card aria-label="Migration inventory and candidate preparation">
           <CardHeader>
             <div>
               <CardTitle>Read-only migration inventory</CardTitle>
-              <CardDescription>Tenant-scoped record counts to support a future, separately reviewed cutover.</CardDescription>
+              <CardDescription>Tenant-scoped record counts for a staged, reversible migration review.</CardDescription>
             </div>
-            <Badge tone="neutral">No changes made</Badge>
+            <Badge tone={candidatePrepared ? "warning" : "neutral"}>{candidatePrepared ? "Inactive candidate prepared" : "Inventory is read only"}</Badge>
           </CardHeader>
           <CardContent className="space-y-4">
             <dl className="grid gap-x-5 gap-y-4 text-[13px] sm:grid-cols-2 xl:grid-cols-3">
@@ -299,11 +314,44 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
               ))}
             </dl>
             <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted">
-              These are persisted record counts only. Profile reachability, actual credential validity, runtime memory, external provider state, permissions and paid entitlements still need a separate review. This inventory does not create a Partner, copy data, pause work, change access, or perform a cutover.
+              These are persisted record counts only. Profile reachability, actual credential validity, runtime memory, external provider state, permissions and paid entitlements still need a separate review. Preparing the candidate below only adds an unbound identity in migration-required state; it does not copy Business Brain data, create a runtime or conversation, pause work, change access, or perform a cutover.
             </p>
+            {candidatePrepared ? (
+              <p className="rounded-xl border border-warning/25 bg-warning-soft/30 px-3 py-2.5 text-[13px] text-ink-2">The identity candidate is staged and inactive. Review and import of approved knowledge, owner choices, runtime setup, schedule reconciliation and cutover remain separate steps.</p>
+            ) : canPrepareMigration ? (
+              <Button variant="secondary" disabled={Boolean(pending)} loading={pending === "migration-candidate"} onClick={() => setPrepareMigrationOpen(true)}>
+                Prepare inactive identity candidate
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       )}
+      <Dialog
+        open={prepareMigrationOpen}
+        onOpenChange={setPrepareMigrationOpen}
+        title="Prepare an inactive Growth Partner identity?"
+        description="This is the first reversible migration step for this client workspace."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPrepareMigrationOpen(false)}>Cancel</Button>
+            <Button
+              loading={pending === "migration-candidate"}
+              onClick={async () => {
+                const result = await run(
+                  "migration-candidate",
+                  () => prepareGrowthPartnerMigrationCandidateAction(data.org.id),
+                  (candidate) => candidate?.created ? "Inactive identity candidate prepared" : "Inactive identity candidate already prepared",
+                );
+                if (result) setPrepareMigrationOpen(false);
+              }}
+            >
+              Prepare candidate
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[14px] leading-relaxed text-ink-2">This adds one <strong>migration-required</strong> identity row and an audit event. It does not create a runtime, Business Brain version or conversation, or change any of the six previous profiles, schedules, jobs, credentials, approvals, customer records, communications or external systems.</p>
+      </Dialog>
       <section className="space-y-3" aria-label="Previous role profiles">
         <div><h3 className="text-[15px] font-semibold text-ink">Previous role profiles</h3><p className="mt-1 text-[13px] text-muted">Saved role settings, credentials, run history and profile controls remain available for review. New client work belongs to the AI Growth Partner.</p></div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
