@@ -585,8 +585,8 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
 ) {
   if (!ctx.can("agents.configure")) return null;
 
-  const partner = (await db.query<{ id: string; current_version: number | null }>(
-    "select id, current_version from ai_growth_partners where org_id = $1 for update",
+  const partner = (await db.query<{ id: string; current_version: number | null; status: string }>(
+    "select id, current_version, status from ai_growth_partners where org_id = $1 for update",
     [ctx.org.orgId],
   )).rows[0];
   // A submitted questionnaire alone must not silently migrate an existing six-role tenant.
@@ -605,7 +605,7 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
   )).rows[0];
   if (prior) {
     let activeVersionChanged = false;
-    if (partner.current_version === null) {
+    if (partner.current_version === null && partner.status !== "migration_required") {
       const activated = await db.query(
         "update ai_growth_partners set current_version = $2 where id = $1 and current_version is null returning id",
         [partner.id, Number(prior.version)],
@@ -643,7 +643,8 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
     [partner.id, ctx.org.orgId, version, JSON.stringify(brain), JSON.stringify(personaSettingsSchema.parse(latest?.persona_settings ?? {})), JSON.stringify(sourceMetadata), ctx.user.id],
   )).rows[0];
 
-  const activated = partner.current_version === null
+  // Existing-tenant migration candidates must stay inactive until their owner reviews the draft.
+  const activated = partner.current_version === null && partner.status !== "migration_required"
     ? await db.query(
       "update ai_growth_partners set current_version = $2 where id = $1 and current_version is null returning id",
       [partner.id, version],

@@ -373,4 +373,51 @@ describe("AI Growth Partner foundation", () => {
       draftVersion: null,
     });
   });
+
+  it("keeps an existing-tenant migration onboarding snapshot as a draft until explicit owner activation", async () => {
+    const migrationOrg = await createOrg({ name: "Migration draft review client" });
+    const migrationOwner = await createUser();
+    await addMember(migrationOrg.id, migrationOwner.id, "owner");
+    const migrationContext = ctxFor(migrationOwner, migrationOrg, "owner");
+    await withSystem((db) => db.query(
+      "insert into ai_growth_partners (org_id, status) values ($1, 'migration_required')",
+      [migrationOrg.id],
+    ));
+    const submittedAt = new Date("2026-10-15T09:30:00.000Z");
+    const answers: StoredAnswers = {
+      "a.business_name": { value: "Owner Confirmed Roofing", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
+      "a.website": { value: "https://roofing.example", skipped: false, source: "website_analysis", needsConfirmation: true, updatedAt: submittedAt.toISOString() },
+    };
+
+    const first = await withSystem((db) => draftGrowthPartnerBusinessBrainFromOnboarding(db, migrationContext, answers, submittedAt, 2, submittedAt));
+    const retry = await withSystem((db) => draftGrowthPartnerBusinessBrainFromOnboarding(db, migrationContext, answers, new Date("2026-10-16T09:30:00.000Z"), 2, submittedAt));
+    expect(first).toMatchObject({ version: 1, activeVersionChanged: false, reused: false });
+    expect(retry).toMatchObject({ id: first?.id, version: 1, activeVersionChanged: false, reused: true });
+
+    const state = await getGrowthPartnerControlState(migrationContext);
+    expect(state).toMatchObject({
+      status: "migration_required",
+      runtimeAgentInstanceId: null,
+      currentVersion: null,
+      draftVersion: 1,
+      draftBusinessBrain: {
+        sections: {
+          businessIdentity: {
+            companyName: { value: "Owner Confirmed Roofing", state: "client_confirmed" },
+            website: { value: "https://roofing.example", state: "draft_suggestion" },
+          },
+        },
+      },
+    });
+
+    const audit = (await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_logs where org_id = $1 and action = 'ai_growth_partner.business_brain_drafted'",
+      [migrationOrg.id],
+    ))).rows[0];
+    expect(audit?.metadata).toMatchObject({ source: "onboarding", activeVersionChanged: false, version: 1 });
+
+    const activated = await activateGrowthPartnerBusinessBrainVersion(migrationContext, { expectedCurrentVersion: null, version: 1 });
+    expect(activated).toMatchObject({ version: 1, activated: true, alreadyActive: false });
+    expect(await getGrowthPartnerControlState(migrationContext)).toMatchObject({ status: "migration_required", currentVersion: 1, draftVersion: null });
+  });
 });
