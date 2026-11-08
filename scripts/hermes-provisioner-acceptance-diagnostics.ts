@@ -43,8 +43,10 @@ const safeSeedStages = new Set([
 const safeSeedErrors = new Set([
   "acceptance_already_seeded",
   "acceptance_body_too_large",
+  "acceptance_business_brain_missing",
   "acceptance_employee_count_mismatch",
   "acceptance_gateway_url_invalid",
+  "acceptance_growth_partner_identity_mismatch",
   "acceptance_onboarding_answers_rejected",
   "acceptance_onboarding_not_provisionable",
   "acceptance_seed_invalid",
