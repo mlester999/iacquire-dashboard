@@ -24,6 +24,7 @@ const row = (over: Partial<SourceRow> = {}): SourceRow => ({
 const report = (over: Partial<AttributionReport> = {}, revenue: Partial<AttributionReport["revenue"]> = {}): AttributionReport => ({
   model: "first", startsAt: "2026-09-24T00:00:00.000Z", endsAt: "2026-10-24T09:16:00.000Z", rows: [row()],
   totals: { leads: 4, qualified: 2, appointments: 1, opportunities: 2, wonCount: 1 },
+  websitePageViews: { state: "shown", total: 0, rows: [] },
   revenue: { state: "shown", asOf: "2026-10-24T09:15:42.000Z", manualCounted: false, workspaceHasPayments: true, testPaymentsExcluded: 0, disputedHeldOut: 0, total: [php(3000)], unattributed: { verifiedRevenue: [], refunded: [], recordedByHand: [] }, ...revenue },
   excludedCosts: 0, notes: ["A note the report made."], ...over,
 });
@@ -97,5 +98,25 @@ describe("a person who may not see it, and a workspace that does not have it", (
     expect(text).toContain("Not switched on");
     expect(text).toContain("Needs verified payments.");
     expect(text).not.toContain("Verified revenue in total");
+  });
+});
+
+describe("published website page-load evidence", () => {
+  it("keeps page loads separate from leads and clearly avoids unique-visitor claims", () => {
+    const text = plain(render(report({ websitePageViews: {
+      state: "shown", total: 18, rows: [{ page: "home", source: "google", medium: "cpc", campaign: "roofing-spring", referringHost: "search.example", pageLoads: 18 }],
+    } })));
+    expect(text).toContain("Published website page loads");
+    expect(text).toContain("18");
+    expect(text).toContain("home");
+    expect(text).toContain("google");
+    expect(text).toContain("roofing-spring");
+    expect(text).toContain("does not identify people or estimate unique visitors");
+    expect(text).not.toContain("18 leads");
+  });
+
+  it("does not turn hidden website analytics into a zero", () => {
+    expect(plain(render(report({ websitePageViews: { state: "hidden", total: 0, rows: [] } }))))
+      .toContain("Website page-load counts are not shown to your role.");
   });
 });

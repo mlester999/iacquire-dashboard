@@ -22,6 +22,7 @@ import { getCrmOverview } from "@/server/crm/overview";
 import { readSystem, withUser, type Queryable } from "@/server/db";
 import { hasDbErrorCode } from "@/server/diagnostics";
 import { AppError } from "@/server/errors";
+import { websitePageViewReport } from "@/server/attribution/page-views";
 import { getTargeting } from "@/server/leads/service";
 import type { OrgContext } from "@/server/tenancy/context";
 import { employeeAbilities } from "@/server/workforce/abilities";
@@ -918,9 +919,15 @@ async function performanceSection(b: Build): Promise<EvidenceSection[]> {
   return guard(b, "performance", "Business performance", async () => {
     if (!ctx.can("analytics.view")) return noPermissionSection("performance", "Business performance");
     const includeRuns = ctx.can("activity.view");
-    const result = await asUser(ctx, (db) => readPerformanceMetrics(db, ctx.org.orgId, "last_30_days"));
+    const startsAt = new Date(b.now.getTime() - 30 * DAY_MS);
+    const [result, pageViews] = await Promise.all([
+      asUser(ctx, (db) => readPerformanceMetrics(db, ctx.org.orgId, "last_30_days")),
+      ctx.can("website.view")
+        ? asUser(ctx, (db) => websitePageViewReport(db, ctx.org.orgId, startsAt, b.now))
+        : Promise.resolve(null),
+    ]);
     const business = result.metrics.filter((m) => includeRuns || !m.key.startsWith("ai_runs_"));
-    const activity = business.filter((m) => m.key !== "leads_pending").reduce((sum, m) => sum + (typeof m.value === "number" ? m.value : 0) + (typeof m.previous === "number" ? m.previous : 0), 0);
+    const activity = business.filter((m) => m.key !== "leads_pending").reduce((sum, m) => sum + (typeof m.value === "number" ? m.value : 0) + (typeof m.previous === "number" ? m.previous : 0), 0) + (pageViews?.total ?? 0);
     const records: EvidenceRecord[] = business.map((m) => ({
       measure: m.label,
       value: m.value,
@@ -931,8 +938,37 @@ async function performanceSection(b: Build): Promise<EvidenceSection[]> {
       meaning: evidenceText(m.definition, 160),
       source: m.source,
     }));
+    if (pageViews) {
+      records.push({
+        measure: "Published website page loads",
+        value: pageViews.total,
+        period: "Last 30 days",
+        before: null,
+        change: null,
+        changePercent: null,
+        meaning: "Daily UTC counts of public page requests marked as document navigations; automated crawlers may be included. Repeat loads count; no unique visitors or person-level identity is recorded.",
+        source: "website_page_views_daily",
+      });
+      for (const row of pageViews.rows.slice(0, 5)) {
+        if (!row.source && !row.medium && !row.campaign && !row.referringHost) continue;
+        const channel = row.source ?? row.referringHost ?? "campaign not recorded";
+        records.push({
+          measure: `Page loads · ${channel}${row.campaign ? ` · ${row.campaign}` : ""}`,
+          value: row.pageLoads,
+          period: "Last 30 days",
+          before: null,
+          change: null,
+          changePercent: null,
+          meaning: `${row.page}; medium ${row.medium ?? "not recorded"}; referring host ${row.referringHost ?? "not recorded"}. This is recorded page-load evidence, not a unique visitor count; automated crawlers may be included.`,
+          source: "website_page_views_daily",
+        });
+      }
+    }
     if (activity === 0) {
-      return section("performance", "Business performance", "empty", "No business activity has been recorded in the last 60 days, so meaningful performance figures are not available yet.", {
+      const emptySummary = ctx.can("website.view")
+        ? "No business activity has been recorded in the last 60 days, so meaningful performance figures are not available yet."
+        : "No business activity is recorded in the measures available here. Public website page loads are not included in this view.";
+      return section("performance", "Business performance", "empty", emptySummary, {
         facts: { period: result.period, comparedWith: result.previousPeriod, revenueTracked: false },
         records,
       });
@@ -942,7 +978,7 @@ async function performanceSection(b: Build): Promise<EvidenceSection[]> {
         period: result.period,
         comparedWith: result.previousPeriod,
         revenueTracked: false,
-        note: "Revenue, conversion rates and costs are not recorded here. Only the counts below are measured; do not calculate or estimate anything else.",
+        note: `Revenue, conversion rates and costs are not recorded here. Only the counts below are measured; do not calculate or estimate anything else.${pageViews ? " Website page loads are daily UTC aggregates and are not unique visitors." : ctx.can("website.view") ? "" : " Website page loads are not included because this person cannot view website analytics."}`,
         aiRunFigures: includeRuns ? "included" : "not shown to this person",
       },
       records,

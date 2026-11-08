@@ -123,6 +123,65 @@ export async function siteRateLimit(key: string, limit: number, windowSeconds: n
   return rows[0]?.ok === true;
 }
 
+export interface SitePageViewInput {
+  host: string;
+  pageSlug: string;
+  utm?: Record<string, string | string[] | undefined>;
+  referrer?: string | null;
+}
+
+/** True for a browser document navigation, never for RSC, image, script, or other subresource requests. */
+export function isSiteDocumentRequest(input: { method: string | null; destination: string | null; mode: string | null; accept: string | null }): boolean {
+  const destination = input.destination?.toLowerCase() ?? "";
+  const mode = input.mode?.toLowerCase() ?? "";
+  if (input.method?.toUpperCase() !== "GET") return false;
+  if (destination && destination !== "document") return false;
+  if (mode && mode !== "navigate") return false;
+  // Modern browsers identify navigations with Fetch Metadata. The Accept fallback covers older browsers without either header.
+  if (destination === "document" && mode === "navigate") return true;
+  return !destination && !mode && /(?:^|,|\s)text\/html(?:\s*;|\s|,|$)/i.test(input.accept ?? "");
+}
+
+function campaignValue(value: string | string[] | undefined, max: number): string {
+  if (Array.isArray(value)) value = value[0];
+  const normalized = (value ?? "").trim().toLowerCase().replace(/\s+/g, "-");
+  return normalized.length <= max && /^[a-z0-9][a-z0-9._-]*$/.test(normalized) ? normalized : "";
+}
+
+/** Persist a privacy-preserving aggregate for a verified published site. The database resolves the tenant from the host again. */
+export async function recordSitePageView(input: SitePageViewInput): Promise<void> {
+  const host = normalizeHost(input.host);
+  const pageSlug = input.pageSlug.trim().toLowerCase();
+  if (!host || pageSlug === "thanks" || !/^[a-z0-9]+(?:[_-][a-z0-9]+)*$/.test(pageSlug) || pageSlug.length > 80) return;
+
+  const utm = input.utm ?? {};
+  const source = campaignValue(utm.utm_source, 64);
+  const medium = campaignValue(utm.utm_medium, 64);
+  const campaign = campaignValue(utm.utm_campaign, 96);
+  let referrerHost = "";
+  if (input.referrer) {
+    try {
+      const parsed = new URL(input.referrer);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+        const candidate = normalizeHost(parsed.hostname);
+        if (candidate && candidate !== host) referrerHost = candidate;
+      }
+    } catch {
+      // A malformed referrer is simply absent; the page itself still serves.
+    }
+  }
+
+  try {
+    await withSiteRuntime((db) => db.query(
+      "select app.record_site_page_view($1, $2, $3, $4, $5, $6)",
+      [host, pageSlug, source, medium, campaign, referrerHost],
+    ));
+  } catch {
+    // Page measurement is best-effort after the response. Never let an analytics write affect a published page.
+    console.error("[site-page-views] Could not persist a public page-load aggregate.");
+  }
+}
+
 export interface FormInput {
   host: string; page: string; name: string; email: string; phone: string; service: string; message: string;
   consent: boolean; marketing: boolean; consentText: string; ipHash: string; utm: Record<string, string>; referrer: string; dedupe: string;

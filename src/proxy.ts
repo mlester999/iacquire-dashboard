@@ -103,6 +103,7 @@ function siteResponse(req: NextRequest, route: Extract<SiteRoute, { kind: "site"
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
   requestHeaders.set("x-site-host", route.host);
+  requestHeaders.set("x-site-method", req.method);
   // Whatever cookies or credentials a visitor's browser sends are irrelevant to a public site; do not let them reach it.
   requestHeaders.delete("cookie");
   requestHeaders.delete("authorization");

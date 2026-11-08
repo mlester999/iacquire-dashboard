@@ -97,6 +97,8 @@ const ROLLBACK_MIGRATION_NAMES = [
   "0133_ai_growth_partner_goals.sql",
   // Reviewed legacy knowledge snapshots depend on the Growth Partner identity and must be dropped first.
   "0134_ai_growth_partner_legacy_knowledge.sql",
+  // Aggregate site page-view reporting uses the statement-level policy helper from 0060 and must be removed before that helper rolls back.
+  "0135_website_page_views.sql",
   // Lead qualification and source-budget migrations hang off leads, lead_research_requests and ai_work_jobs.
   "0127_lead_disqualification.sql", "0128_lead_research_source_budgets.sql", "0129_research_lead_crm_imports.sql",
 ];

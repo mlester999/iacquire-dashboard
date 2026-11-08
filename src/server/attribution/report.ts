@@ -5,6 +5,7 @@ import { costPerLead, missingInputs, returnOnSpendFor, sourceLabel, UNKNOWN_SOUR
 import { emptyFigures, sumMoney, type RevenueFigures } from "@/lib/invoices/revenue";
 import { invoicesEnabledIn } from "@/server/invoices/feature";
 import { cohortRevenue, manualCountsAsVerified, unattributedRevenue, workspaceHasPayments } from "@/server/invoices/revenue";
+import { websitePageViewReport, type WebsitePageViewRow } from "@/server/attribution/page-views";
 
 // Leads, and what became of them, by where they came from. Every figure is counted from records that exist, and a figure that needs an input nobody
 // supplied is not computed:
@@ -86,6 +87,8 @@ export interface AttributionReport {
   rows: SourceRow[];
   totals: { leads: number; qualified: number; appointments: number; opportunities: number; wonCount: number };
   revenue: RevenueSummary;
+  /** Published-site document loads, separate from lead counts and hidden when the viewer lacks website.view. */
+  websitePageViews: { state: "shown" | "hidden"; total: number; rows: WebsitePageViewRow[] };
   /** Entered costs that overlap the period but are not wholly inside it, so are left out of cost per lead. */
   excludedCosts: number;
   notes: string[];
@@ -108,6 +111,7 @@ export async function attributionReport(actor: CrmActor, input: { startsAt: Date
 
   return crmRead(actor, async (db) => {
     const p = [actor.orgId, input.startsAt, input.endsAt];
+    const pageViews = actor.can("website.view") ? await websitePageViewReport(db, actor.orgId, input.startsAt, input.endsAt) : null;
     // One row per lead with its chosen touch; everything else is counted from it.
     const base = `
       with leads as (
@@ -201,6 +205,7 @@ export async function attributionReport(actor: CrmActor, input: { startsAt: Date
         state, asOf: asOf.toISOString(), manualCounted, workspaceHasPayments: hasPayments, testPaymentsExcluded: revenue?.testPaymentsExcluded ?? 0, disputedHeldOut: revenue?.disputedHeldOut ?? 0,
         total: sumMoney(rows.map((r) => r.verifiedRevenue.map((l) => ({ currency: l.currency, amount: l.amount, minor: l.minor ?? "0" })))), unattributed,
       },
+      websitePageViews: { state: pageViews ? "shown" : "hidden", total: pageViews?.total ?? 0, rows: pageViews?.rows ?? [] },
       excludedCosts: n(partial.rows[0].n), notes,
     };
   });

@@ -77,6 +77,38 @@ export function SourcesReport({ scope, days, model, report, costs, sources, canE
         ))}
       </section>
 
+      <SectionCard title="Published website page loads">
+        <p className="mb-3 text-[13px] text-muted">Counts are daily UTC aggregates from published pages; automated crawlers may be included. Repeat loads count again; this does not identify people or estimate unique visitors. Campaign values and referring host are shown only when recorded.</p>
+        {report.websitePageViews.state === "hidden" ? (
+          <p className="text-[14px] text-muted">Website page-load counts are not shown to your role.</p>
+        ) : (
+          <>
+            <p className="mb-3 text-[22px] font-semibold tabular-nums text-ink" aria-label="Total published website page loads">{report.websitePageViews.total.toLocaleString()}</p>
+            {report.websitePageViews.rows.length === 0 ? (
+              <p className="text-[14px] text-muted">No published website page loads were recorded in this period.</p>
+            ) : (
+              <div className="relative overflow-x-auto" role="region" aria-label="Website page loads by page and campaign" tabIndex={0}>
+                <table className="w-full min-w-[720px] text-left text-[14px]">
+                  <caption className="sr-only">Published website page loads by page and recorded campaign</caption>
+                  <thead className="text-[12px] text-muted"><tr>{["Page", "Campaign source", "Medium", "Campaign", "Referring host", "Page loads"].map((h) => <th key={h} scope="col" className="py-1.5 pr-3 font-medium">{h}</th>)}</tr></thead>
+                  <tbody>{report.websitePageViews.rows.map((row, i) => (
+                    <tr key={`${row.page}-${row.source}-${row.medium}-${row.campaign}-${row.referringHost}-${i}`} className="border-t border-line">
+                      <th scope="row" className="py-2 pr-3 font-medium text-ink">{row.page}</th>
+                      <td className="py-2 pr-3">{row.source ?? "Not recorded"}</td>
+                      <td className="py-2 pr-3">{row.medium ?? "Not recorded"}</td>
+                      <td className="py-2 pr-3">{row.campaign ?? "Not recorded"}</td>
+                      <td className="py-2 pr-3">{row.referringHost ?? "Not recorded"}</td>
+                      <td className="py-2 pr-3 tabular-nums">{row.pageLoads.toLocaleString()}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {report.websitePageViews.rows.length === 50 && <p className="mt-2 text-[12px] text-muted">Showing the 50 largest page and campaign groups. Total page loads above includes every recorded group.</p>}
+              </div>
+            )}
+          </>
+        )}
+      </SectionCard>
+
       <SectionCard title="By source">
         {report.rows.length === 0 ? (
           <p className="text-[14px] text-muted">No leads were created in this period. When a visitor fills in a form, chats on your website or phones, the source is recorded here.</p>

@@ -3,13 +3,14 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { findPage, pagePath, type ImageSrc, type SiteContent } from "@/lib/website/doc";
-import { recordUsage, siteAssets } from "@/server/sites/runtime";
+import { isSiteDocumentRequest, recordSitePageView, recordUsage, siteAssets } from "@/server/sites/runtime";
 import { hrefForPage, renderSitePage, siteForRequest, thanksPage } from "@/server/sites/render";
 import { chatScriptSrc, siteChatKey } from "@/server/sites/chat";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ host: string; path?: string[] }>;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const slugOf = (path: string[] | undefined) => (!path || path.length === 0 ? "home" : path.length === 1 ? path[0] : null);
 
@@ -60,8 +61,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-export default async function SiteRuntimePage({ params }: { params: Params }) {
-  const { host: hostParam, path } = await params;
+export default async function SiteRuntimePage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
+  const [{ host: hostParam, path }, query, requestHeaders] = await Promise.all([params, searchParams, headers()]);
   const site = await siteForRequest(hostParam);
   const slug = slugOf(path);
   if (!site || !slug) notFound();
@@ -70,11 +71,29 @@ export default async function SiteRuntimePage({ params }: { params: Params }) {
   if (!tree) notFound();
   // Requests are counted exactly; response sizes are measured at the CDN, not guessed here.
   after(() => recordUsage(host, 0));
+  if (slug !== "thanks" && isSiteDocumentRequest({
+    method: requestHeaders.get("x-site-method"),
+    destination: requestHeaders.get("sec-fetch-dest"),
+    mode: requestHeaders.get("sec-fetch-mode"),
+    accept: requestHeaders.get("accept"),
+  })) {
+    const first = (key: string) => Array.isArray(query[key]) ? query[key][0] : query[key];
+    after(() => recordSitePageView({
+      host,
+      pageSlug: slug,
+      utm: {
+        utm_source: first("utm_source"),
+        utm_medium: first("utm_medium"),
+        utm_campaign: first("utm_campaign"),
+      },
+      referrer: requestHeaders.get("referer"),
+    }));
+  }
   const url = `https://${site.canonicalHost}${hrefForPage(slug) === "/" ? "" : hrefForPage(slug)}`;
   // The website chat, when the workspace switched it on and installs it on its own sites: the portal's script, loaded with this page's nonce.
   const chatKey = await siteChatKey(host);
   const chatSrc = chatKey ? chatScriptSrc() : null;
-  const nonce = chatSrc ? ((await headers()).get("x-nonce") ?? undefined) : undefined;
+  const nonce = chatSrc ? (requestHeaders.get("x-nonce") ?? undefined) : undefined;
   return (
     <>
       {tree}
