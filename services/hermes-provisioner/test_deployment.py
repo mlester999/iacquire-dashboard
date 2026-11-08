@@ -163,7 +163,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         service = compose["services"]["acceptance-harness"]
         self.assertEqual((service["mem_limit"], service["cpus"], service["pids_limit"]), ("512m", 0.5, 64))
 
-    def test_manual_acceptance_restarts_only_the_isolated_gateway_before_memory_recovery_check(self):
+    def test_manual_acceptance_restarts_gateway_and_rebinds_isolated_probe_before_memory_check(self):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         workflow = yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         steps = workflow["jobs"]["build-and-accept"]["steps"]
@@ -183,6 +183,13 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertLess(restart_index, cleanup_index)
         run = steps[restart_index]["run"]
         self.assertIn('docker restart --time 60 "$client_id"', run)
+        self.assertIn('compose up -d --no-build --force-recreate --no-deps acceptance-harness', run)
+        self.assertIn('harness_id_before="$(compose ps --all -q acceptance-harness | head -n 1)"', run)
+        self.assertIn('harness_id_before" == "$harness_id_after', run)
+        self.assertIn("rebound_probe_unhealthy", run)
+        self.assertIn('docker exec "$harness_id_after"', run)
+        self.assertLess(run.index('docker restart --time 60 "$client_id"'), run.index("acceptance-harness >/dev/null"))
+        self.assertLess(run.index("acceptance-harness >/dev/null"), run.index("verify-hermes-memory"))
         self.assertIn("verify-hermes-memory", run)
         self.assertIn("hermesMemoryRestartVerifiedProfiles", run)
         self.assertIn("hermesMemoryRestartForeignDenials", run)

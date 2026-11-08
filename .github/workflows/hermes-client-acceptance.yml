@@ -872,8 +872,8 @@ jobs:
           }
 
           client_id="$(compose ps --all -q hermes-client | head -n 1)"
-          harness_id="$(compose ps --all -q acceptance-harness | head -n 1)"
-          if [[ -z "$client_id" || -z "$harness_id" ]]; then
+          harness_id_before="$(compose ps --all -q acceptance-harness | head -n 1)"
+          if [[ -z "$client_id" || -z "$harness_id_before" ]]; then
             echo "HERMES_MEMORY_RESTART_FAIL: isolated_container_missing"
             exit 1
           fi
@@ -897,7 +897,35 @@ jobs:
             exit 1
           fi
 
-          docker exec "$harness_id" \
+          # The probe shares Hermes's network namespace. Recreate only the disposable
+          # fixture container so it attaches to the restarted gateway namespace; this
+          # leaves the Hermes container and its persistent profile volume untouched.
+          compose up -d --no-build --force-recreate --no-deps acceptance-harness >/dev/null
+          harness_id_after="$(compose ps --all -q acceptance-harness | head -n 1)"
+          if [[ -z "$harness_id_after" || "$harness_id_before" == "$harness_id_after" ]]; then
+            echo "HERMES_MEMORY_RESTART_FAIL: probe_rebind_failed"
+            exit 1
+          fi
+
+          probe_deadline=$((SECONDS + 90))
+          probe_healthy=0
+          while [[ "$SECONDS" -lt "$probe_deadline" ]]; do
+            probe_state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$harness_id_after" 2>/dev/null || true)"
+            if [[ "$probe_state" == healthy ]]; then
+              probe_healthy=1
+              break
+            fi
+            if [[ "$probe_state" == unhealthy || "$probe_state" == missing ]]; then
+              break
+            fi
+            sleep 3
+          done
+          if [[ "$probe_healthy" -ne 1 ]]; then
+            echo "HERMES_MEMORY_RESTART_FAIL: rebound_probe_unhealthy"
+            exit 1
+          fi
+
+          docker exec "$harness_id_after" \
             /opt/iacquire-hermes/.venv/bin/python -B \
             /opt/iacquire-hermes/acceptance_harness.py verify-hermes-memory
           python3 - "$HERMES_ACCEPTANCE_DIR/results/status.json" <<'PY'
