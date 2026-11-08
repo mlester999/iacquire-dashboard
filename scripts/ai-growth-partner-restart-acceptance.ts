@@ -1,5 +1,5 @@
 /**
- * Restart acceptance for app-owned Growth Partner memory/goals, the permanent conversation and Work Board ledger.
+ * Restart acceptance for app-owned Growth Partner memory/goals, reviewed legacy knowledge, the permanent conversation and Work Board ledger.
  * Uses one disposable, file-backed PGlite database, closes it, then opens it in a fresh Node
  * process. This verifies application database recovery only; it does not exercise Hermes or its
  * separate long-term profile memory.
@@ -39,11 +39,12 @@ async function runWorker() {
     import("../src/server/db/index"),
     import("../tests/support/fixtures"),
   ]);
-  const [{ getGrowthPartnerConversationPage, searchGrowthPartnerConversation }, { getWorkJobView }, { listGrowthPartnerMemories, growthPartnerMemoryPromptContext }, { growthPartnerGoalPromptContext, listGrowthPartnerGoalProgress }] = await Promise.all([
+  const [{ getGrowthPartnerConversationPage, searchGrowthPartnerConversation }, { getWorkJobView }, { listGrowthPartnerMemories, growthPartnerMemoryPromptContext }, { growthPartnerGoalPromptContext, listGrowthPartnerGoalProgress }, { employeeKnowledgeContext }] = await Promise.all([
     import("../src/server/ai-growth-partner/service"),
     import("../src/server/workforce/jobs"),
     import("../src/server/ai-growth-partner/memory"),
     import("../src/server/ai-growth-partner/goals"),
+    import("../src/server/workforce/knowledge"),
   ]);
 
   try {
@@ -90,6 +91,13 @@ async function runWorker() {
     if (!promptGoals.includes("Leads approved: 9 per month.")) {
       throw new Error("The persisted Growth Partner goal did not return as prompt context after process restart.");
     }
+    const partnerKnowledge = await withSystem((db) => employeeKnowledgeContext(db, orgId, runtimeId, {
+      includeCompanyKnowledge: false,
+      includeGrowthPartnerLegacyKnowledge: true,
+    }));
+    if (!partnerKnowledge.block.includes("Persistent approved legacy knowledge after restart.")) {
+      throw new Error("The approved retained-profile knowledge did not recover as Partner context after process restart.");
+    }
     const job = await getWorkJobView(ctx, jobId);
     if (!job || job.status !== "completed" || job.resultSummary !== "Persistent restart acceptance task state.") {
       throw new Error("The completed Work Board task did not recover after restart.");
@@ -103,6 +111,7 @@ async function runWorker() {
       applicationMemoryPromptContextRecovered: true,
       goalConfigurationRecovered: true,
       goalPromptContextRecovered: true,
+      approvedLegacyKnowledgePromptContextRecovered: true,
       workBoardTaskRecovered: true,
       hermesMemoryVerified: false,
     }));
@@ -164,6 +173,13 @@ async function seedAndRestart() {
       await db.query(
         "insert into ai_growth_partner_goals (partner_id, org_id, metric_key, cadence, target_value, created_by, updated_by) values ($1, $2, 'leads_approved', 'monthly', 9, $3, $3)",
         [partnerId, org.id, owner.id],
+      );
+      await db.query(
+        `insert into ai_growth_partner_legacy_knowledge
+           (partner_id, org_id, source_type, source_record_id, source_version, source_role_key, title, content, status, created_by, reviewed_by, reviewed_at)
+         values ($1, $2, 'employee_note', $3, '1', 'lead_hunter', 'Restart context',
+           'Persistent approved legacy knowledge after restart.', 'approved', $4, $4, now())`,
+        [partnerId, org.id, randomUUID(), owner.id],
       );
       return { runtimeId, conversationId };
     });

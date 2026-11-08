@@ -95,6 +95,8 @@ const ROLLBACK_MIGRATION_NAMES = [
   "0130_ai_growth_partner_memory.sql",
   // Numeric goals are tenant-bound to the same identity, so the goal table must be dropped first.
   "0133_ai_growth_partner_goals.sql",
+  // Reviewed legacy knowledge snapshots depend on the Growth Partner identity and must be dropped first.
+  "0134_ai_growth_partner_legacy_knowledge.sql",
   // Lead qualification and source-budget migrations hang off leads, lead_research_requests and ai_work_jobs.
   "0127_lead_disqualification.sql", "0128_lead_research_source_budgets.sql", "0129_research_lead_crm_imports.sql",
 ];
@@ -265,5 +267,38 @@ describe("native CRM and dependent-feature migration rollbacks", () => {
       );
       for (const statement of statements(downFor("0133_ai_growth_partner_goals.sql"))) await db.query(statement);
     })).rejects.toThrow(/Rollback refused: AI Growth Partner goals exist/);
+  });
+
+  it("applies and rolls back an empty retained-knowledge review queue", async () => {
+    const migration = readFileSync("supabase/migrations/0134_ai_growth_partner_legacy_knowledge.sql", "utf8");
+    const rollback = downFor("0134_ai_growth_partner_legacy_knowledge.sql");
+    let tableAfterRollback = 0;
+    let tableAfterApply = 0;
+    await expect(withSystem(async (db) => {
+      for (const statement of statements(rollback)) await db.query(statement);
+      tableAfterRollback = (await db.query(
+        "select 1 from information_schema.tables where table_schema = 'public' and table_name = 'ai_growth_partner_legacy_knowledge'",
+      )).rows.length;
+      for (const statement of statements(migration)) await db.query(statement);
+      tableAfterApply = (await db.query(
+        "select 1 from information_schema.tables where table_schema = 'public' and table_name = 'ai_growth_partner_legacy_knowledge'",
+      )).rows.length;
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+    expect({ tableAfterRollback, tableAfterApply }).toEqual({ tableAfterRollback: 0, tableAfterApply: 1 });
+  });
+
+  it("refuses to remove retained-knowledge snapshots during rollback", async () => {
+    const c = await crmOrg({ name: "Growth Partner Knowledge Rollback Guard" });
+    await expect(withSystem(async (db) => {
+      const partner = await db.query<{ id: string }>("insert into ai_growth_partners (org_id) values ($1) returning id", [c.org.id]);
+      await db.query(
+        `insert into ai_growth_partner_legacy_knowledge
+           (org_id, partner_id, source_type, source_record_id, source_version, title, content)
+         values ($1, $2, 'employee_note', gen_random_uuid(), '1', 'Saved note', 'Keep this snapshot during rollback review.')`,
+        [c.org.id, partner.rows[0].id],
+      );
+      for (const statement of statements(downFor("0134_ai_growth_partner_legacy_knowledge.sql"))) await db.query(statement);
+    })).rejects.toThrow(/Rollback refused: AI Growth Partner legacy knowledge snapshots exist/);
   });
 });

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { GrowthPartnerControlCenter } from "@/components/growth-partner/control-center";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import { listGrowthPartnerLegacyKnowledge, type GrowthPartnerLegacyKnowledgeReview } from "@/server/ai-growth-partner/legacy-knowledge";
 import { getGrowthPartnerCapabilityAccess } from "@/server/ai-growth-partner/capability-access";
 import { listGrowthPartnerMemories } from "@/server/ai-growth-partner/memory";
 import { listGrowthPartnerGoalProgress } from "@/server/ai-growth-partner/goals";
@@ -34,7 +35,7 @@ export default async function GrowthPartnerPage() {
   const canConfigure = ctx.can("agents.configure");
   const canConfigureResearch = ctx.can("leads.research");
   const submittedSource = canConfigure ? await getSubmittedBrainSource(ctx) : null;
-  const [controls, researchSourcePolicies] = await Promise.all([
+  const [controls, researchSourcePolicies, legacyKnowledgeReview] = await Promise.all([
     withUser(ctx.user.id, (db) => getControlState(db, ctx.org.orgId)),
     canConfigureResearch
       ? withUser(ctx.user.id, async (db): Promise<ResearchSourcePoliciesView> => {
@@ -55,6 +56,9 @@ export default async function GrowthPartnerPage() {
           };
         })
       : Promise.resolve({ openstreetmap: null, company_website: null }),
+    canConfigure && ctx.can("knowledge.view") && state
+      ? listGrowthPartnerLegacyKnowledge(ctx)
+      : Promise.resolve({ candidates: [], imports: [] } satisfies GrowthPartnerLegacyKnowledgeReview),
   ]);
 
   return (
@@ -68,6 +72,7 @@ export default async function GrowthPartnerPage() {
       canConfigure={canConfigure}
       canConfigureResearch={canConfigureResearch}
       researchSourcePolicies={researchSourcePolicies}
+      legacyKnowledgeReview={legacyKnowledgeReview}
       canOpenSetup={ctx.can("setup.view")}
       controlPermissions={{
         "agents.use": ctx.can("agents.use"),

@@ -81,7 +81,7 @@ export async function employeeKnowledgeContext(
   db: Queryable,
   orgId: string,
   agentId: string,
-  options: { includeCompanyKnowledge?: boolean } = {},
+  options: { includeCompanyKnowledge?: boolean; includeGrowthPartnerLegacyKnowledge?: boolean } = {},
 ): Promise<{
   block: string;
   entryIds: string[];
@@ -107,6 +107,17 @@ export async function employeeKnowledgeContext(
        order by updated_at desc limit $3`,
     [orgId, agentId, MAX_ENTRIES],
   );
+  const partnerLegacyKnowledge = options.includeGrowthPartnerLegacyKnowledge
+    ? (await db.query<{ id: string; source_type: "employee_note" | "reference_document"; source_role_key: string | null; title: string; content: string }>(
+        `select k.id, k.source_type, k.source_role_key, k.title, k.content
+         from ai_growth_partner_legacy_knowledge k
+         join ai_growth_partners p on p.id = k.partner_id and p.org_id = k.org_id and p.runtime_agent_instance_id = $2
+         where k.org_id = $1 and k.status = 'approved'
+         order by k.reviewed_at desc, k.created_at desc, k.id
+         limit 24`,
+        [orgId, agentId],
+      )).rows
+    : [];
   const { rows: docs } = await db.query<{ id: string; filename: string; excerpt: string }>(
     `select id, filename, left(extracted_text, 3000) as excerpt from knowledge_documents
        where org_id = $1 and (agent_instance_id is null or agent_instance_id = $2)
@@ -117,6 +128,12 @@ export async function employeeKnowledgeContext(
   const sections: KnowledgeSection[] = [
     ...orgKnowledge.map((k) => ({ section: k.section, content: k.content })),
     ...entries.map((e) => ({ id: `entry:${e.id}`, section: "employee_note", label: `Employee note: ${e.title}`, content: e.content })),
+    ...partnerLegacyKnowledge.map((item) => ({
+      id: `partner-legacy:${item.id}`,
+      section: item.source_type === "employee_note" ? "employee_note" : "reference_document",
+      label: `${item.source_type === "employee_note" ? "Retained profile note" : "Retained reference document"}${item.source_role_key ? ` · ${item.source_role_key.replaceAll("_", " ")}` : " · shared"}: ${sanitizeClientText(item.title, 160).replace(/\s+/g, " ").trim()}`,
+      content: item.content,
+    })),
     ...docs.map((d) => ({ id: `document:${d.id}`, section: "reference_document", label: `Reference document: ${d.filename}`, content: d.excerpt })),
   ];
   const compiled = compileKnowledgeSections(sections);

@@ -9,6 +9,7 @@ import { ROLE_ABILITIES } from "@/lib/employee-tool-policy";
 vi.mock("@/app/actions/ai-growth-partner", () => ({ prepareGrowthPartnerFromSubmittedOnboardingAction: vi.fn() }));
 vi.mock("@/components/growth-partner/memory-panel", () => ({ GrowthPartnerMemoryPanel: () => null }));
 vi.mock("@/components/growth-partner/goals-panel", () => ({ GrowthPartnerGoalsPanel: () => null }));
+vi.mock("@/components/growth-partner/legacy-knowledge-review", () => ({ GrowthPartnerLegacyKnowledgeReview: () => null }));
 vi.mock("@/components/workforce/safety-controls", () => ({ WorkforceSafetyControls: () => null }));
 
 afterEach(cleanup);
@@ -32,6 +33,7 @@ describe("Growth Partner capability readiness UI", () => {
       canConfigure={false}
       canConfigureResearch={false}
       researchSourcePolicies={{ openstreetmap: null, company_website: null }}
+      legacyKnowledgeReview={{ candidates: [], imports: [] }}
       canOpenSetup={false}
       controlPermissions={{}}
       legacyProfilesPresent={false}

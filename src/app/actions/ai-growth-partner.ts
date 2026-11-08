@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBrainFromOnboarding, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { deleteGrowthPartnerMemory, saveGrowthPartnerMemory, updateGrowthPartnerMemory } from "@/server/ai-growth-partner/memory";
+import { importGrowthPartnerLegacyKnowledge, previewGrowthPartnerLegacyKnowledge, reviewGrowthPartnerLegacyKnowledge } from "@/server/ai-growth-partner/legacy-knowledge";
 import { saveGrowthPartnerGoal, setGrowthPartnerGoalEnabled } from "@/server/ai-growth-partner/goals";
 import type { GrowthPartnerMemoryKind } from "@/lib/ai-growth-partner-memory";
 import { withSystem } from "@/server/db";
@@ -74,6 +75,38 @@ export async function activateGrowthPartnerBusinessBrainVersionAction(input: {
     const result = await activateGrowthPartnerBusinessBrainVersion(ctx, input);
     revalidatePath("/growth-partner");
     return { ok: true as const, data: { version: result.version, activated: result.activated, alreadyActive: result.alreadyActive } };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function previewGrowthPartnerLegacyKnowledgeAction(input: unknown) {
+  try {
+    const ctx = await requireOrgContext();
+    const result = await previewGrowthPartnerLegacyKnowledge(ctx, input);
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function importGrowthPartnerLegacyKnowledgeAction(input: unknown) {
+  try {
+    const ctx = await requireOrgContext();
+    const result = await importGrowthPartnerLegacyKnowledge(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function reviewGrowthPartnerLegacyKnowledgeAction(input: unknown) {
+  try {
+    const ctx = await requireOrgContext();
+    const result = await reviewGrowthPartnerLegacyKnowledge(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
   } catch (err) {
     return actionError(err);
   }

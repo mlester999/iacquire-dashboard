@@ -915,6 +915,7 @@ export async function composeRunInstructions(
   // Re-appending the raw Knowledge Center text here would bypass Brain conflicts and owner review.
   const knowledge = await employeeKnowledgeContext(db, orgId, agentId, {
     includeCompanyKnowledge: clientRole !== AI_GROWTH_PARTNER_ROLE_KEY,
+    includeGrowthPartnerLegacyKnowledge: clientRole === AI_GROWTH_PARTNER_ROLE_KEY,
   });
   const memory = clientRole === AI_GROWTH_PARTNER_ROLE_KEY
     ? [

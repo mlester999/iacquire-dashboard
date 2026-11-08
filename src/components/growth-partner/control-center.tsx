@@ -33,6 +33,7 @@ import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
 import { BusinessBrainDraftReview } from "@/components/growth-partner/brain-draft-review";
 import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
 import { GrowthPartnerGoalsPanel } from "@/components/growth-partner/goals-panel";
+import { GrowthPartnerLegacyKnowledgeReview } from "@/components/growth-partner/legacy-knowledge-review";
 import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import {
@@ -43,6 +44,7 @@ import {
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import type { GrowthPartnerMemory } from "@/lib/ai-growth-partner-memory";
 import type { GrowthPartnerGoalProgress } from "@/lib/ai-growth-partner-goals";
+import type { GrowthPartnerLegacyKnowledgeReview as GrowthPartnerLegacyKnowledgeReviewData } from "@/server/ai-growth-partner/legacy-knowledge";
 import { prepareGrowthPartnerFromSubmittedOnboardingAction } from "@/app/actions/ai-growth-partner";
 
 const sectionTitles: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = {
@@ -303,6 +305,7 @@ export function GrowthPartnerControlCenter({
   canConfigure,
   canConfigureResearch,
   researchSourcePolicies,
+  legacyKnowledgeReview,
   canOpenSetup,
   controlPermissions,
   legacyProfilesPresent,
@@ -320,6 +323,7 @@ export function GrowthPartnerControlCenter({
   canConfigure: boolean;
   canConfigureResearch: boolean;
   researchSourcePolicies: ResearchSourcePoliciesView;
+  legacyKnowledgeReview: GrowthPartnerLegacyKnowledgeReviewData;
   canOpenSetup: boolean;
   controlPermissions: Record<string, boolean>;
   legacyProfilesPresent: boolean;
@@ -551,6 +555,12 @@ export function GrowthPartnerControlCenter({
           )}
         </div>
       </section>
+
+      {state && canConfigure && controlPermissions["knowledge.view"] && (
+        <section aria-label="Retained profile knowledge review">
+          <GrowthPartnerLegacyKnowledgeReview data={legacyKnowledgeReview} />
+        </section>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
         <Card className="border border-line bg-surface shadow-soft">
