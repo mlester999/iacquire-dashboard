@@ -112,11 +112,12 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
 
-    def test_acceptance_workflow_requires_manual_confirmation_and_pins_helper_image(self):
+    def test_acceptance_workflow_has_scoped_manual_and_test_push_triggers_and_pins_helper_image(self):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         workflow_text = workflow_path.read_text(encoding="utf-8")
         workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
-        self.assertEqual(set(workflow["on"]), {"workflow_dispatch"})
+        self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
+        self.assertEqual(workflow["on"]["push"]["branches"], ["codex/hermes-gha-acceptance"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         dispatch = workflow["on"]["workflow_dispatch"]
         confirmation = dispatch["inputs"]["confirm_external_execution"]
@@ -126,12 +127,20 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
 
         job = workflow["jobs"]["build-and-accept"]
         self.assertIn("github.event_name == 'workflow_dispatch'", job["if"])
+        self.assertIn("github.ref_name == 'codex/ai-growth-partner'", job["if"])
         self.assertIn(
             "github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE'",
             job["if"],
         )
+        self.assertIn("github.event_name == 'push'", job["if"])
+        self.assertIn("github.ref_name == 'codex/hermes-gha-acceptance'", job["if"])
+        self.assertEqual(job["runs-on"], "ubuntu-24.04")
+        self.assertEqual(job["timeout-minutes"], "90")
         runner_check = next(step for step in job["steps"] if step.get("name") == "Verify runner and branch scope")
-        self.assertIn('[[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]', runner_check["run"])
+        self.assertIn('if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then', runner_check["run"])
+        self.assertIn('[[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]', runner_check["run"])
+        self.assertIn('[[ "$GITHUB_EVENT_NAME" == push ]]', runner_check["run"])
+        self.assertIn('[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]', runner_check["run"])
         self.assertIn(
             '[[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]',
             runner_check["run"],
@@ -144,6 +153,12 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertEqual(service["image"], helper_image)
         self.assertEqual(service["platform"], "linux/amd64")
         self.assertIn(f"docker pull {helper_image}", workflow_text)
+
+    def test_acceptance_fixture_has_container_resource_limits(self):
+        compose_path = ROOT / "compose.acceptance.yaml"
+        compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        service = compose["services"]["acceptance-harness"]
+        self.assertEqual((service["mem_limit"], service["cpus"], service["pids_limit"]), ("512m", 0.5, 64))
 
     def test_manual_acceptance_restarts_only_the_isolated_gateway_before_memory_recovery_check(self):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"

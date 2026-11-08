@@ -82,6 +82,8 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
     pids_limit: 64

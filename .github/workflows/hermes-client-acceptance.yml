@@ -1,10 +1,13 @@
 name: Synthetic client Hermes acceptance
 
 on:
+  push:
+    branches:
+      - codex/hermes-gha-acceptance
   workflow_dispatch:
     inputs:
       confirm_external_execution:
-        description: Runs an isolated synthetic acceptance on a hosted runner, downloads locked dependencies and pinned images, and consumes GitHub Actions minutes.
+        description: Runs an isolated synthetic acceptance. Only pinned images and locked dependencies are downloaded; the model and tenants are local fixtures.
         required: true
         type: choice
         options:
@@ -19,7 +22,12 @@ concurrency:
 
 jobs:
   build-and-accept:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE'
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch'
+        && github.ref_name == 'codex/ai-growth-partner'
+        && github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE')
+        || (github.event_name == 'push'
+        && github.ref_name == 'codex/hermes-gha-acceptance') }}
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -46,9 +54,13 @@ jobs:
           set -euo pipefail
           [[ "$RUNNER_OS" == Linux ]]
           [[ "$(lsb_release -rs)" == "24.04" ]]
-          [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
-          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]
-          [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
+            [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
+          else
+            [[ "$GITHUB_EVENT_NAME" == push ]]
+            [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]
+          fi
           docker buildx inspect --bootstrap >/dev/null
           docker compose version >/dev/null
 
@@ -424,7 +436,7 @@ jobs:
           PY
 
           failure_stage=await_runtime_result
-          deadline=$((SECONDS + 2100))
+          deadline=$((SECONDS + 1200))
           while [[ ! -f "$HERMES_ACCEPTANCE_DIR/results/status.json" ]]; do
             harness_state="$(docker inspect -f '{{.State.Status}}' "$harness_id")"
             worker_state="$(docker inspect -f '{{.State.Status}}' "$worker_id")"
@@ -725,7 +737,7 @@ jobs:
           portal_failure_phase=portal_worker_restart
           compose up -d --no-build --force-recreate hermes-provisioner
           portal_failure_phase=portal_provisioning
-          deadline=$((SECONDS + 2100))
+          deadline=$((SECONDS + 1200))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
             provision_state="$(portal_status_state "$status_json" provision)"
@@ -762,7 +774,7 @@ jobs:
           portal_failure_phase=portal_sync_request
           compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs sync >/dev/null
           portal_failure_phase=portal_sync_poll
-          deadline=$((SECONDS + 900))
+          deadline=$((SECONDS + 600))
           while true; do
             status_json="$(compose exec -T portal-acceptance node scripts/hermes-provisioner-acceptance-client.mjs status)"
             sync_state="$(portal_status_state "$status_json" sync)"
