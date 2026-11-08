@@ -221,7 +221,7 @@ class AcceptanceFixtureTests(unittest.TestCase):
             )
             with self.assertRaises(VerificationError) as owner_error:
                 read_private_text(path, expected_mode=0o440, expected_uid=os.getuid() + 1, expected_gid=os.getgid())
-            self.assertEqual(str(owner_error.exception), "file_owner_mismatch")
+            self.assertEqual(str(owner_error.exception), "private_file_owner_mismatch")
 
     def test_model_diagnostics_capture_portal_deltas_without_request_contents(self):
         model_key = "synthetic-model-key-not-for-diagnostics"
