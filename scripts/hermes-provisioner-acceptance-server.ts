@@ -95,6 +95,7 @@ async function inSeedStage<T>(stage: string, action: () => Promise<T>): Promise<
   try {
     return await action();
   } catch (reason) {
+    if (reason instanceof AcceptanceSeedError) throw reason;
     throw new AcceptanceSeedError(safeAcceptanceSeedStage(stage), safeAcceptanceSeedErrorCode(reason));
   }
 }
@@ -178,23 +179,27 @@ async function approveHeldConfigs(orgIds: string[], reviewerId: string) {
   return rows.length;
 }
 
-async function onboardSyntheticClient(name: string, description: string, service: string, customers: string) {
-  const admin = fixtureModule.agencyUser(
+async function onboardSyntheticClient(stagePrefix: "tenant_one" | "tenant_two", name: string, description: string, service: string, customers: string) {
+  const inTenantStage = <T>(suffix: string, action: () => Promise<T>) => inSeedStage(`${stagePrefix}_${suffix}`, action);
+  const admin = await inTenantStage("admin_creation", async () => fixtureModule.agencyUser(
     await fixtureModule.createUser({ platformRole: "agency_super_admin" }),
     "agency_super_admin",
-  );
+  ));
   const ownerEmail = `owner-${cryptoLabel()}@example.test`;
-  const created = await adminTenantsModule.createClientTenant(admin, {
+  const created = await inTenantStage("tenant_creation", () => adminTenantsModule.createClientTenant(admin, {
     name,
     ownerEmail,
     industry: "Home services",
     timezone: "America/Chicago",
-  });
+  }));
   const org = { id: created.orgId, name, slug: created.slug };
   // The worker's claim only takes a provision job for a workspace whose setup fee is cleared.
-  await billingFixtureModule.clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared");
-  const owner = await fixtureModule.createUser({ email: ownerEmail });
-  await fixtureModule.addMember(org.id, owner.id, "owner");
+  await inTenantStage("setup_payment", () => billingFixtureModule.clearSetupPayment(org.id, "Synthetic provisioning acceptance: setup fee cleared"));
+  const owner = await inTenantStage("owner_membership", async () => {
+    const owner = await fixtureModule.createUser({ email: ownerEmail });
+    await fixtureModule.addMember(org.id, owner.id, "owner");
+    return owner;
+  });
   const ctx = fixtureModule.ctxFor(owner, org, "owner");
   const answers = {
     "a.business_name": name,
@@ -213,22 +218,22 @@ async function onboardSyntheticClient(name: string, description: string, service
     "d.pricing_policy": "never",
     "f.review": true,
   };
-  const saved = await onboardingModule.saveOnboardingStep(ctx, {
+  const saved = await inTenantStage("onboarding_save", () => onboardingModule.saveOnboardingStep(ctx, {
     answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])),
     currentQuestionId: "f.review",
-  });
+  }));
   if (Object.keys(saved.rejected).length) throw new Error("acceptance_onboarding_answers_rejected");
-  const outcome = await onboardingModule.submitOnboarding(ctx);
+  const outcome = await inTenantStage("onboarding_submit", () => onboardingModule.submitOnboarding(ctx));
   if (outcome.employees.length !== 1 || outcome.employees[0]?.role !== "growth_partner") {
     throw new Error("acceptance_growth_partner_identity_mismatch");
   }
-  const brain = await dbModule.withSystem((db) => db.query<{ current_version: number | null; source: string }>(
+  const brain = await inTenantStage("business_brain_verification", () => dbModule.withSystem((db) => db.query<{ current_version: number | null; source: string }>(
     `select p.current_version, v.source
      from ai_growth_partners p
      left join ai_growth_partner_versions v on v.partner_id=p.id and v.org_id=p.org_id and v.version=p.current_version
      where p.org_id=$1`,
     [org.id],
-  ));
+  )));
   if (brain.rows.length !== 1 || brain.rows[0]?.current_version !== 1 || brain.rows[0]?.source !== "onboarding") {
     throw new Error("acceptance_business_brain_missing");
   }
@@ -251,12 +256,14 @@ async function seed(body: unknown) {
     return { gatewayBaseUrl: safeGatewayUrl((body as { gatewayBaseUrl: unknown }).gatewayBaseUrl) };
   });
   const tenantOne = await inSeedStage("tenant_one_onboarding", () => onboardSyntheticClient(
+    "tenant_one",
     "Stonepath Roofing " + cryptoLabel(),
     "Repairs residential roofs after local storm damage.",
     "Roof repair and inspection",
     "Austin homeowners",
   ));
   const tenantTwo = await inSeedStage("tenant_two_onboarding", () => onboardSyntheticClient(
+    "tenant_two",
     "Lakeview Plumbing " + cryptoLabel(),
     "Repairs plumbing systems for homes and small businesses.",
     "Pipe repair and drain cleaning",
