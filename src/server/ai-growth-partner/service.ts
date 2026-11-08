@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { parseEvidenceMarker, type EvidenceMarker } from "@/lib/evidence-class";
 import {
@@ -51,6 +52,225 @@ const PROFILE_BRAIN_FACT: Record<ProfileKey, { section: (typeof BUSINESS_BRAIN_S
   idealCustomers: { section: "idealCustomers", key: "targetTypes" },
   brandColor: { section: "businessIdentity", key: "brandColor" },
 };
+
+const COMPANY_KNOWLEDGE_BRAIN_FACT = {
+  business_description: { section: "businessIdentity", key: "background" },
+  products_services: { section: "productsServicesOffers", key: "services" },
+  faq: { section: "salesKnowledge", key: "commonQuestions" },
+  approved_pricing: { section: "productsServicesOffers", key: "pricing" },
+  business_hours: { section: "businessOperations", key: "operatingHours" },
+  policies: { section: "policies", key: "customerPolicies" },
+  customer_service: { section: "businessOperations", key: "supportProcedures" },
+  brand_voice: { section: "brandCommunication", key: "brandVoice" },
+  escalation: { section: "businessOperations", key: "internalHandoffs" },
+} as const satisfies Record<string, { section: (typeof BUSINESS_BRAIN_SECTIONS)[number]; key: string }>;
+
+type CompanyKnowledgeRow = {
+  section: string;
+  content: string;
+  version: number;
+  updated_at: Date | string;
+  review_status: string;
+  risk_flags: string[];
+};
+
+type CompanyKnowledgeSnapshot = {
+  rows: CompanyKnowledgeRow[];
+  approvedBySection: Map<string, CompanyKnowledgeRow>;
+  fingerprint: string;
+  sourceVersions: Array<{ section: string; version: number }>;
+};
+
+async function loadCompanyKnowledgeSnapshot(db: Queryable, orgId: string): Promise<CompanyKnowledgeSnapshot> {
+  const rows = (await db.query<CompanyKnowledgeRow>(
+    `select section, content, version, updated_at, review_status, risk_flags
+     from company_knowledge where org_id = $1 order by section`,
+    [orgId],
+  )).rows;
+  const approvedBySection = new Map(rows
+    .filter((row) => row.review_status === "approved" && row.risk_flags.length === 0)
+    .map((row) => [row.section, row]));
+  const sourceVersions = [...approvedBySection.values()]
+    .filter((row) => row.content.trim().length > 0 && row.section in COMPANY_KNOWLEDGE_BRAIN_FACT)
+    .map(({ section, version }) => ({ section, version }));
+  const fingerprintInput = [...approvedBySection.values()]
+    .filter((row) => row.content.trim().length > 0 && row.section in COMPANY_KNOWLEDGE_BRAIN_FACT)
+    .map((row) => ({ section: row.section, version: Number(row.version), content: row.content.trim() }));
+  const fingerprint = createHash("sha256").update(JSON.stringify(fingerprintInput)).digest("hex");
+  return { rows, approvedBySection, fingerprint, sourceVersions };
+}
+
+function companyKnowledgeSourceId(row: CompanyKnowledgeRow): string {
+  return `company_knowledge:${row.section}@${row.version}`;
+}
+
+type CompanyKnowledgeConflict = {
+  kind: "company_knowledge_conflict";
+  section: string;
+  disputedValue: unknown;
+  disputedState: BusinessBrain["sections"]["businessIdentity"][string]["state"];
+  knowledgeValue: string;
+};
+
+function isCompanyKnowledgeConflict(value: unknown, section: string): value is CompanyKnowledgeConflict {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value)
+    && (value as Record<string, unknown>).kind === "company_knowledge_conflict"
+    && (value as Record<string, unknown>).section === section
+    && "disputedValue" in value
+    && typeof (value as Record<string, unknown>).disputedState === "string"
+    && "knowledgeValue" in value);
+}
+
+function applyCompanyKnowledgeFacts(
+  input: BusinessBrain,
+  snapshot: CompanyKnowledgeSnapshot,
+  now: string,
+): { brain: BusinessBrain; changed: number; conflicts: number; preservedOverrides: number } {
+  const brain = structuredClone(input);
+  let changed = 0;
+  let conflicts = 0;
+  let preservedOverrides = 0;
+
+  for (const [knowledgeSection, target] of Object.entries(COMPANY_KNOWLEDGE_BRAIN_FACT)) {
+    const existing = brain.sections[target.section][target.key];
+    if (!existing) continue;
+    const row = snapshot.approvedBySection.get(knowledgeSection);
+    const approvedText = row?.content.trim() ?? "";
+    const conflictValue = isCompanyKnowledgeConflict(existing.value, knowledgeSection)
+      ? existing.value as CompanyKnowledgeConflict
+      : null;
+
+    if (!row || !approvedText) {
+      if (conflictValue) {
+        const priorProvenance = existing.provenance.filter((item) =>
+          item.source !== "company_knowledge" || !item.sourceId?.startsWith(`company_knowledge:${knowledgeSection}@`));
+        brain.sections[target.section][target.key] = {
+          ...existing,
+          value: conflictValue.disputedValue,
+          state: conflictValue.disputedState,
+          provenance: priorProvenance.slice(-50),
+          updatedAt: now,
+          clientOverride: false,
+        };
+        changed++;
+      } else if (existing.provenance.at(-1)?.source === "company_knowledge"
+        && existing.provenance.at(-1)?.sourceId?.startsWith(`company_knowledge:${knowledgeSection}@`)) {
+        brain.sections[target.section][target.key] = {
+          value: null,
+          state: "unknown",
+          provenance: [...existing.provenance, {
+            source: "company_knowledge" as const,
+            sourceId: `company_knowledge:${knowledgeSection}@removed`,
+            evidenceUrl: null,
+            observedAt: now,
+          }].slice(-50),
+          updatedAt: now,
+          clientOverride: false,
+        };
+        changed++;
+      }
+      continue;
+    }
+
+    const provenanceSourceId = companyKnowledgeSourceId(row);
+    const source = {
+      source: "company_knowledge" as const,
+      sourceId: provenanceSourceId,
+      evidenceUrl: null,
+      observedAt: (row.updated_at instanceof Date ? row.updated_at : new Date(row.updated_at)).toISOString(),
+    };
+    const addSource = (provenance: BusinessBrain["sections"]["businessIdentity"][string]["provenance"]) => [
+      ...provenance.filter((item) => item.source !== "company_knowledge" || item.sourceId !== provenanceSourceId),
+      source,
+    ].slice(-50);
+
+    if (conflictValue) {
+      if (conflictValue.disputedValue === approvedText) {
+        brain.sections[target.section][target.key] = {
+          ...existing,
+          value: conflictValue.disputedValue,
+          state: conflictValue.disputedState,
+          provenance: addSource(existing.provenance),
+          updatedAt: now,
+          clientOverride: false,
+        };
+        changed++;
+        continue;
+      }
+      if (conflictValue.knowledgeValue === approvedText && existing.provenance.at(-1)?.sourceId === provenanceSourceId) {
+        conflicts++;
+        continue;
+      }
+      brain.sections[target.section][target.key] = {
+        ...existing,
+        value: { ...conflictValue, knowledgeValue: approvedText },
+        provenance: addSource(existing.provenance),
+        updatedAt: now,
+      };
+      changed++;
+      conflicts++;
+      continue;
+    }
+
+    if (existing.clientOverride) {
+      if (existing.value !== approvedText) preservedOverrides++;
+      else if (!existing.provenance.some((item) => item.sourceId === provenanceSourceId)) {
+        brain.sections[target.section][target.key] = { ...existing, provenance: addSource(existing.provenance) };
+        changed++;
+      }
+      continue;
+    }
+
+    if (existing.value === approvedText) {
+      const nextState = existing.state === "client_confirmed" ? "client_confirmed" : "verified";
+      const nextProvenance = addSource(existing.provenance);
+      if (existing.state !== nextState || nextProvenance.length !== existing.provenance.length
+        || existing.provenance.at(-1)?.sourceId !== provenanceSourceId) {
+        brain.sections[target.section][target.key] = {
+          ...existing,
+          state: nextState,
+          provenance: nextProvenance,
+          updatedAt: now,
+        };
+        changed++;
+      }
+      continue;
+    }
+
+    if (existing.state === "unknown" || existing.value === null
+      || (existing.state === "verified" && existing.provenance.at(-1)?.source === "company_knowledge"
+        && existing.provenance.at(-1)?.sourceId?.startsWith(`company_knowledge:${knowledgeSection}@`))) {
+      brain.sections[target.section][target.key] = {
+        value: approvedText,
+        state: "verified",
+        provenance: addSource(existing.provenance),
+        updatedAt: now,
+        clientOverride: false,
+      };
+      changed++;
+      continue;
+    }
+
+    brain.sections[target.section][target.key] = {
+      value: {
+        kind: "company_knowledge_conflict",
+        section: knowledgeSection,
+        disputedValue: existing.value,
+        disputedState: existing.state,
+        knowledgeValue: approvedText,
+      },
+      state: "draft_suggestion",
+      provenance: addSource(existing.provenance),
+      updatedAt: now,
+      clientOverride: false,
+    };
+    changed++;
+    conflicts++;
+  }
+
+  if (changed) brain.generatedAt = now;
+  return { brain: BusinessBrainSchema.parse(brain), changed, conflicts, preservedOverrides };
+}
 
 function applyBusinessProfileFacts(brain: BusinessBrain, values: ProfileValues, changed: readonly ProfileKey[], now: string): { brain: BusinessBrain; changed: ProfileKey[] } {
   const next = structuredClone(brain);
@@ -595,13 +815,16 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
 
   // A repeated onboarding handoff or a retried one-time migration action must not create a
   // second copy of the same submitted snapshot.
+  const knowledge = await loadCompanyKnowledgeSnapshot(db, ctx.org.orgId);
   const prior = (await db.query<{ id: string; version: number; business_brain: unknown }>(
     `select id, version, business_brain from ai_growth_partner_versions
      where org_id = $1 and partner_id = $2 and source = 'onboarding'
        and source_metadata->>'questionnaireVersion' = $3::text
        and source_metadata->>'submittedAt' = $4
+       and (source_metadata->>'companyKnowledgeHash' = $5
+         or ($6::boolean and source_metadata->>'companyKnowledgeHash' is null))
      order by version desc limit 1`,
-    [ctx.org.orgId, partner.id, questionnaireVersion, sourceSubmittedAt.toISOString()],
+    [ctx.org.orgId, partner.id, questionnaireVersion, sourceSubmittedAt.toISOString(), knowledge.fingerprint, knowledge.sourceVersions.length === 0],
   )).rows[0];
   if (prior) {
     let activeVersionChanged = false;
@@ -625,7 +848,9 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
   )).rows[0];
   const generated = generateBusinessBrainFromOnboarding(storedAnswers, generatedAt);
   const existing = latest ? BusinessBrainSchema.safeParse(latest.business_brain) : null;
-  const brain = existing?.success ? preserveClientOverrides(existing.data, generated) : generated;
+  const baseBrain = existing?.success ? preserveClientOverrides(existing.data, generated) : generated;
+  const knowledgeMerge = applyCompanyKnowledgeFacts(baseBrain, knowledge, generatedAt.toISOString());
+  const brain = knowledgeMerge.brain;
   const version = Number((await db.query<{ next: number }>(
     "select coalesce(max(version), 0)::int + 1 as next from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
     [ctx.org.orgId, partner.id],
@@ -634,6 +859,10 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
     questionnaireVersion,
     submittedAt: sourceSubmittedAt.toISOString(),
     generatedAt: generatedAt.toISOString(),
+    companyKnowledgeHash: knowledge.fingerprint,
+    companyKnowledgeSections: knowledge.sourceVersions,
+    companyKnowledgeFactCount: knowledge.sourceVersions.length,
+    companyKnowledgeConflictCount: knowledgeMerge.conflicts,
   };
   const snapshot = (await db.query<{ id: string }>(
     `insert into ai_growth_partner_versions
@@ -662,9 +891,191 @@ export async function draftGrowthPartnerBusinessBrainFromOnboarding(
     targetType: "ai_growth_partner_version",
     targetId: snapshot.id,
     result: "success",
-    metadata: { source: "onboarding", version, questionnaireVersion, factCount, activeVersionChanged },
+    metadata: {
+      source: "onboarding",
+      version,
+      questionnaireVersion,
+      factCount,
+      activeVersionChanged,
+      companyKnowledgeFactCount: knowledge.sourceVersions.length,
+      companyKnowledgeConflictCount: knowledgeMerge.conflicts,
+    },
   }, db);
-  return { partnerId: partner.id, id: snapshot.id, version, factCount, activeVersionChanged, reused: false as const };
+  return {
+    partnerId: partner.id,
+    id: snapshot.id,
+    version,
+    factCount,
+    activeVersionChanged,
+    companyKnowledgeFactCount: knowledge.sourceVersions.length,
+    companyKnowledgeConflictCount: knowledgeMerge.conflicts,
+    reused: false as const,
+  };
+}
+
+/**
+ * Applies only approved, risk-free company knowledge to the Growth Partner's immutable Brain.
+ * Active facts are updated in a new version; unresolved differences become draft suggestions so
+ * the runtime cannot use either side until an owner reviews the field.
+ */
+export async function syncGrowthPartnerBusinessBrainFromCompanyKnowledge(
+  db: Queryable,
+  input: { orgId: string; actorUserId: string; actorKind: "agency" | "user" | "system" },
+): Promise<{ status: "updated" | "unchanged" | "not_ready"; activeVersion: number | null; draftVersion: number | null; conflictCount: number }> {
+  const partner = (await db.query<{ id: string; current_version: number | null }>(
+    `select p.id, p.current_version from ai_growth_partners p
+     join organizations o on o.id = p.org_id
+     where p.org_id = $1 and o.kind = 'client' and not o.is_demo
+     for update of p`,
+    [input.orgId],
+  )).rows[0];
+  if (!partner) return { status: "not_ready", activeVersion: null, draftVersion: null, conflictCount: 0 };
+
+  const latest = (await db.query<{
+    version: number;
+    business_brain: unknown;
+    persona_settings: unknown;
+    source_metadata: unknown;
+  }>(
+    `select version, business_brain, persona_settings, source_metadata
+     from ai_growth_partner_versions where org_id = $1 and partner_id = $2
+     order by version desc limit 1`,
+    [input.orgId, partner.id],
+  )).rows[0];
+  if (!latest) return { status: "not_ready", activeVersion: null, draftVersion: null, conflictCount: 0 };
+  const latestBrain = BusinessBrainSchema.safeParse(latest.business_brain);
+  if (!latestBrain.success) throw new AppError("conflict", "The saved Business Brain needs review before company knowledge can be synchronized.");
+
+  const hasActive = partner.current_version !== null;
+  const active = hasActive ? (await db.query<{
+    version: number;
+    business_brain: unknown;
+    persona_settings: unknown;
+    source_metadata: unknown;
+  }>(
+    `select version, business_brain, persona_settings, source_metadata from ai_growth_partner_versions
+     where org_id = $1 and partner_id = $2 and version = $3`,
+    [input.orgId, partner.id, partner.current_version],
+  )).rows[0] : null;
+  if (hasActive && !active) throw new AppError("conflict", "The active Business Brain could not be found. Review it before company knowledge changes are applied.");
+  const activeBrain = active ? BusinessBrainSchema.safeParse(active.business_brain) : null;
+  if (active && !activeBrain?.success) throw new AppError("conflict", "The active Business Brain needs review before company knowledge can be synchronized.");
+
+  const snapshot = await loadCompanyKnowledgeSnapshot(db, input.orgId);
+  const now = new Date().toISOString();
+  const basedOnVersion = Number(latest.version);
+  const latestUpdate = applyCompanyKnowledgeFacts(latestBrain.data, snapshot, now);
+  const hasDraft = !hasActive || Number(latest.version) > Number(partner.current_version);
+  const activeUpdate = activeBrain?.success ? applyCompanyKnowledgeFacts(activeBrain.data, snapshot, now) : null;
+  const initialNextVersion = Number((await db.query<{ next: number }>(
+    "select coalesce(max(version), 0)::int + 1 as next from ai_growth_partner_versions where org_id = $1 and partner_id = $2",
+    [input.orgId, partner.id],
+  )).rows[0].next);
+  let nextVersion = initialNextVersion;
+  let nextActiveVersion = partner.current_version;
+  let nextDraftVersion: number | null = hasDraft ? basedOnVersion : null;
+  let writes = 0;
+
+  const insertSnapshot = async (args: {
+    version: number;
+    brain: BusinessBrain;
+    personaSettings: unknown;
+    basedOnVersion: number;
+    conflicts: number;
+    active: boolean;
+  }) => {
+    const sourceMetadata = {
+      ...metadataRecord(args.active ? active?.source_metadata : latest.source_metadata),
+      syncKind: "company_knowledge",
+      basedOnVersion: args.basedOnVersion,
+      companyKnowledgeHash: snapshot.fingerprint,
+      companyKnowledgeSections: snapshot.sourceVersions,
+      companyKnowledgeFactCount: snapshot.sourceVersions.length,
+      companyKnowledgeConflictCount: args.conflicts,
+      companyKnowledgeFactsChanged: args.active ? activeUpdate?.changed ?? 0 : latestUpdate.changed,
+      activeVersionChanged: args.active,
+      syncedAt: now,
+    };
+    const inserted = (await db.query<{ id: string }>(
+      `insert into ai_growth_partner_versions
+         (partner_id, org_id, version, business_brain, persona_settings, source, source_metadata, created_by)
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, 'knowledge_sync', $6::jsonb, $7)
+       returning id`,
+      [partner.id, input.orgId, args.version, JSON.stringify(args.brain), JSON.stringify(args.personaSettings ?? {}), JSON.stringify(sourceMetadata), input.actorUserId],
+    )).rows[0];
+    await recordAudit({
+      orgId: input.orgId,
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      action: args.active ? "ai_growth_partner.business_brain_knowledge_synced" : "ai_growth_partner.business_brain_draft_rebased",
+      targetType: "ai_growth_partner_version",
+      targetId: inserted.id,
+      result: "success",
+      metadata: {
+        syncKind: "company_knowledge",
+        version: args.version,
+        basedOnVersion: args.basedOnVersion,
+        companyKnowledgeHash: snapshot.fingerprint,
+        companyKnowledgeFactCount: snapshot.sourceVersions.length,
+        companyKnowledgeFactsChanged: args.active ? activeUpdate?.changed ?? 0 : latestUpdate.changed,
+        companyKnowledgeConflictCount: args.conflicts,
+        activeVersionChanged: args.active,
+      },
+    }, db);
+    writes++;
+    return inserted.id;
+  };
+
+  if (!hasActive) {
+    if (!latestUpdate.changed) {
+      return { status: "unchanged", activeVersion: null, draftVersion: basedOnVersion, conflictCount: latestUpdate.conflicts };
+    }
+    await insertSnapshot({
+      version: nextVersion++,
+      brain: latestUpdate.brain,
+      personaSettings: latest.persona_settings,
+      basedOnVersion,
+      conflicts: latestUpdate.conflicts,
+      active: false,
+    });
+    nextDraftVersion = nextVersion - 1;
+  } else if (activeUpdate?.changed) {
+    const activeVersion = nextVersion++;
+    await insertSnapshot({
+      version: activeVersion,
+      brain: activeUpdate.brain,
+      personaSettings: active?.persona_settings,
+      basedOnVersion: Number(active?.version),
+      conflicts: activeUpdate.conflicts,
+      active: true,
+    });
+    const pointer = await db.query(
+      "update ai_growth_partners set current_version = $3 where id = $1 and org_id = $2 and current_version = $4 returning id",
+      [partner.id, input.orgId, activeVersion, partner.current_version],
+    );
+    if (!pointer.rowCount) throw new AppError("conflict", "The active Business Brain changed while company knowledge was being synchronized. Refresh and try again.");
+    nextActiveVersion = activeVersion;
+  }
+
+  if (hasActive && hasDraft && (latestUpdate.changed || Boolean(activeUpdate?.changed))) {
+    const draftVersion = nextVersion++;
+    await insertSnapshot({
+      version: draftVersion,
+      brain: latestUpdate.brain,
+      personaSettings: latest.persona_settings,
+      basedOnVersion,
+      conflicts: latestUpdate.conflicts,
+      active: false,
+    });
+    nextDraftVersion = draftVersion;
+  }
+
+  return {
+    status: writes ? "updated" : "unchanged",
+    activeVersion: nextActiveVersion,
+    draftVersion: nextDraftVersion,
+    conflictCount: activeUpdate?.conflicts ?? latestUpdate.conflicts,
+  };
 }
 
 /**

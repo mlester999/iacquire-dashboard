@@ -12,6 +12,7 @@ import { detectRiskFlags, sanitizeClientText } from "@/server/workforce/compiler
 import { uploadPrivateFile, readPrivateFile, removePrivateFile } from "@/server/storage/private";
 import { extractDocumentText } from "@/server/knowledge/extract";
 import { writeKnowledgeTextTx } from "@/server/knowledge/write";
+import { syncGrowthPartnerBusinessBrainFromCompanyKnowledge } from "@/server/ai-growth-partner/service";
 import type { OrgContext } from "@/server/tenancy/context";
 import { KNOWLEDGE_SECTIONS, type KnowledgeSection } from "@/lib/knowledge-sections";
 
@@ -115,6 +116,11 @@ async function writeKnowledgeText(ctx: OrgContext, section: string, text: string
       },
       db,
     );
+    await syncGrowthPartnerBusinessBrainFromCompanyKnowledge(db, {
+      orgId: ctx.org.orgId,
+      actorUserId: ctx.user.id,
+      actorKind: ctx.org.kind === "agency" || ctx.user.platformRole !== "none" ? "agency" : "user",
+    });
     if (held) {
       await notifyAgency(db, ctx.org.orgId, {
         kind: "knowledge_update_ready",
@@ -205,6 +211,11 @@ export async function decideHeldKnowledge(db: Queryable, input: { orgId: string;
       [orgId, section],
     );
   }
+  await syncGrowthPartnerBusinessBrainFromCompanyKnowledge(db, {
+    orgId,
+    actorUserId: agencyUserId,
+    actorKind: "agency",
+  });
   await notifyOrgRoles(db, orgId, ["owner", "admin"], {
     kind: "knowledge_update_ready",
     severity: approve ? "success" : "warning",

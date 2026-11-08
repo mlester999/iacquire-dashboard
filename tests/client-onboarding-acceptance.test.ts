@@ -131,8 +131,11 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
       const brain = parseBusinessBrain(brainRows.rows[0].business_brain);
       expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: client.org.name, state: "client_confirmed" });
       expect(brain.sections.productsServicesOffers.services).toMatchObject({ value: client === roofing ? "Roof repair and inspection" : "Pipe repair and drain cleaning", state: "client_confirmed" });
-      expect(brain.sections.productsServicesOffers.pricing.state).toBe("unknown");
-      expect(brain.sections.productsServicesOffers.pricing.value).toBeNull();
+      expect(brain.sections.productsServicesOffers.pricing).toMatchObject({
+        value: "Do not share prices. Hand pricing questions to a person.",
+        state: "verified",
+        provenance: [expect.objectContaining({ source: "company_knowledge", sourceId: "company_knowledge:approved_pricing@1" })],
+      });
 
       const jobs = await withSystem((db) => db.query<{ kind: string; status: string }>(
         "select kind, status from agent_provisioning_jobs where org_id = $1",

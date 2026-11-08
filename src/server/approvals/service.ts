@@ -7,6 +7,7 @@ import { systemActor } from "@/server/crm/actor";
 import { createCompanyInTx } from "@/server/crm/companies";
 import { createContactInTx } from "@/server/crm/contacts";
 import { writeKnowledgeTextTx } from "@/server/knowledge/write";
+import { syncGrowthPartnerBusinessBrainFromCompanyKnowledge } from "@/server/ai-growth-partner/service";
 import { sanitizeClientText } from "@/server/workforce/compiler";
 import { applyDraftVersion, loadConnection } from "@/server/workforce/service";
 import { appendWorkEvent } from "@/server/workforce/jobs";
@@ -645,6 +646,11 @@ async function runExecutor(
           });
           return { status: "blocked" as const, detail: "Held for iAcquire review because the text may conflict with AI safety policy. The previous approved text is still in use." };
         }
+        await syncGrowthPartnerBusinessBrainFromCompanyKnowledge(db, {
+          orgId,
+          actorUserId,
+          actorKind: "system",
+        });
         return { status: "succeeded" as const, detail: "Knowledge updated. The AI Growth Partner and any retained profiles use it from their next message." };
       });
     }

@@ -77,7 +77,12 @@ async function assertEmployee(ctx: OrgContext, agentId: string) {
  * first, then employee notes, then uploaded reference documents; a single character budget applies to all three.
  * The same function powers the UI's retrieval check, so "used in the next conversation" is derived, not asserted.
  */
-export async function employeeKnowledgeContext(db: Queryable, orgId: string, agentId: string): Promise<{
+export async function employeeKnowledgeContext(
+  db: Queryable,
+  orgId: string,
+  agentId: string,
+  options: { includeCompanyKnowledge?: boolean } = {},
+): Promise<{
   block: string;
   entryIds: string[];
   documentIds: string[];
@@ -90,10 +95,12 @@ export async function employeeKnowledgeContext(db: Queryable, orgId: string, age
   // depend on the driver's internal queue, which pg 8 deprecates ("calling client.query() when the
   // client is already executing a query") and pg 9 removes. The reads are issued in order instead;
   // the row limits (20 notes, 8 documents) keep the whole block to three round trips.
-  const { rows: orgKnowledge } = await db.query<{ section: string; content: string }>(
-    "select section, content from company_knowledge where org_id = $1 and review_status = 'approved' and content <> '' order by section",
-    [orgId],
-  );
+  const orgKnowledge = options.includeCompanyKnowledge === false
+    ? []
+    : (await db.query<{ section: string; content: string }>(
+      "select section, content from company_knowledge where org_id = $1 and review_status = 'approved' and content <> '' order by section",
+      [orgId],
+    )).rows;
   const { rows: entries } = await db.query<{ id: string; title: string; content: string }>(
     `select id, title, content from employee_knowledge_entries
        where org_id = $1 and agent_instance_id = $2 and status = 'approved' and content <> ''

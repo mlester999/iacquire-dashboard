@@ -3,6 +3,9 @@ import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_NAME, BUSINESS_BRAIN_
 import type { StoredAnswers } from "@/lib/onboarding/types";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBrainFromOnboarding, ensureGrowthPartnerIdentity, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainDraft, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { decideHeldKnowledge, saveKnowledgeSection } from "@/server/knowledge/service";
+import { buildRunInstructions, createConfigVersion } from "@/server/workforce/service";
+import { defaultSettings } from "@/server/workforce/compiler";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
@@ -419,5 +422,168 @@ describe("AI Growth Partner foundation", () => {
     const activated = await activateGrowthPartnerBusinessBrainVersion(migrationContext, { expectedCurrentVersion: null, version: 1 });
     expect(activated).toMatchObject({ version: 1, activated: true, alreadyActive: false });
     expect(await getGrowthPartnerControlState(migrationContext)).toMatchObject({ status: "migration_required", currentVersion: 1, draftVersion: null });
+  });
+
+  it("assembles approved company knowledge into onboarding drafts and excludes held or risky sections", async () => {
+    const knowledgeOrg = await createOrg({ name: "Growth Partner Knowledge Import Client" });
+    const knowledgeOwner = await createUser();
+    await addMember(knowledgeOrg.id, knowledgeOwner.id, "owner");
+    const knowledgeContext = ctxFor(knowledgeOwner, knowledgeOrg, "owner");
+    await withSystem((db) => db.query(
+      "insert into ai_growth_partners (org_id, status) values ($1, 'migration_required')",
+      [knowledgeOrg.id],
+    ));
+    await withSystem(async (db) => {
+      await db.query(
+        `insert into company_knowledge (org_id, section, content, version, review_status, risk_flags)
+         values ($1, 'business_description', 'Commercial roofing for multi-site property groups.', 3, 'approved', '{}'),
+                ($1, 'products_services', 'Roof replacement and storm repair.', 2, 'approved', '{}'),
+                ($1, 'faq', 'Do you provide weekend roof inspections?', 4, 'pending_agency_review', '{}'),
+                ($1, 'approved_pricing', 'Promise every repair is under $100.', 5, 'approved', '{unreviewed_risk}')`,
+        [knowledgeOrg.id],
+      );
+    });
+    const submittedAt = new Date("2026-10-20T09:30:00.000Z");
+    const answers: StoredAnswers = {
+      "a.business_name": { value: "Confirmed Roofing Group", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
+      "a.description": { value: "Residential roofing for local homeowners.", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
+    };
+
+    const prepared = await withSystem((db) => draftGrowthPartnerBusinessBrainFromOnboarding(db, knowledgeContext, answers, submittedAt, 2, submittedAt));
+    expect(prepared).toMatchObject({ version: 1, activeVersionChanged: false, companyKnowledgeFactCount: 2, companyKnowledgeConflictCount: 1 });
+    const state = await getGrowthPartnerControlState(knowledgeContext);
+    expect(state).toMatchObject({
+      status: "migration_required",
+      currentVersion: null,
+      draftVersion: 1,
+      draftBusinessBrain: {
+        sections: {
+          businessIdentity: {
+            background: {
+              state: "draft_suggestion",
+              value: {
+                kind: "company_knowledge_conflict",
+                section: "business_description",
+                disputedValue: "Residential roofing for local homeowners.",
+                knowledgeValue: "Commercial roofing for multi-site property groups.",
+              },
+            },
+          },
+          productsServicesOffers: {
+            services: { value: "Roof replacement and storm repair.", state: "verified" },
+            pricing: { value: null, state: "unknown" },
+          },
+          salesKnowledge: { commonQuestions: { value: null, state: "unknown" } },
+        },
+      },
+    });
+    const sourceMetadata = (await withSystem((db) => db.query<{ source_metadata: Record<string, unknown> }>(
+      "select source_metadata from ai_growth_partner_versions where org_id = $1 and partner_id = $2 and version = 1",
+      [knowledgeOrg.id, state?.id],
+    ))).rows[0]?.source_metadata;
+    expect(sourceMetadata).toMatchObject({ companyKnowledgeFactCount: 2, companyKnowledgeConflictCount: 1 });
+    expect(JSON.stringify(sourceMetadata)).not.toContain("Commercial roofing for multi-site property groups.");
+    const audit = (await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+      "select metadata from audit_logs where org_id = $1 and action = 'ai_growth_partner.business_brain_drafted' order by created_at desc limit 1",
+      [knowledgeOrg.id],
+    ))).rows[0]?.metadata;
+    expect(audit).toMatchObject({ companyKnowledgeFactCount: 2, companyKnowledgeConflictCount: 1, activeVersionChanged: false });
+
+    const agencyAdmin = await createUser({ platformRole: "agency_super_admin" });
+    await withSystem((db) => decideHeldKnowledge(db, {
+      orgId: knowledgeOrg.id,
+      section: "faq",
+      approve: true,
+      agencyUserId: agencyAdmin.id,
+    }));
+    const afterApproval = await getGrowthPartnerControlState(knowledgeContext);
+    expect(afterApproval).toMatchObject({
+      status: "migration_required",
+      currentVersion: null,
+      draftVersion: 2,
+      draftBusinessBrain: {
+        sections: { salesKnowledge: { commonQuestions: { value: "Do you provide weekend roof inspections?", state: "verified" } } },
+      },
+    });
+  });
+
+  it("synchronizes approved knowledge into active and draft versions without exposing conflicts to the Growth Partner prompt", async () => {
+    const syncOrg = await createOrg({ name: "Growth Partner Knowledge Sync Client" });
+    const syncOwner = await createUser();
+    await addMember(syncOrg.id, syncOwner.id, "owner");
+    const syncContext = ctxFor(syncOwner, syncOrg, "owner");
+    const growthPartnerAgent = (await withSystem((db) => db.query<{ id: string }>(
+      "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner') returning id",
+      [syncOrg.id],
+    ))).rows[0].id;
+    await withSystem(async (db) => {
+      await db.query("insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2)", [syncOrg.id, growthPartnerAgent]);
+      await createConfigVersion(db, {
+        orgId: syncOrg.id,
+        agentId: growthPartnerAgent,
+        settings: defaultSettings("growth_partner"),
+        source: "onboarding",
+        userId: syncOwner.id,
+        apply: true,
+      });
+    });
+    const submittedAt = new Date("2026-10-21T12:00:00.000Z");
+    const answers: StoredAnswers = {
+      "a.business_name": { value: "Orlando Roofing Works", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
+      "a.description": { value: "Residential roofing founded in 2004.", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
+    };
+    await withSystem((db) => draftGrowthPartnerBusinessBrainFromOnboarding(db, syncContext, answers, submittedAt, 2, submittedAt));
+    const manualDraft = await saveGrowthPartnerBusinessBrainFactDraft(syncContext, {
+      baseVersion: 1,
+      section: "employeeBehavior",
+      key: "personality",
+      valueText: "Calm, clear, and practical.",
+    });
+    expect(manualDraft.version).toBe(2);
+
+    await saveKnowledgeSection(syncContext, "business_description", "Commercial properties only; no residential work.");
+    await saveKnowledgeSection(syncContext, "products_services", "Roof replacement and storm repair.");
+
+    const state = await getGrowthPartnerControlState(syncContext);
+    expect(state).toMatchObject({
+      currentVersion: 5,
+      draftVersion: 6,
+      currentBusinessBrain: {
+        sections: {
+          businessIdentity: {
+            background: {
+              state: "draft_suggestion",
+              value: {
+                kind: "company_knowledge_conflict",
+                disputedValue: "Residential roofing founded in 2004.",
+                knowledgeValue: "Commercial properties only; no residential work.",
+              },
+            },
+          },
+          productsServicesOffers: { services: { value: "Roof replacement and storm repair.", state: "verified" } },
+        },
+      },
+      draftBusinessBrain: {
+        sections: {
+          employeeBehavior: { personality: { value: "Calm, clear, and practical.", clientOverride: true } },
+        },
+      },
+    });
+    const runtime = await withSystem((db) => buildRunInstructions(db, syncOrg.id, growthPartnerAgent));
+    expect(runtime.instructions).toContain("productsServicesOffers.services: Roof replacement and storm repair.");
+    expect(runtime.instructions).not.toContain("Residential roofing founded in 2004.");
+    expect(runtime.instructions).not.toContain("Commercial properties only; no residential work.");
+    const versions = (await withSystem((db) => db.query<{ version: number; source: string }>(
+      "select version, source from ai_growth_partner_versions where org_id = $1 and partner_id = $2 order by version",
+      [syncOrg.id, state?.id],
+    ))).rows;
+    expect(versions).toEqual([
+      { version: 1, source: "onboarding" },
+      { version: 2, source: "client_edit" },
+      { version: 3, source: "knowledge_sync" },
+      { version: 4, source: "knowledge_sync" },
+      { version: 5, source: "knowledge_sync" },
+      { version: 6, source: "knowledge_sync" },
+    ]);
   });
 });

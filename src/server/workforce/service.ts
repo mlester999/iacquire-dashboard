@@ -903,7 +903,6 @@ export async function composeRunInstructions(
   organization: { kind: WorkforceOrganizationKind; name: string },
   memoryQuery = "",
 ): Promise<RunInstructions> {
-  const knowledge = await employeeKnowledgeContext(db, orgId, agentId);
   // The booking rules and pipeline stages a client edits in the CRM are read at run time, for a client workspace only: the stored text would keep saying whatever they were when the
   // configuration was compiled. The internal agency tier is untouched (and costs no query).
   let live: { block: string; truncated: boolean } = { block: "", truncated: false };
@@ -912,6 +911,11 @@ export async function composeRunInstructions(
     clientRole = (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [agentId, orgId])).rows[0]?.role_key ?? null;
     if (clientRole && isAgentRoleKey(clientRole)) live = await liveFactsBlock(db, { orgId, orgKind: "client", role: clientRole });
   }
+  // The Growth Partner reads shared company knowledge only through its versioned Business Brain.
+  // Re-appending the raw Knowledge Center text here would bypass Brain conflicts and owner review.
+  const knowledge = await employeeKnowledgeContext(db, orgId, agentId, {
+    includeCompanyKnowledge: clientRole !== AI_GROWTH_PARTNER_ROLE_KEY,
+  });
   const memory = clientRole === AI_GROWTH_PARTNER_ROLE_KEY
     ? [
         await growthPartnerGoalPromptContext(db, orgId, agentId),
