@@ -747,7 +747,7 @@ jobs:
           python3 - "$HERMES_ACCEPTANCE_DIR/results/portal-seed.json" <<'PY'
           import json, sys
           result = json.load(open(sys.argv[1], encoding="utf-8"))
-          assert result == {"createdTenants": 2, "rolesPerTenant": 1, "requestedProvisionJobs": 2, "heldReviewsApproved": result["heldReviewsApproved"]}
+          assert result == {"createdTenants": 2, "profilesPerTenant": 1, "requestedProvisionJobs": 2, "heldReviewsApproved": result["heldReviewsApproved"]}
           assert isinstance(result["heldReviewsApproved"], int) and result["heldReviewsApproved"] >= 0
           print("PORTAL_SEED_PASS: two synthetic organizations, one Growth Partner profile each, held configs reviewed")
           PY
