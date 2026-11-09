@@ -762,4 +762,3 @@ describe("AI Growth Partner chat to native workflow", () => {
     expect(afterActivation.instructions).toContain("Active Business Brain (version 2)");
   });
 });
-

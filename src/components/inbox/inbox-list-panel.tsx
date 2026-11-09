@@ -412,4 +412,3 @@ export function InboxListPanel(p: ListPanelProps) {
     </section>
   );
 }
-
