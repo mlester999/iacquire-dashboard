@@ -391,6 +391,7 @@ describe("AI Growth Partner foundation", () => {
     const answers: StoredAnswers = {
       "a.business_name": { value: "Bright Path Roofing", skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
       "a.website": { value: "https://brightpath.example", skipped: false, source: "website_analysis", needsConfirmation: true, updatedAt: submittedAt.toISOString() },
+      "e.brand_colors": { value: { primary: "#1d4ed8", accent: "#f97316" }, skipped: false, source: "user", needsConfirmation: false, updatedAt: submittedAt.toISOString() },
     };
 
     const first = await withSystem((db) => draftGrowthPartnerBusinessBrainFromOnboarding(db, retryContext, answers, submittedAt, 2, submittedAt));
@@ -404,6 +405,14 @@ describe("AI Growth Partner foundation", () => {
       runtimeAgentInstanceId: null,
       currentVersion: 1,
       draftVersion: null,
+      currentBusinessBrain: {
+        sections: {
+          businessIdentity: {
+            brandColor: { value: "#1d4ed8", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }] },
+            brandAccentColor: { value: "#f97316", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }] },
+          },
+        },
+      },
     });
   });
 
