@@ -120,7 +120,7 @@ export default async function IntegrationsPage() {
       icon: Bot,
       name: "AI Growth Partner runtime",
       body: runtimeSummary.body,
-      status: cardStatus("hermes") ?? { provider: "hermes", status: runtimeSummary.status, detail: null, last_checked_at: null },
+      status: { provider: "hermes", status: runtimeSummary.status, detail: runtimeSummary.detail, last_checked_at: null },
     },
     {
       key: "messaging",
