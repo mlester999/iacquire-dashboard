@@ -74,10 +74,11 @@ function ChannelMark({ channel, provider }: { channel: ConversationChannel; prov
   );
 }
 
-/** Short role name for the pill ("Sales Assistant"), falling back to the employee's own display name. */
+/** Keep the current identity visible while clearly marking historical AI assignments as retained profiles. */
 export function employeeShortName(agent: { name: string; roleKey: string }): string {
   if (agent.roleKey === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
-  return AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
+  const legacyName = AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
+  return `Previous profile · ${legacyName}`;
 }
 
 export function OwnerPill({ item }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused"> }) {
@@ -411,3 +412,4 @@ export function InboxListPanel(p: ListPanelProps) {
     </section>
   );
 }
+

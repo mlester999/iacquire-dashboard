@@ -172,7 +172,7 @@ async function saveDraft(job: WorkJobRow, agent: AgentRow, candidate: PipelineDr
        on conflict (org_id, dedupe_key) do nothing
        returning id`,
       [job.org_id, candidate.conversationId, agent.id, body, dedupeKey, candidate.opportunityId, candidate.lastInboundId,
-        `Prepared by ${agent.role_key === "growth_partner" ? "AI Growth Partner" : "Sales Assistant"} for review. Not sent.`,
+        `Prepared by ${agent.role_key === "growth_partner" ? "AI Growth Partner" : "a previous AI profile"} for review. Not sent.`,
         agent.role_key === "growth_partner"],
     );
     if (inserted.rows[0]) {
@@ -309,8 +309,8 @@ export async function runPipelineFollowUpDraftsJob(
     ? `Sales pipeline review recorded ${staleSignals} other finding${staleSignals === 1 ? "" : "s"}; ${draftCount} new follow-up draft${draftCount === 1 ? " was" : "s were"} saved for review. No message was sent.${truncated ? ` Showing the first ${limit} matching opportunities.` : ""}`
     : "Sales pipeline review completed. No stale open opportunity had an eligible AI-owned conversation, so no follow-up draft was created.";
   const conversationScope = includePreviousSalesAssistantConversations
-    ? "current AI Growth Partner conversations and retained Sales Assistant conversations"
-    : "current Sales Assistant conversations";
+    ? "the current AI Growth Partner conversation and conversations on retained profiles"
+    : "conversations on retained profiles";
   const limitations = `Only this workspace's persisted open opportunities and ${conversationScope} were used. Draft wording is a neutral template with only a simple CRM first name; it does not infer or claim conversation facts. Drafts are saved unsent; a person must review and approve them, and the existing messaging service rechecks consent, channel status, quiet hours, ownership, credits and policy before sending. No customer was contacted.`;
 
   await withSystem(async (db) => {
@@ -351,3 +351,4 @@ export async function runPipelineFollowUpDraftsJob(
     });
   });
 }
+

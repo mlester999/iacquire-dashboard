@@ -54,6 +54,7 @@ describe("the views", () => {
 describe("Growth Partner identity in Inbox", () => {
   it("uses the single product identity for Growth Partner activity", () => {
     expect(employeeShortName({ name: "Workspace-specific display name", roleKey: "growth_partner" })).toBe("AI Growth Partner");
-    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Sales Assistant");
+    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Previous profile · Sales Assistant");
   });
 });
+
