@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - codex/hermes-gha-acceptance
-      - codex/ai-growth-partner
     paths:
       - .github/hermes-acceptance.trigger
   workflow_dispatch:
@@ -32,9 +31,7 @@ jobs:
         || (github.event_name == 'push'
         && github.ref_name == 'codex/hermes-gha-acceptance')
         || (github.event_name == 'push'
-        && github.ref_name == 'codex/ai-growth-partner'
-        && (github.event.head_commit.message == 'test: run one-time synthetic Hermes acceptance'
-          || startsWith(github.event.head_commit.message, 'test: retry synthetic Hermes acceptance'))) }}
+        && github.ref_name == 'codex/hermes-gha-acceptance') }}
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -65,12 +62,6 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
             [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
             [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
-          elif [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]; then
-            [[ "$GITHUB_EVENT_NAME" == push ]]
-            trigger_message="$(git log -1 --format=%s)"
-            [[ "$trigger_message" == "test: run one-time synthetic Hermes acceptance" || "$trigger_message" == "test: retry synthetic Hermes acceptance"* ]]
-            trigger_value="$(cat .github/hermes-acceptance.trigger)"
-            [[ "$trigger_value" == RUN_SYNTHETIC_HERMES_ACCEPTANCE* ]]
           else
             [[ "$GITHUB_EVENT_NAME" == push ]]
             [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]
