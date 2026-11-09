@@ -18,7 +18,7 @@ import type { OrgContext } from "@/server/tenancy/context";
 import type { StoredAnswers } from "@/lib/onboarding/types";
 import type { ProfileKey, ProfileValues } from "@/lib/onboarding/business-profile";
 import { isRuntimeOnline } from "@/lib/employee-runtime";
-import type { AgentStatus } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, workforceIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { scanInstructionText } from "@/lib/instruction-risk";
 
 const personaSettingsSchema = z.record(z.string().min(1).max(120), z.unknown());
@@ -1310,11 +1310,13 @@ export interface GrowthPartnerConversationSearchResult {
   id: string;
   role: "user" | "assistant" | "notice";
   authorLabel: string | null;
+  source: "growth_partner" | "previous_profile";
+  profileLabel: string | null;
   excerpt: string;
   createdAt: Date;
 }
 
-/** Searches message text in the one canonical thread without exposing other conversations. */
+/** Searches the shared Partner thread and the signed-in member's own retained role chats. */
 export async function searchGrowthPartnerConversation(ctx: OrgContext, rawQuery: string): Promise<GrowthPartnerConversationSearchResult[]> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "You don't have access to the AI Growth Partner conversation.");
   const query = rawQuery.trim().replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 120);
@@ -1337,24 +1339,51 @@ export async function searchGrowthPartnerConversation(ctx: OrgContext, rawQuery:
       id: string;
       role: GrowthPartnerConversationSearchResult["role"];
       author_label: string | null;
+      source: GrowthPartnerConversationSearchResult["source"];
+      profile_role_key: AgentRoleKey | null;
+      profile_name: string | null;
       excerpt: string;
       created_at: Date;
     }>(
-      `select m.id, m.role,
-              coalesce(nullif(u.full_name, ''), case when m.author_user_id is null then null else 'Workspace member' end) as author_label,
-              substring(m.content from greatest(position(lower($3) in lower(m.content)) - 120, 1) for 300) as excerpt,
-              m.created_at
-       from chat_messages m
-       left join users u on u.id = m.author_user_id
-       where m.org_id = $1 and m.conversation_id = $2 and m.status <> 'superseded'
-         and m.content <> '' and position(lower($3) in lower(m.content)) > 0
-       order by m.created_at desc limit 40`,
-      [ctx.org.orgId, conversation.id, query],
+      `with matches as (
+         select m.id, m.role,
+                coalesce(nullif(u.full_name, ''), case when m.author_user_id is null then null else 'Workspace member' end) as author_label,
+                'growth_partner'::text as source, null::text as profile_role_key, null::text as profile_name,
+                substring(m.content from greatest(position(lower($2) in lower(m.content)) - 120, 1) for 300) as excerpt,
+                m.created_at
+         from chat_messages m
+         left join users u on u.id = m.author_user_id
+         where m.org_id = $1 and m.conversation_id = $3 and m.status <> 'superseded'
+           and m.content <> '' and position(lower($2) in lower(m.content)) > 0
+
+         union all
+
+         select m.id, m.role,
+                coalesce(nullif(u.full_name, ''), case when m.author_user_id is null then null else 'Workspace member' end) as author_label,
+                'previous_profile'::text as source, a.role_key::text as profile_role_key, a.display_name as profile_name,
+                substring(m.content from greatest(position(lower($2) in lower(m.content)) - 120, 1) for 300) as excerpt,
+                m.created_at
+         from chat_messages m
+         join chat_conversations c on c.id = m.conversation_id and c.org_id = m.org_id
+         join agent_instances a on a.id = c.agent_instance_id and a.org_id = c.org_id
+         left join users u on u.id = m.author_user_id
+         where m.org_id = $1 and c.org_id = $1 and c.user_id = $4 and c.deleted_at is null
+           and c.growth_partner_id is null and a.role_key = any($5::text[])
+           and m.status <> 'superseded' and m.content <> '' and position(lower($2) in lower(m.content)) > 0
+       )
+       select id, role, author_label, source, profile_role_key, profile_name, excerpt, created_at
+       from matches
+       order by created_at desc limit 40`,
+      [ctx.org.orgId, query, conversation.id, ctx.user.id, AGENT_ROLE_KEYS],
     );
     return rows.map((row) => ({
       id: row.id,
       role: row.role,
       authorLabel: row.author_label,
+      source: row.source,
+      profileLabel: row.source === "previous_profile" && row.profile_role_key
+        ? workforceIdentityLabel(row.profile_role_key, row.profile_name)
+        : null,
       excerpt: row.excerpt,
       createdAt: row.created_at,
     }));

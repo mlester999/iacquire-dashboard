@@ -84,6 +84,34 @@ describe("AI Growth Partner canonical conversation foundation", () => {
     ]);
     expect(await searchGrowthPartnerConversation(ctxFor(otherOwner, otherOrg, "owner"), "durable shared")).toEqual([]);
 
+    const previousProfileId = await agentId(org.id, "sales_assistant");
+    const previousThread = await withUser(ownerA.id, async (db) => (await db.query<{ id: string }>(
+      `insert into chat_conversations (org_id, agent_instance_id, user_id, title, hermes_session_id)
+       values ($1, $2, $3, 'Previous Sales Assistant history', $4) returning id`,
+      [org.id, previousProfileId, ownerA.id, `previous-${randomUUID()}`],
+    )).rows[0]);
+    await withSystem((db) => db.query(
+      `insert into chat_messages (conversation_id, org_id, role, content, author_user_id)
+       values ($1, $2, 'assistant', 'A prior profile discussed the 2026 roofing campaign marker.', null)`,
+      [previousThread.id, org.id],
+    ));
+    expect(await searchGrowthPartnerConversation(ctxFor(ownerA, org, "owner"), "roofing campaign marker")).toMatchObject([
+      {
+        id: expect.any(String),
+        role: "assistant",
+        source: "previous_profile",
+        profileLabel: expect.stringContaining("Previous profile"),
+        excerpt: expect.stringContaining("roofing campaign marker"),
+      },
+    ]);
+    expect(await searchGrowthPartnerConversation(ctxFor(ownerB, org, "owner"), "roofing campaign marker")).toEqual([]);
+    expect(await searchGrowthPartnerConversation(ctxFor(otherOwner, otherOrg, "owner"), "roofing campaign marker")).toEqual([]);
+    expect(await getConversation(ctxFor(ownerA, org, "owner"), previousThread.id)).toMatchObject({
+      conversation: { id: previousThread.id },
+      messages: [{ content: "A prior profile discussed the 2026 roofing campaign marker." }],
+    });
+    expect(await getConversation(ctxFor(ownerB, org, "owner"), previousThread.id)).toBeNull();
+
     await expect(withUser(ownerB.id, (db) => db.query(
       `insert into chat_conversations (org_id, agent_instance_id, user_id, growth_partner_id, title, hermes_session_id)
        values ($1, $2, null, $3, 'Duplicate', $4)`,

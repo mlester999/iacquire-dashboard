@@ -37,10 +37,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The whole application suite, TypeScript, lint and the production build, offline, on Linux. The suite is judged by .github/scripts/known-failures.mjs, whose list of recorded
-  # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation.
+  # The whole application suite, TypeScript and lint run offline on Linux. The suite is judged by .github/scripts/known-failures.mjs, whose list of recorded
+  # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation. The production build is gated because next/font/google
+  # downloads assets at build time; run it only after its outbound path has an approved host allowlist.
   app-checks:
-    name: Full tests, TypeScript, lint (offline) and production build
+    name: Full tests, TypeScript and lint (offline; production build gated)
     if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -115,19 +116,10 @@ jobs:
               if [ "$known" != 0 ] || [ "$types" != 0 ] || [ "$lint" != 0 ]; then exit 1; fi
             '
 
-      # The production build fetches Google Fonts, so it is the one step that needs outbound access (found by the first Linux runs of this workflow); the tests, TypeScript and lint above stay offline.
-      - name: Build the production bundle with outbound access for Google Fonts
+      - name: Skip production build until Google Fonts egress has an approved allowlist
         shell: bash
         run: |
-          set -euo pipefail
-          docker run --rm --network bridge --read-only \
-            --user "$(id -u):$(id -g)" --cap-drop ALL \
-            --security-opt no-new-privileges \
-            --tmpfs /tmp:rw,nosuid,nodev,noexec,size=1g \
-            --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
-            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
-            --workdir /workspace --entrypoint sh node:24-bookworm-slim -eu -c \
-              'npm run build'
+          echo "::notice title=Production build gated::The source imports next/font/google. No build container is given external network access until a verified allowlist for fonts.googleapis.com and fonts.gstatic.com is approved. This job does not claim a production-build pass."
 
   # The operator scripts and compose overlays of the client-only runtime (backup, restore, secrets, preflight, egress proxy, tunnel): pure Python tests with shimmed docker, age and gpg, so
   # no daemon, no network and no secret. They are the only thing that notices a later edit to a script or overlay that drops one of its safeguards.

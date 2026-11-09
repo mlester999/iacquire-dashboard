@@ -3,7 +3,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PermanentGrowthPartnerConversation } from "@/components/growth-partner/permanent-conversation";
-import { refreshGrowthPartnerConversationAction } from "@/app/actions/ai-growth-partner-conversation";
+import { refreshGrowthPartnerConversationAction, searchGrowthPartnerConversationAction } from "@/app/actions/ai-growth-partner-conversation";
 
 vi.mock("@/app/actions/ai-growth-partner-conversation", () => ({
   loadOlderGrowthPartnerMessagesAction: vi.fn(),
@@ -71,5 +71,33 @@ describe("permanent Growth Partner conversation UI", () => {
     expect(screen.getByText("Your shared conversation will be ready when setup is complete. Previous role profile histories remain saved.")).toBeTruthy();
     expect(screen.queryByText(/runtime|thread is not connected/i)).toBeNull();
     expect(screen.getByRole("link", { name: "Review setup" }).getAttribute("href")).toBe("/growth-partner");
+  });
+
+  it("labels a member's saved previous-profile history within the permanent conversation search", async () => {
+    vi.mocked(searchGrowthPartnerConversationAction).mockResolvedValue({
+      ok: true,
+      data: [{
+        id: "previous-message-id",
+        role: "assistant",
+        authorLabel: null,
+        source: "previous_profile",
+        profileLabel: "Previous profile · AI Sales Assistant",
+        excerpt: "The prior profile discussed a roofing campaign.",
+        createdAt: "2025-04-02T10:00:00.000Z",
+      }],
+    });
+
+    render(<PermanentGrowthPartnerConversation initial={{
+      conversation: { id: "shared-thread-id", title: "AI Growth Partner", lastMessageAt: null, createdAt: "2026-11-07T00:00:00.000Z" },
+      messages: [],
+      hasMore: false,
+    }} timeZone="America/New_York" nowIso="2026-11-07T01:00:00.000Z" />);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search permanent conversation" }), { target: { value: "roofing campaign" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(await screen.findByText("Previous profile · AI Sales Assistant")).toBeTruthy();
+    expect(screen.getByText("Previous profile history")).toBeTruthy();
+    expect(screen.getByText(/Only you can see that earlier history/)).toBeTruthy();
   });
 });

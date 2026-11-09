@@ -314,7 +314,7 @@ export function BookingRules({ policy, canGoAutonomous }: { policy: PolicyView; 
             <span>
               <span className="block text-[14px] font-medium">Let AI Growth Partner book without asking</span>
               <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">
-                Off by default: it proposes a time from your real calendar and you confirm in Approvals. When this is on, an employee that works autonomously books a time the customer clearly chose, and the calendar must still confirm it.
+                Off by default: it proposes a time from your real calendar and you confirm in Approvals. When this is on, your AI Growth Partner books a time the customer clearly chose, and the calendar must still confirm it.
                 {!canGoAutonomous && " Only the business owner can change this."}
               </span>
             </span>

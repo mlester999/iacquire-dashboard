@@ -35,6 +35,8 @@ interface SearchResult {
   id: string;
   role: "user" | "assistant" | "notice";
   authorLabel: string | null;
+  source: "growth_partner" | "previous_profile";
+  profileLabel: string | null;
   excerpt: string;
   createdAt: string;
 }
@@ -320,10 +322,10 @@ export function PermanentGrowthPartnerConversation({
           <CardContent className="space-y-5 px-4 py-4 sm:px-6 sm:py-5">
             {results ? (
               <section aria-live="polite" aria-label="Search results" className="space-y-3">
-                <p className="text-[12px] text-muted">{results.length} {results.length === 1 ? "match" : "matches"} in this conversation</p>
+                <p className="text-[12px] text-muted">{results.length} {results.length === 1 ? "match" : "matches"} in the shared conversation or your saved history with previous profiles. Only you can see that earlier history.</p>
                 {results.length === 0 ? <p className="rounded-xl border border-line bg-surface-2/50 px-4 py-7 text-center text-[13px] text-muted">No messages matched that search.</p> : results.map((result) => (
                   <article key={result.id} className="rounded-xl border border-line bg-surface-2/40 p-4">
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]"><span className="font-semibold text-ink-2">{result.role === "assistant" ? "AI Growth Partner" : result.authorLabel || (result.role === "notice" ? "iAcquireOS" : "Workspace member")}</span><time className="text-faint" dateTime={result.createdAt}>{new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(result.createdAt))}</time></div>
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]"><span className="font-semibold text-ink-2">{result.source === "previous_profile" && result.role === "assistant" ? result.profileLabel || "Previous profile" : result.role === "assistant" ? "AI Growth Partner" : result.authorLabel || (result.role === "notice" ? "iAcquireOS" : "Workspace member")}</span>{result.source === "previous_profile" && <Badge tone="neutral">Previous profile history</Badge>}<time className="text-faint" dateTime={result.createdAt}>{new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(result.createdAt))}</time></div>
                     <Markdown>{result.excerpt}</Markdown>
                   </article>
                 ))}
