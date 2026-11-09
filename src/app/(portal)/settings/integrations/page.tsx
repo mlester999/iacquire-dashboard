@@ -11,6 +11,7 @@ import { MetricCard, SectionLabel } from "@/components/ui/workspace";
 import { buildClientCrmCards, type ClientCardStatus } from "@/lib/integrations/client-tools";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 import { runtimeReadySql } from "@/lib/employee-runtime";
+import { growthPartnerRuntimeSummary } from "@/lib/integrations/growth-partner-runtime-summary";
 
 export const metadata = { title: "Integrations" };
 
@@ -34,13 +35,14 @@ interface Row {
 export default async function IntegrationsPage() {
   const ctx = await requireOrgContext("integrations.view");
   const canSeeCrm = ctx.can("crm.view");
-  const { statuses, agents, mapping, workspace, capabilities, counts } = await withUser(ctx.user.id, async (db) => {
+  const { statuses, growthPartnerRuntime, mapping, workspace, capabilities, counts } = await withUser(ctx.user.id, async (db) => {
     const statuses = (await db.query<{ provider: string; status: string; detail: string | null; last_checked_at: Date | null }>(
       "select provider, status, detail, last_checked_at from integration_status where org_id = $1",
       [ctx.org.orgId],
     )).rows;
-    const agents = (await db.query<{ online: number; total: number }>(
-      `select count(*) filter (where ${runtimeReadySql("agent_instances")})::int as online, count(*) filter (where enabled)::int as total from agent_instances where org_id = $1`,
+    const growthPartnerRuntime = (await db.query<{ online: number; total: number }>(
+      `select count(*) filter (where ${runtimeReadySql("agent_instances")})::int as online, count(*) filter (where enabled)::int as total
+       from agent_instances where org_id = $1 and role_key = 'growth_partner'`,
       [ctx.org.orgId],
     )).rows[0];
     const mapping = (await db.query<{ location_name: string | null; status: string; verified_at: Date | null }>(
@@ -70,7 +72,7 @@ export default async function IntegrationsPage() {
           [ctx.org.orgId],
         )).rows[0]
       : null;
-    return { statuses, agents, mapping, workspace, capabilities, counts };
+    return { statuses, growthPartnerRuntime, mapping, workspace, capabilities, counts };
   });
   const st = (p: string) => statuses.find((s) => s.provider === p);
   const cardStatus = (provider: string): ClientCardStatus | null => {
@@ -110,14 +112,15 @@ export default async function IntegrationsPage() {
   const enabledChannels = counts?.enabled_channels ?? 0;
   const testedChannels = counts?.tested_channels ?? 0;
   const activeWorkflows = counts?.active_workflows ?? 0;
+  const runtimeSummary = growthPartnerRuntimeSummary(growthPartnerRuntime?.online ?? 0, growthPartnerRuntime?.total ?? 0);
   const rows: Row[] = [
     ...crmCards.map((card) => ({ ...card, icon: crmIcons[card.key] ?? Database })),
     {
       key: "hermes",
       icon: Bot,
-      name: "AI runtime",
-      body: `${agents?.online ?? 0} of ${agents?.total ?? 0} AI profiles online. Each runs in its own private environment.`,
-      status: cardStatus("hermes") ?? { provider: "hermes", status: agents?.online ? "connected" : "not_configured", detail: null, last_checked_at: null },
+      name: "AI Growth Partner runtime",
+      body: runtimeSummary.body,
+      status: cardStatus("hermes") ?? { provider: "hermes", status: runtimeSummary.status, detail: null, last_checked_at: null },
     },
     {
       key: "messaging",
@@ -157,7 +160,7 @@ export default async function IntegrationsPage() {
       </section>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <MetricCard label="Verified connections" value={connected} detail="From the latest recorded service checks" tone="green" icon={<CheckCircle2 className="size-4" />} />
-        <MetricCard label="AI profiles online" value={`${agents?.online ?? 0}/${agents?.total ?? 0}`} detail="Verified runtimes in your private workspace" tone="blue" icon={<Bot className="size-4" />} />
+        <MetricCard label="AI Growth Partner runtime" value={runtimeSummary.value} detail={runtimeSummary.detail} tone="blue" icon={<Bot className="size-4" />} />
       </div>
       <div className="grid gap-4 md:grid-cols-2" data-aqi-target="settings.integrations.list">
         {rows.map((r) => {
