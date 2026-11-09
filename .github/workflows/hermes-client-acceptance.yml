@@ -33,7 +33,8 @@ jobs:
         && github.ref_name == 'codex/hermes-gha-acceptance')
         || (github.event_name == 'push'
         && github.ref_name == 'codex/ai-growth-partner'
-        && github.event.head_commit.message == 'test: run one-time synthetic Hermes acceptance') }}
+        && (github.event.head_commit.message == 'test: run one-time synthetic Hermes acceptance'
+          || startsWith(github.event.head_commit.message, 'test: retry synthetic Hermes acceptance'))) }}
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -66,8 +67,10 @@ jobs:
             [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
           elif [[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]; then
             [[ "$GITHUB_EVENT_NAME" == push ]]
-            [[ "$(git log -1 --format=%s)" == "test: run one-time synthetic Hermes acceptance" ]]
-            [[ "$(cat .github/hermes-acceptance.trigger)" == "RUN_SYNTHETIC_HERMES_ACCEPTANCE" ]]
+            trigger_message="$(git log -1 --format=%s)"
+            [[ "$trigger_message" == "test: run one-time synthetic Hermes acceptance" || "$trigger_message" == "test: retry synthetic Hermes acceptance"* ]]
+            trigger_value="$(cat .github/hermes-acceptance.trigger)"
+            [[ "$trigger_value" == RUN_SYNTHETIC_HERMES_ACCEPTANCE* ]]
           else
             [[ "$GITHUB_EVENT_NAME" == push ]]
             [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]
@@ -365,8 +368,8 @@ jobs:
             fi
             home_volume="${HERMES_ACCEPTANCE_PROJECT}_hermes_home"
             probe_image="${IACQUIRE_HERMES_IMAGE:-iacquire/hermes-client:acceptance}"
-            home_probe="$(docker run --rm --network none --user 10000:10000 \
-              --cpus=0.5 --memory=256m --pids-limit=32 --cap-drop=ALL \
+            home_probe="$(docker run --rm --network none --user 10000:10000 --cap-drop=ALL \
+              --cpus=0.5 --memory=256m --pids-limit=32 \
               --security-opt no-new-privileges:true --read-only \
               --mount "type=volume,source=$home_volume,target=/opt/data,readonly" \
               --mount "type=bind,source=$HERMES_ACCEPTANCE_DIR/client-config.yaml,target=/opt/data/config.yaml,readonly" \
