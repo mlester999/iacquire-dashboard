@@ -198,6 +198,7 @@ describe("parseEvidenceMarker", () => {
     serverMarker("approved_write", { kind: "schedule", id: "3f2b8c1e-0000-4000-8000-000000000001" }),
     serverMarker("completed_action", { kind: "appointment_booking", id: "3f2b8c1e-0000-4000-8000-000000000002" }),
     serverMarker("record_retrieval", { kind: "work_job", id: "3f2b8c1e-0000-4000-8000-000000000003" }),
+    serverMarker("record_retrieval", { kind: "work_report", id: "3f2b8c1e-0000-4000-8000-000000000004" }),
   ];
 
   it.each(valid.map((marker) => [JSON.stringify(marker), marker] as const))("accepts %s unchanged", (_label, marker) => {

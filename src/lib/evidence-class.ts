@@ -23,7 +23,7 @@ export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 export type ServerEvidenceClass = Exclude<EvidenceClass, "model_response">;
 
 /** The ledger row that proves the action and retrieval classes. */
-export const EVIDENCE_LEDGER_KINDS = ["work_job", "approval", "appointment_booking", "conversation_message", "schedule", "task"] as const;
+export const EVIDENCE_LEDGER_KINDS = ["work_job", "work_report", "approval", "appointment_booking", "conversation_message", "schedule", "task"] as const;
 export type EvidenceLedgerKind = (typeof EVIDENCE_LEDGER_KINDS)[number];
 
 export type EvidenceClaims = "none_found" | "unbacked_action_claim";

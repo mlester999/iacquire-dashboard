@@ -3,7 +3,7 @@ import { PermanentGrowthPartnerConversation } from "@/components/growth-partner/
 import { getGrowthPartnerConversationPage } from "@/server/ai-growth-partner/service";
 import { requireOrgContext } from "@/server/tenancy/context";
 
-export const metadata = { title: "Permanent Conversation" };
+export const metadata = { title: "AI Growth Partner" };
 
 export default async function GrowthPartnerConversationPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const { q } = await searchParams;

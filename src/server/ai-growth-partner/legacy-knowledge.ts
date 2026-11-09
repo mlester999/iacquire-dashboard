@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
 import { recordAudit } from "@/server/audit";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
@@ -101,8 +102,24 @@ export type GrowthPartnerLegacyKnowledgeReview = {
   imports: GrowthPartnerLegacyKnowledgeImport[];
 };
 
+const LEGACY_ROLE_CAPABILITY = {
+  operations_manager: "business_operations",
+  lead_hunter: "lead_discovery_qualification",
+  appointment_setter: "calendar_appointments",
+  sales_assistant: "sales_outreach",
+  crm_manager: "crm_pipeline",
+  performance_analyst: "performance_analytics",
+} as const satisfies Record<AgentRoleKey, keyof typeof AI_GROWTH_PARTNER_CAPABILITY_INFO>;
+
+/** Show the unified capability domain instead of reviving a former employee identity in the client UI. */
+export function legacyKnowledgeCapabilityLabel(roleKey: AgentRoleKey | null): string {
+  return roleKey
+    ? AI_GROWTH_PARTNER_CAPABILITY_INFO[LEGACY_ROLE_CAPABILITY[roleKey]].title
+    : "Shared company knowledge";
+}
+
 function roleLabel(roleKey: AgentRoleKey | null): string {
-  return roleKey ? AGENT_BY_KEY[roleKey].shortName : "Shared reference";
+  return legacyKnowledgeCapabilityLabel(roleKey);
 }
 
 async function partnerIdFor(ctx: OrgContext, db: Queryable) {

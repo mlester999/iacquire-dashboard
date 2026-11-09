@@ -30,7 +30,7 @@ const NAV = [
   { href: "/admin/crm/reports", label: "CRM operations", icon: BarChart3, group: "Operations" },
   // Reusable CRM configuration the agency builds once and applies to a client as an independent copy (never contacts or credentials).
   { href: "/admin/crm-blueprints", label: "CRM Blueprints", icon: Layers, group: "Operations" },
-  { href: "/admin/employees", label: "AI Partner Management", icon: Sparkles, group: "Operations" },
+  { href: "/admin/employees", label: "AI Growth Partner Operations", icon: Sparkles, group: "Operations" },
   { href: "/admin/support", label: "Requests", icon: Inbox, group: "Operations" },
   // The agency team's own chat (agency.messages.use, and the module switched on by a Super Admin, who always sees the entry so the switch can be reached). It carries the unread badge.
   { href: "/admin/messages", label: "Messages", icon: MessagesSquare, messages: true, group: "Operations" },

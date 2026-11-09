@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
+import { serverMarker } from "@/lib/evidence-class";
+import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { systemActor } from "@/server/crm/actor";
 import { createTaskInTx } from "@/server/crm/tasks";
 import { notifyUser } from "@/server/notifications";
@@ -671,8 +673,9 @@ async function composeBriefing(
   const hours = input.kind === "daily_briefing" ? 24 : 168;
   const since = new Date(input.now.getTime() - hours * 3_600_000);
   const [reportsResult, counts, orgRow] = await Promise.all([
-    db.query<{ id: string; kind: string; severity: ProactiveSeverity; title: string; summary: string; created_at: Date; employee_name: string | null }>(
-      `select r.id, r.kind, r.severity, r.title, r.summary, r.created_at, a.display_name as employee_name
+    db.query<{ id: string; kind: string; capability: string | null; severity: ProactiveSeverity; title: string; summary: string; created_at: Date; employee_name: string | null; role_key: string | null }>(
+      `select r.id, r.kind, r.capability, r.severity, r.title, r.summary, r.created_at,
+              a.display_name as employee_name, a.role_key
          from ai_work_reports r
          left join agent_instances a on a.id = r.agent_instance_id and a.org_id = r.org_id
         where r.org_id = $1 and r.created_at >= $2
@@ -681,7 +684,12 @@ async function composeBriefing(
       [input.orgId, since.toISOString()],
     ),
     briefingCounts(db, input.orgId, since),
-    db.query<{ timezone: string | null }>("select timezone from organizations where id = $1", [input.orgId]),
+    db.query<{ timezone: string | null; kind: string; has_growth_partner: boolean }>(
+      `select o.timezone, o.kind,
+              exists(select 1 from ai_growth_partners p where p.org_id = o.id) as has_growth_partner
+         from organizations o where o.id = $1`,
+      [input.orgId],
+    ),
   ]);
   const reports = reportsResult.rows;
   let performanceMetrics: ReviewMetric[] = [];
@@ -702,7 +710,13 @@ async function composeBriefing(
     counts.approvals > 0 ? "warning" : "info",
     counts.failedJobs > 0 ? "warning" : "info",
   ]);
-  const title = input.kind === "daily_briefing" ? "Your daily AI workforce briefing" : "Your weekly AI workforce summary";
+  const org = orgRow.rows[0];
+  const reportIdentity = org?.kind === "client"
+    ? org.has_growth_partner ? "AI Growth Partner" : "workspace"
+    : "iAcquire operations";
+  const title = input.kind === "daily_briefing"
+    ? `Your daily ${reportIdentity} briefing`
+    : `Your weekly ${reportIdentity} summary`;
   const metricNote = performanceMetrics.length ? ` It includes ${performanceMetrics.length} measured performance value${performanceMetrics.length === 1 ? "" : "s"} from the latest completed Performance snapshot.` : "";
   const summary = `${reports.length} proactive report${reports.length === 1 ? "" : "s"}, ${counts.approvals} approval${counts.approvals === 1 ? "" : "s"} waiting, ${counts.failedJobs} failed or blocked job${counts.failedJobs === 1 ? "" : "s"}, ${counts.overdueTasks} overdue task${counts.overdueTasks === 1 ? "" : "s"} and ${counts.pendingLeads} lead${counts.pendingLeads === 1 ? "" : "s"} awaiting review in the last ${hours === 24 ? "24 hours" : "7 days"}.${metricNote}`;
   const sections: ProactiveSection[] = [
@@ -710,7 +724,13 @@ async function composeBriefing(
       key: "what_happened",
       title: "What happened",
       body: reports.length
-        ? reports.slice(0, 6).map((report) => `${report.employee_name ?? "AI workforce"}: ${report.title}`).join("\n")
+        ? reports.slice(0, 6).map((report) => {
+          const capability = report.capability ? capabilityDefinition(report.capability)?.label : null;
+          const identity = org?.kind === "client"
+            ? report.role_key === "growth_partner" ? "AI Growth Partner" : capability ?? "Earlier profile work"
+            : report.employee_name ?? "iAcquire operations";
+          return `${identity}: ${report.title}`;
+        }).join("\n")
         : "No proactive review produced a report in this period.",
       items: reports.slice(0, 6).map((report) => report.title),
     },
@@ -734,13 +754,62 @@ async function composeBriefing(
       items: [
         counts.approvals ? `Review ${counts.approvals} pending approval${counts.approvals === 1 ? "" : "s"} in the Approval Center.` : null,
         counts.pendingLeads ? `Review ${counts.pendingLeads} researched lead${counts.pendingLeads === 1 ? "" : "s"}.` : null,
-        counts.failedJobs ? "Open the AI Work Board and read the recorded failure reason before retrying." : null,
+        counts.failedJobs ? "Open your Work Board and read the recorded failure reason before retrying." : null,
         reports.length ? "Open the reports below for evidence and recommended next actions." : "No further action is indicated by this briefing.",
       ].filter((item): item is string => Boolean(item)),
     },
     { key: "approval", title: "Does the owner need to approve anything?", body: counts.approvals ? `${counts.approvals} approval${counts.approvals === 1 ? " is" : "s are"} already waiting. This briefing does not approve or create one.` : "No approval is waiting. Any sensitive action still requires a decision in the Approval Center." },
   ];
   return { title, summary, sections, severity, hasContent, counts: { ...counts, reports: reports.length, metrics: performanceMetrics.length }, reports: reports.length, metrics: performanceMetrics };
+}
+
+function briefingConversationMessageKey(orgId: string, kind: "daily_briefing" | "weekly_summary", dateKey: string): string {
+  const digest = createHash("sha256").update(`${orgId}:${kind}:${dateKey}`).digest("hex").slice(0, 48);
+  return `briefing:${digest}`;
+}
+
+/** Adds an opted-in report to the existing shared conversation when a verified Partner thread exists. */
+async function appendBriefingToGrowthPartnerConversation(
+  db: Queryable,
+  input: { orgId: string; reportId: string; title: string; summary: string; messageKey: string; now: Date },
+): Promise<boolean> {
+  const conversation = (await db.query<{ id: string }>(
+    `select c.id
+       from ai_growth_partners p
+       join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
+       join chat_conversations c on c.growth_partner_id = p.id and c.org_id = p.org_id
+         and c.agent_instance_id = a.id and c.deleted_at is null
+      where p.org_id = $1 and p.runtime_agent_instance_id is not null
+      limit 1`,
+    [input.orgId],
+  )).rows[0];
+  if (!conversation) return false;
+
+  const content = `${input.title}\n\n${input.summary}\n\n[Review the full report on your Work Board](/work?report=${encodeURIComponent(input.reportId)})`;
+  const inserted = await db.query<{ id: string }>(
+    `insert into chat_messages
+       (conversation_id, org_id, role, content, status, client_message_id, evidence, created_at, updated_at)
+     values ($1, $2, 'assistant', $3, 'complete', $4, $5::jsonb, $6, $6)
+     on conflict (conversation_id, client_message_id) do nothing
+     returning id`,
+    [
+      conversation.id,
+      input.orgId,
+      content,
+      input.messageKey,
+      JSON.stringify(serverMarker("record_retrieval", { kind: "work_report", id: input.reportId })),
+      input.now.toISOString(),
+    ],
+  );
+  if (!inserted.rows[0]) return false;
+
+  await db.query(
+    `update chat_conversations
+        set last_message_at = greatest(coalesce(last_message_at, $3), $3)
+      where id = $1 and org_id = $2 and growth_partner_id is not null and deleted_at is null`,
+    [conversation.id, input.orgId, input.now.toISOString()],
+  );
+  return true;
 }
 
 /**
@@ -773,6 +842,7 @@ export async function runProactiveBriefings(now = new Date()): Promise<{
     const prefs = parseProactivePrefs(row.prefs);
     if (!prefs.dailyBriefing && !prefs.weeklySummary) continue;
     const timeZone = row.timezone || row.org_timezone || "UTC";
+    const orgDateKey = localDateKey(now, row.org_timezone || "UTC");
     if (localHour(now, timeZone) < prefs.briefingHour) continue;
     const dateKey = localDateKey(now, timeZone);
     const due: Array<"daily_briefing" | "weekly_summary"> = [];
@@ -806,6 +876,14 @@ export async function runProactiveBriefings(now = new Date()): Promise<{
             alertKey: dedupeKey,
           });
           if (!report.created) return { reportId: report.id, delivery: "suppressed" as const };
+          await appendBriefingToGrowthPartnerConversation(db, {
+            orgId: row.org_id,
+            reportId: report.id,
+            title: briefing.title,
+            summary: briefing.summary,
+            messageKey: briefingConversationMessageKey(row.org_id, kind, orgDateKey),
+            now,
+          });
           const delivery = parseProactivePrefs(row.prefs);
           if (!delivery.enabled) {
             await db.query(
@@ -862,14 +940,17 @@ export async function listProactiveReports(
       sections: unknown; findings: unknown; evidence: unknown; data: Record<string, unknown>; actions: unknown;
       capability: string | null; job_id: string | null; status: "open" | "acknowledged" | "resolved";
       acknowledged_at: Date | null; created_at: Date; employee_name: string | null; employee_role: string | null;
+      growth_partner_id: string | null;
       job_status: string | null; delivery_status: ProactiveReportView["deliveryStatus"]; delivery_reason: string | null;
     }>(
       `select r.id, r.kind, r.severity, r.title, r.summary, r.sections, r.findings, r.evidence, r.data, r.actions,
               r.capability, r.job_id, r.status, r.acknowledged_at, r.created_at,
               a.display_name as employee_name, a.role_key as employee_role,
+              p.id as growth_partner_id,
               j.status as job_status, d.status as delivery_status, d.reason as delivery_reason
          from ai_work_reports r
          left join agent_instances a on a.id = r.agent_instance_id and a.org_id = r.org_id
+         left join ai_growth_partners p on p.org_id = r.org_id
          left join ai_work_jobs j on j.id = r.job_id and j.org_id = r.org_id
          left join ai_work_report_deliveries d on d.report_id = r.id and d.user_id = $2
         where r.org_id = $1
@@ -893,8 +974,12 @@ export async function listProactiveReports(
         metrics: asMetrics(data.metrics),
         actions: asActions(row.actions),
         data,
-        employeeName: row.employee_name ?? "AI workforce",
-        employeeRole: row.employee_role && isWorkforceRoleKey(row.employee_role) ? row.employee_role : null,
+        employeeName: row.employee_name ?? (row.growth_partner_id
+          ? "AI Growth Partner"
+          : ctx.org.kind === "client" ? "Workspace briefing" : "iAcquire operations"),
+        employeeRole: row.employee_role && isWorkforceRoleKey(row.employee_role)
+          ? row.employee_role
+          : row.growth_partner_id ? "growth_partner" : null,
         capability: row.capability,
         jobId: row.job_id,
         jobStatus: row.job_status,

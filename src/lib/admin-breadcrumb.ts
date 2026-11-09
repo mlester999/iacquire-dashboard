@@ -26,7 +26,7 @@ export const BLUEPRINT_SECTIONS = [
 
 /** Top-level agency screens. The sidebar shows the same names. */
 export const ADMIN_SECTIONS: Record<string, string> = {
-  clients: "Clients", crm: "Client CRMs", "crm-blueprints": "CRM Blueprints", employees: "AI Partner Management", support: "Requests", notifications: "Notifications", "website-studio": "Website Studio", projects: "Custom projects",
+  clients: "Clients", crm: "Client CRMs", "crm-blueprints": "CRM Blueprints", employees: "AI Growth Partner Operations", support: "Requests", notifications: "Notifications", "website-studio": "Website Studio", projects: "Custom projects",
   maintenance: "Maintenance", services: "Service catalog", portfolio: "Portfolio", "setup-templates": "Setup templates", integrations: "Integrations", "inbox-rollout": "Inbox rollout", "module-rollout": "Module rollout", aqi: "AQi Management", operations: "AQi Operations",
   health: "System health", billing: "Billing & finance", usage: "Usage & costs", requests: "Access requests", prospects: "Demo prospects", "purchase-intents": "Purchase intents", messages: "Messages", workload: "Staff workload", team: "Agency team", audit: "Audit log",
 };

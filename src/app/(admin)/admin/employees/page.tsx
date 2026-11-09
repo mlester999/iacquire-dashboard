@@ -10,7 +10,7 @@ import { countInternalHeldConfigReviews } from "@/server/workforce/reviews";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 
-export const metadata = { title: "AI Partner Management" };
+export const metadata = { title: "AI Growth Partner Operations" };
 
 export default async function AdminWorkforcePage() {
   const user = await requireAgency();
@@ -35,8 +35,8 @@ export default async function AdminWorkforcePage() {
           <span className="font-medium">Review →</span>
         </Link>
       )}
-      {user.platformRole === "agency_super_admin" && <AgencyWorkforceManager agents={agencyAgents} gateways={gateways} canManage timeZone={agencyTimezoneRows.rows[0]?.timezone ?? "UTC"} />}
       <GrowthPartnerManager partners={partners} />
+      {user.platformRole === "agency_super_admin" && <AgencyWorkforceManager agents={agencyAgents} gateways={gateways} canManage timeZone={agencyTimezoneRows.rows[0]?.timezone ?? "UTC"} />}
       <WorkforceManager agents={agents} />
     </div>
   );

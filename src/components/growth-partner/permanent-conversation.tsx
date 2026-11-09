@@ -288,8 +288,8 @@ export function PermanentGrowthPartnerConversation({
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <ButtonLink href="/growth-partner" variant="ghost" size="sm" className="mb-3 -ml-2"><ArrowLeft className="size-4" aria-hidden /> AI Growth Partner</ButtonLink>
-          <div className="flex flex-wrap items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-ink sm:text-[30px]">Permanent conversation</h1><Badge tone={initial ? "success" : "warning"}>{initial ? "One shared thread" : "Not connected"}</Badge></div>
-          <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-muted">One lasting history for your authorized workspace members. There are no separate chats for roles, tasks or scheduled work.</p>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-ink sm:text-[30px]">AI Growth Partner</h1><Badge tone={initial ? "success" : "warning"}>{initial ? "One shared conversation" : "Setup in progress"}</Badge></div>
+          <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-muted">Your workspace shares one lasting conversation with the AI Growth Partner. There are no separate chats for roles, tasks or scheduled work.</p>
         </div>
         {initial?.conversation.lastMessageAt && <span className="inline-flex items-center gap-1.5 text-[12px] text-faint"><Clock3 className="size-3.5" aria-hidden /> Updated {new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone }).format(new Date(initial.conversation.lastMessageAt))}</span>}
       </div>
@@ -298,9 +298,9 @@ export function PermanentGrowthPartnerConversation({
         <Card className="border border-line bg-surface shadow-soft">
           <CardContent className="flex flex-col items-center px-6 py-12 text-center">
             <div className="flex size-12 items-center justify-center rounded-2xl border border-line bg-surface-2 text-muted"><MessageSquareText className="size-5" aria-hidden /></div>
-            <h2 className="mt-4 text-[17px] font-semibold text-ink">The permanent thread is not connected yet</h2>
-            <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-muted">A single shared history will appear here after a dedicated Growth Partner runtime and its conversation pass verification. Existing employee histories remain preserved in their original records.</p>
-            <ButtonLink href="/growth-partner" variant="secondary" size="md" className="mt-5">Review partner setup <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>
+            <h2 className="mt-4 text-[17px] font-semibold text-ink">Your AI Growth Partner is still being set up</h2>
+            <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-muted">Your shared conversation will be ready when setup is complete. Previous role profile histories remain saved.</p>
+            <ButtonLink href="/growth-partner" variant="secondary" size="md" className="mt-5">Review setup <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>
           </CardContent>
         </Card>
       ) : (

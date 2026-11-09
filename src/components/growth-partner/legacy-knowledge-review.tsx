@@ -127,7 +127,7 @@ export function GrowthPartnerLegacyKnowledgeReview({ data }: { data: GrowthPartn
         <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><BookOpen className="size-5" aria-hidden /></div>
         <div className="min-w-0 flex-1">
           <CardTitle>Retained profile knowledge</CardTitle>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">Bring approved notes and released reference excerpts into the unified Partner&apos;s review queue. Source records remain in place.</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">Bring approved notes and released reference excerpts into the unified Partner&apos;s review queue. Previous profile records are grouped by the capability they support, and source records remain in place.</p>
         </div>
         <Badge tone={data.imports.some((item) => item.status === "pending_review") ? "warning" : "neutral"}>
           {data.imports.filter((item) => item.status === "pending_review").length} to review

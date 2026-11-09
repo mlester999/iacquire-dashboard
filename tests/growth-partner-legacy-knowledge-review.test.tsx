@@ -26,7 +26,7 @@ describe("Growth Partner retained knowledge review panel", () => {
   it("previews a source before creating a review-only snapshot", async () => {
     vi.mocked(previewGrowthPartnerLegacyKnowledgeAction).mockResolvedValue({
       ok: true,
-      data: { title: "Lead Hunter · Storm response", content: "Route active leaks to the service manager.", status: "available" },
+      data: { title: "Lead Discovery & Qualification · Storm response", content: "Route active leaks to the service manager.", status: "available" },
     });
     vi.mocked(importGrowthPartnerLegacyKnowledgeAction).mockResolvedValue({
       ok: true,
@@ -37,11 +37,12 @@ describe("Growth Partner retained knowledge review panel", () => {
       sourceId: "6d99405e-13f4-4f0b-b036-fc1eaa92a146",
       sourceVersion: "3",
       title: "Storm response",
-      roleLabel: "Lead Hunter",
+      roleLabel: "Lead Discovery & Qualification",
       updatedAt: "2026-11-07T00:00:00.000Z",
       preview: "Route active leaks...",
     };
     render(<GrowthPartnerLegacyKnowledgeReview data={{ candidates: [candidate], imports: [] }} />);
+    expect(screen.getByText(/Previous profile records are grouped by the capability/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /preview/i }));
     await screen.findByText("Route active leaks to the service manager.");

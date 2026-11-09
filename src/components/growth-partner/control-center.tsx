@@ -80,7 +80,7 @@ const capabilityStatusInfo: Record<GrowthPartnerCapabilityAccessStatus, { label:
   permission_required: { label: "Your access needed", tone: "warning" },
   disabled: { label: "Turned off", tone: "warning" },
   actions_unverified: { label: "Access check needed", tone: "neutral" },
-  runtime_unverified: { label: "Runtime check needed", tone: "neutral" },
+  runtime_unverified: { label: "Connection check needed", tone: "neutral" },
   not_configured: { label: "Not set up", tone: "neutral" },
 };
 
@@ -95,16 +95,16 @@ const workspaceControlItems = [
   { key: "messaging", label: "Messaging", description: "Review customer messaging channels and AI reply settings.", href: "/settings/messaging", permission: "inbox.view", icon: MessageSquareText },
   { key: "approvals", label: "Approvals", description: "Review work waiting for a decision.", href: "/approvals", permission: "approvals.view", icon: ShieldCheck },
   { key: "access", label: "Team & access", description: "Review workspace members and their access.", href: "/settings/team", permission: "team.view", icon: Users },
-  { key: "activity", label: "Activity", description: "Inspect recorded Partner actions and AI runs.", href: "/activity", permission: "activity.view", icon: Activity },
+  { key: "activity", label: "Activity", description: "Review recorded work by your AI Growth Partner.", href: "/activity", permission: "activity.view", icon: Activity },
   { key: "usage", label: "Usage & health", description: "Check AI usage and workspace limits.", href: "/settings/usage", permission: "usage.view", icon: Gauge },
 ] as const;
 
 const stateLabels: Record<GrowthPartnerControlState["status"], { label: string; tone: "neutral" | "success" | "warning" }> = {
   setup_required: { label: SETUP_REQUIRED_LABEL, tone: "warning" },
-  provisioning: { label: "Provisioning", tone: "neutral" },
+  provisioning: { label: "Setting up", tone: "neutral" },
   configured: { label: "Configured", tone: "success" },
   paused: { label: "Paused", tone: "warning" },
-  migration_required: { label: "Migration required", tone: "warning" },
+  migration_required: { label: "Review previous profiles", tone: "warning" },
 };
 
 const factStateLabels: Record<BusinessBrainFact["state"], string> = {
@@ -335,7 +335,7 @@ export function GrowthPartnerControlCenter({
   const stateInfo = state
     ? stateLabels[state.status]
     : legacyProfilesPresent
-      ? { label: "Migration required", tone: "warning" as const }
+      ? { label: "Review previous profiles", tone: "warning" as const }
       : { label: "Not set up", tone: "neutral" as const };
   const activeBrain = state?.currentBusinessBrain ?? null;
   const draftBrain = state?.draftBusinessBrain ?? null;
@@ -379,9 +379,9 @@ export function GrowthPartnerControlCenter({
       <section aria-label="Partner status" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={<CircleCheck className="size-5" aria-hidden />}
-          label="Partner identity"
-          value={state ? "Created" : "Not created"}
-          detail={state ? `This workspace has one logical ${state.name} identity.` : "No Growth Partner identity is saved for this workspace yet."}
+          label="Partner"
+          value={state ? "Set up" : "Not set up"}
+          detail={state ? `This workspace has one ${state.name}.` : "Your AI Growth Partner has not been set up here yet."}
           tone={state ? "success" : "neutral"}
         />
         <MetricCard
@@ -393,16 +393,16 @@ export function GrowthPartnerControlCenter({
         />
         <MetricCard
           icon={<ShieldCheck className="size-5" aria-hidden />}
-          label="Runtime profile"
-          value={runtimeLinked ? "Profile linked" : state?.status === "provisioning" ? "Provisioning" : "Not provisioned"}
-          detail={runtimeLinked ? "A profile is attached; runtime health still needs its own verification." : "No runtime profile is attached to this identity."}
+          label="Partner connection"
+          value={runtimeLinked ? "Connected" : state?.status === "provisioning" ? "Setting up" : "Not connected"}
+          detail={runtimeLinked ? "Connection and access checks run before the AI Growth Partner can use a tool." : "Your AI Growth Partner needs a connection before it can work."}
           tone={runtimeLinked ? "success" : state?.status === "provisioning" ? "warning" : "neutral"}
         />
         <MetricCard
           icon={<MessageSquareText className="size-5" aria-hidden />}
           label="Permanent conversation"
           value={state?.conversationId ? "Connected" : "Not connected"}
-          detail={state?.conversationId ? "One permanent thread is available to workspace members with AI access." : "The shared thread stays unavailable until a dedicated runtime and history checks are complete."}
+          detail={state?.conversationId ? "One shared history is available to workspace members with AI access." : "Your shared conversation will be ready when setup and connection checks are complete."}
           tone={state?.conversationId ? "success" : "warning"}
         />
       </section>
@@ -446,7 +446,7 @@ export function GrowthPartnerControlCenter({
       <section data-aqi-target="growth-partner.brain">
         <SectionHeading
           title="One partner, six capabilities"
-          description="These capabilities belong to one Growth Partner identity. Readiness combines your access, the Partner's saved Allowed actions and its runtime check; connected services, limits and approvals are checked again when work starts."
+          description="These capabilities belong to one AI Growth Partner. We show your access, the tools it is allowed to use and whether its connection has been checked. Service limits and approval rules are checked again before work starts."
         />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {capabilityAreas.map(({ key, title, description, icon: Icon, capabilityKeys }) => {
@@ -587,7 +587,7 @@ export function GrowthPartnerControlCenter({
               <div className="flex gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
                 <MessageSquareText className="mt-0.5 size-5 shrink-0 text-muted" aria-hidden />
                 <p className="text-[13px] leading-relaxed text-muted">
-                  This workspace does not yet have a registered permanent conversation for the AI Growth Partner. Conversations from previous role profiles remain in their original history while a dedicated unified runtime is prepared.
+                  Your AI Growth Partner’s shared conversation is not ready yet. It will open when setup and connection checks are complete. Histories from previous role profiles remain saved.
                 </p>
               </div>
             )}

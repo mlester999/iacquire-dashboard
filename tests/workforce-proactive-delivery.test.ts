@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
+import { parseEvidenceMarker } from "@/lib/evidence-class";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { createWorkJob, getWorkJob } from "@/server/workforce/jobs";
 import {
@@ -91,6 +92,24 @@ async function setProactivePrefs(userId: string, proactive: Record<string, unkno
   );
 }
 
+async function ensurePartnerConversation() {
+  return withSystem(async (db) => {
+    const runtimeId = await ensureGrowthPartnerRuntime(org.id, db);
+    const partner = (await db.query<{ id: string }>("select id from ai_growth_partners where org_id = $1", [org.id])).rows[0];
+    const existing = await db.query<{ id: string }>(
+      "select id from chat_conversations where org_id = $1 and growth_partner_id = $2 and deleted_at is null",
+      [org.id, partner.id],
+    );
+    if (existing.rows[0]) return existing.rows[0].id;
+    const created = await db.query<{ id: string }>(
+      `insert into chat_conversations (org_id, agent_instance_id, user_id, title, hermes_session_id, growth_partner_id)
+       values ($1, $2, null, 'AI Growth Partner', $3, $4) returning id`,
+      [org.id, runtimeId, `iaq-gp-${crypto.randomUUID()}`, partner.id],
+    );
+    return created.rows[0].id;
+  });
+}
+
 beforeAll(async () => {
   org = await createOrg({ name: "Proactive Delivery Co" });
   owner = await createUser();
@@ -123,6 +142,13 @@ beforeEach(async () => {
     await db.query("delete from notifications where org_id = $1", [org.id]);
     await db.query("delete from tasks where org_id = $1", [org.id]);
     await db.query("delete from ai_work_reports where org_id = $1", [org.id]);
+    await db.query("delete from chat_messages where org_id = $1 and client_message_id like 'briefing:%'", [org.id]);
+    await db.query(
+      `update chat_conversations c set last_message_at = (
+         select max(m.created_at) from chat_messages m where m.conversation_id = c.id and m.org_id = c.org_id
+       ) where c.org_id = $1 and c.growth_partner_id is not null`,
+      [org.id],
+    );
     await db.query("delete from notification_preferences where org_id = $1", [org.id]);
   });
 });
@@ -304,7 +330,59 @@ describe("monitoring state and briefing slots", () => {
       ),
     );
     expect(Number(rows[0].n)).toBe(1);
-    expect(rows[0].title).toMatch(/daily AI workforce briefing/i);
+    expect(rows[0].title).toMatch(/daily workspace briefing/i);
+    const messages = await withSystem((db) => db.query<{ n: number; partners: number }>(
+      `select count(m.id)::int as n,
+              (select count(*)::int from ai_growth_partners p where p.org_id = $1) as partners
+         from chat_messages m where m.org_id = $1 and m.client_message_id like 'briefing:%'`,
+      [org.id],
+    ));
+    expect(Number(messages.rows[0].n)).toBe(0);
+    expect(Number(messages.rows[0].partners)).toBe(0);
+  }, 30000);
+
+  it("posts one opted-in daily and weekly briefing into the existing Partner conversation with persisted report evidence", async () => {
+    const conversationId = await ensurePartnerConversation();
+    process.env.WORKFORCE_BRIEFINGS_ENABLED = "true";
+    await setProactivePrefs(owner.id, { dailyBriefing: true, weeklySummary: true, briefingHour: 0, minimumSeverity: "info", delivery: "immediate", quietStart: null, quietEnd: null });
+    await setProactivePrefs(admin.id, { dailyBriefing: true, weeklySummary: true, briefingHour: 0, minimumSeverity: "info", delivery: "immediate", quietStart: null, quietEnd: null });
+    await publish([finding()]);
+
+    const now = new Date("2026-10-19T09:00:00.000Z");
+    const first = await runProactiveBriefings(now);
+    const second = await runProactiveBriefings(new Date("2026-10-19T10:00:00.000Z"));
+    expect(first.generated).toBeGreaterThanOrEqual(1);
+    expect(second.generated).toBe(0);
+
+    const { rows } = await withSystem((db) => db.query<{
+      id: string; role: string; content: string; client_message_id: string; evidence: unknown; last_message_at: Date | null;
+    }>(
+      `select m.id, m.role, m.content, m.client_message_id, m.evidence, c.last_message_at
+         from chat_messages m
+         join chat_conversations c on c.id = m.conversation_id and c.org_id = m.org_id
+        where c.id = $1 and m.client_message_id like 'briefing:%'`,
+      [conversationId],
+    ));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.role === "assistant")).toBe(true);
+    expect(rows.some((row) => row.content.includes("Your daily AI Growth Partner briefing"))).toBe(true);
+    expect(rows.some((row) => row.content.includes("Your weekly AI Growth Partner summary"))).toBe(true);
+    for (const row of rows) {
+      expect(row.content).toMatch(/\[Review the full report on your Work Board\]\(\/work\?report=[0-9a-f-]{36}\)/i);
+      expect(parseEvidenceMarker(row.evidence)).toMatchObject({
+        v: 1,
+        class: "record_retrieval",
+        ledger: { kind: "work_report" },
+      });
+      expect(row.last_message_at).toBeTruthy();
+    }
+
+    const listed = await listProactiveReports(ctxFor(owner, org, "owner"));
+    expect(listed.filter((report) => report.kind === "daily_briefing" || report.kind === "weekly_summary")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ employeeName: "AI Growth Partner", employeeRole: "growth_partner" }),
+      ]),
+    );
   }, 30000);
 
   it("does not create a briefing when the operator switch is off", async () => {

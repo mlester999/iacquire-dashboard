@@ -49,6 +49,9 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(salesDomain as HTMLElement).getByText("Sales follow-up drafts")).toBeTruthy();
     expect(within(salesDomain as HTMLElement).getByText("Your access needed")).toBeTruthy();
     expect(within(salesDomain as HTMLElement).getByText("Pipeline review")).toBeTruthy();
-    expect(screen.getByText(/connected services, limits and approvals are checked again when work starts\./i)).toBeTruthy();
+    expect(screen.getAllByText(/service limits and approval rules are checked again before work starts/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/runtime|migration required|logical identity|Allowed actions/i)).toBeNull();
+    expect(screen.getByText("Partner connection")).toBeTruthy();
+    expect(screen.getByText("Your AI Growth Partner needs a connection before it can work.")).toBeTruthy();
   });
 });

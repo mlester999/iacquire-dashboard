@@ -65,7 +65,7 @@ export function deriveGrowthPartnerCapabilityAccess(input: {
         key: capability.key,
         label: capability.label,
         status: "available",
-        detail: "Your access, the Growth Partner's required actions, and its runtime check are recorded. Connected services, limits, and approvals are checked again when work starts.",
+        detail: "Your access and the tools your AI Growth Partner can use are checked here. Service limits and approval rules are checked again before work starts.",
       };
     });
 }

@@ -3,11 +3,13 @@ import { withSystem } from "@/server/db";
 import { employeeKnowledgeContext } from "@/server/workforce/knowledge";
 import {
   importGrowthPartnerLegacyKnowledge,
+  legacyKnowledgeCapabilityLabel,
   listGrowthPartnerLegacyKnowledge,
   previewGrowthPartnerLegacyKnowledge,
   reviewGrowthPartnerLegacyKnowledge,
 } from "@/server/ai-growth-partner/legacy-knowledge";
 import { addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { AGENT_ROLE_KEYS } from "@/lib/agents";
 
 let org: Awaited<ReturnType<typeof createOrg>>;
 let otherOrg: Awaited<ReturnType<typeof createOrg>>;
@@ -88,6 +90,18 @@ const otherOwnerContext = () => ctxFor(otherOwner, otherOrg, "owner");
 const memberContext = () => ctxFor(member, org, "member");
 
 describe("Growth Partner retained profile knowledge review", () => {
+  it("groups all six retained roles under the unified capability domains", () => {
+    expect(AGENT_ROLE_KEYS.map((role) => legacyKnowledgeCapabilityLabel(role))).toEqual([
+      "Business Operations",
+      "Lead Discovery & Qualification",
+      "Calendar & Appointment Management",
+      "Sales & Outreach",
+      "CRM & Pipeline Management",
+      "Performance & Analytics",
+    ]);
+    expect(legacyKnowledgeCapabilityLabel(null)).toBe("Shared company knowledge");
+  });
+
   it("lists and previews only released, risk-free tenant sources", async () => {
     const listed = await listGrowthPartnerLegacyKnowledge(ownerContext());
     expect(listed.candidates.map(({ sourceType, title }) => [sourceType, title])).toContainEqual(["employee_note", "Storm response"]);
@@ -96,7 +110,7 @@ describe("Growth Partner retained profile knowledge review", () => {
 
     const note = listed.candidates.find((item) => item.sourceId === noteId)!;
     const preview = await previewGrowthPartnerLegacyKnowledge(ownerContext(), { kind: "candidate", sourceType: note.sourceType, sourceId: note.sourceId });
-    expect(preview).toMatchObject({ title: "Lead Hunter · Storm response", status: "available" });
+    expect(preview).toMatchObject({ title: "Lead Discovery & Qualification · Storm response", status: "available" });
     expect(preview.content).toContain("service manager");
   });
 

@@ -45,7 +45,7 @@ describe("permanent Growth Partner conversation UI", () => {
       hasMore: false,
     }} initialInput="Review the latest qualified leads." timeZone="America/New_York" nowIso="2026-11-07T01:00:00.000Z" />);
 
-    expect(screen.getByRole("heading", { name: "Permanent conversation" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "AI Growth Partner" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /new chat|new conversation|create conversation/i })).toBeNull();
     expect(screen.queryByText(/new chat|new conversation|create conversation/i)).toBeNull();
     expect(screen.getByRole("textbox", { name: "Message the AI Growth Partner" })).toHaveProperty("value", "Review the latest qualified leads.");
@@ -61,5 +61,15 @@ describe("permanent Growth Partner conversation UI", () => {
       content: "Keep using the shared thread.",
     });
     expect(refreshGrowthPartnerConversationAction).toHaveBeenCalledOnce();
+  });
+
+  it("explains setup status without exposing runtime terminology", () => {
+    render(<PermanentGrowthPartnerConversation initial={null} timeZone="America/New_York" nowIso="2026-11-07T01:00:00.000Z" />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "AI Growth Partner" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Your AI Growth Partner is still being set up" })).toBeTruthy();
+    expect(screen.getByText("Your shared conversation will be ready when setup is complete. Previous role profile histories remain saved.")).toBeTruthy();
+    expect(screen.queryByText(/runtime|thread is not connected/i)).toBeNull();
+    expect(screen.getByRole("link", { name: "Review setup" }).getAttribute("href")).toBe("/growth-partner");
   });
 });
