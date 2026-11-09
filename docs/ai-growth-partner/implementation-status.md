@@ -187,3 +187,8 @@ See [acquisition-source-research.md](./acquisition-source-research.md) for sourc
 - The production build step compiled successfully in 59 seconds and then entered Next.js build-time TypeScript checks. The job was canceled before the build completed, so this run is **not** a production-build pass.
 - The build command used Docker `--network bridge`, while the source imports `next/font/google`. The job logs do not record outbound hostnames, so they do not establish whether a Google Fonts request occurred. The build cannot be counted as no-egress. No repeat build was started under this scope. A future build must either use a verified build-only allowlist for `fonts.googleapis.com` and `fonts.gstatic.com`, or remove the build-time Google Font dependency while preserving an acceptable typography experience.
 - No source data or model-provider call was involved in this app-check run; it used synthetic test records. No production deployment, hosted migration, customer communication or live prospect discovery occurred.
+
+## Isolated migration rehearsal follow-up (2026-11-09)
+
+- `npm run rehearse:migrations` passed sections A–H in **790 seconds** using embedded PGlite only. It applied the 128-file migration chain from 0001 through 0135, checked fresh and populated upgrade paths, schema comparisons, supported rollback and backup restoration. The rehearsal read no environment file and made no network connection. No migration was added in this increment, and no hosted database was contacted.
+- This confirms local migration apply/rollback behavior for the current schema; it does not authorize or verify a hosted migration.
