@@ -112,7 +112,7 @@ export type BusinessBrain = z.infer<typeof BusinessBrainSchema>;
 export type BusinessBrainFact = z.infer<typeof BusinessBrainFactSchema>;
 
 const REQUIRED_UNKNOWN_FACTS: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], readonly string[]> = {
-  businessIdentity: ["companyName", "industry", "businessModel", "localBusinessType", "website", "locations", "serviceAreas", "background", "positioning", "differentiators", "brandColor"],
+  businessIdentity: ["companyName", "industry", "businessModel", "localBusinessType", "website", "locations", "serviceAreas", "background", "positioning", "differentiators", "brandColor", "brandAccentColor"],
   productsServicesOffers: ["products", "services", "industrySpecificServices", "engagementTypes", "approvedDescriptions", "pricing", "pricingPolicy", "discountRules", "restrictions", "guarantees", "promotionRules", "consultationOffers", "conversionDestinations"],
   idealCustomers: ["targetTypes", "clientSegments", "propertyTypes", "industries", "companySize", "locations", "decisionMakerRoles", "needs", "painPoints", "qualification", "minimumBudget", "disqualifiers", "excludedProspects"],
   acquisitionStrategy: ["bestFitProspects", "buyingSignals", "discoverySources", "qualificationApproach", "salesFunnel", "salesModel", "outreachMethods", "followUpStrategy", "conversionGoals", "bookingStrategy", "leadPriorities", "otherPriorities"],
@@ -260,14 +260,26 @@ export function generateBusinessBrainFromOnboarding(storedAnswers: StoredAnswers
         : "draft_suggestion";
     const canonical = CANONICAL_BRAIN_FIELDS[questionId];
     if (!canonical) continue;
-    const { section, key } = canonical;
-    brain.sections[section][key] = {
-      value: answer.value,
-      state,
-      provenance: [{ source, sourceId: questionId, evidenceUrl: null, observedAt: answer.updatedAt }],
-      updatedAt: answer.updatedAt,
-      clientOverride: false,
-    };
+    const targets = questionId === "e.brand_colors"
+      ? (() => {
+        if (typeof answer.value !== "object" || answer.value === null || Array.isArray(answer.value)) return [];
+        const colors = answer.value as { primary?: unknown; accent?: unknown };
+        return [
+          { section: "businessIdentity" as const, key: "brandColor", value: typeof colors.primary === "string" && colors.primary ? colors.primary : null },
+          { section: "businessIdentity" as const, key: "brandAccentColor", value: typeof colors.accent === "string" && colors.accent ? colors.accent : null },
+        ];
+      })()
+      : [{ ...canonical, value: answer.value }];
+    for (const target of targets) {
+      const valueState = target.value === null ? "unknown" : state;
+      brain.sections[target.section][target.key] = {
+        value: target.value,
+        state: valueState,
+        provenance: [{ source, sourceId: questionId, evidenceUrl: null, observedAt: answer.updatedAt }],
+        updatedAt: answer.updatedAt,
+        clientOverride: false,
+      };
+    }
   }
 
   return parseBusinessBrain(brain);

@@ -130,7 +130,7 @@ describe("AI Growth Partner foundation", () => {
       "d.appt_availability": userAnswer({ monday: [{ start: "10:00", end: "16:00" }] }),
       "d.pricing_info": userAnswer("Inspections start at $150."),
       "d.handoff_requirements": userAnswer("Route urgent roof damage to the owner."),
-      "e.brand_colors": userAnswer("#1d4ed8"),
+      "e.brand_colors": userAnswer({ primary: "#1d4ed8", accent: "#f97316" }),
       "e.documents": userAnswer(["upload-123"]),
       "e.logo": userAnswer(["asset-456"]),
     }, new Date(at));
@@ -144,12 +144,36 @@ describe("AI Growth Partner foundation", () => {
       state: "client_confirmed",
       provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }],
     });
+    expect(brain.sections.businessIdentity.brandAccentColor).toMatchObject({
+      value: "#f97316",
+      state: "client_confirmed",
+      provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }],
+    });
     expect(brain.sections.employeeGoals.priorities.value).toEqual(["qualified_leads"]);
     expect(brain.sections.policies.prohibitedPromises.value).toBe("Never guarantee insurance reimbursement.");
     expect(brain.sections.productsServicesOffers.pricing.value).toBe("Inspections start at $150.");
     expect(Object.values(brain.sections).flatMap((section) => Object.keys(section))).not.toContain("e.documents");
     expect(Object.values(brain.sections).flatMap((section) => Object.keys(section))).not.toContain("e.logo");
     expect(brain.sections.businessIdentity.website.state).toBe("unknown");
+  });
+
+  it("keeps a blank submitted accent color explicitly unknown without losing its source", () => {
+    const brain = generateBusinessBrainFromOnboarding({
+      "e.brand_colors": {
+        value: { primary: "#2c5bff", accent: "" },
+        skipped: false,
+        source: "user",
+        needsConfirmation: false,
+        updatedAt: "2026-11-05T12:00:00.000Z",
+      },
+    }, new Date("2026-11-05T12:00:00.000Z"));
+
+    expect(brain.sections.businessIdentity.brandColor).toMatchObject({ value: "#2c5bff", state: "client_confirmed" });
+    expect(brain.sections.businessIdentity.brandAccentColor).toMatchObject({
+      value: null,
+      state: "unknown",
+      provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }],
+    });
   });
 
   it("enforces a single logical partner per tenant and preserves independent role records", async () => {
