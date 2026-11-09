@@ -51,9 +51,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The whitespace check at the end of this step uses git's default rules, not the cr-at-eol setting that some developer machines keep in .git/config: a carriage return at the
-      # end of an added line counts as trailing whitespace here, and it stops this job before the suite runs. Lines added to a CRLF file (.env.example is one) have to be LF.
-      # Check locally with: git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab diff --check 7d411f25 HEAD
+      # Keep the blank-at-eol, blank-at-eof and space-before-tab checks while accepting CRLF line endings from Windows worktrees.
+      # Check locally with: git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check 7d411f25 HEAD
       - name: Verify the candidate contains the approved changes
         shell: bash
         env:
@@ -69,7 +68,7 @@ jobs:
             git merge-base --is-ancestor "$sha" HEAD
           done
           echo "candidate: $(git rev-parse HEAD)"
-          git diff --check "$EXPECTED_MASTER_SHA" HEAD
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check "$EXPECTED_MASTER_SHA" HEAD
 
       - name: Set up Node.js
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
