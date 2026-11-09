@@ -57,4 +57,3 @@ describe("Growth Partner identity in Inbox", () => {
     expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Previous profile · Sales Assistant");
   });
 });
-
