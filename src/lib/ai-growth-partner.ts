@@ -235,6 +235,7 @@ const CANONICAL_BRAIN_FIELDS: Record<string, { section: (typeof BUSINESS_BRAIN_S
   "e.faqs": { section: "salesKnowledge", key: "commonQuestions" },
   "e.policies": { section: "policies", key: "customerPolicies" },
   "e.support_info": { section: "businessOperations", key: "supportProcedures" },
+  "e.brand_colors": { section: "businessIdentity", key: "brandColor" },
   "b.website_need": { section: "productOperations", key: "websitePlan" },
 };
 

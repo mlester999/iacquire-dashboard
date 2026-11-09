@@ -130,6 +130,7 @@ describe("AI Growth Partner foundation", () => {
       "d.appt_availability": userAnswer({ monday: [{ start: "10:00", end: "16:00" }] }),
       "d.pricing_info": userAnswer("Inspections start at $150."),
       "d.handoff_requirements": userAnswer("Route urgent roof damage to the owner."),
+      "e.brand_colors": userAnswer("#1d4ed8"),
       "e.documents": userAnswer(["upload-123"]),
       "e.logo": userAnswer(["asset-456"]),
     }, new Date(at));
@@ -138,6 +139,11 @@ describe("AI Growth Partner foundation", () => {
     expect(brain.sections.businessOperations.operatingHours.value).toEqual({ monday: [{ start: "09:00", end: "17:00" }] });
     expect(brain.sections.businessOperations.appointmentAvailability.value).toEqual({ monday: [{ start: "10:00", end: "16:00" }] });
     expect(brain.sections.businessOperations.internalHandoffs.value).toBe("Route urgent roof damage to the owner.");
+    expect(brain.sections.businessIdentity.brandColor).toMatchObject({
+      value: "#1d4ed8",
+      state: "client_confirmed",
+      provenance: [{ source: "onboarding", sourceId: "e.brand_colors" }],
+    });
     expect(brain.sections.employeeGoals.priorities.value).toEqual(["qualified_leads"]);
     expect(brain.sections.policies.prohibitedPromises.value).toBe("Never guarantee insurance reimbursement.");
     expect(brain.sections.productsServicesOffers.pricing.value).toBe("Inspections start at $150.");
