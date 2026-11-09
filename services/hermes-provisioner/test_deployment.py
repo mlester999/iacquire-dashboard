@@ -100,6 +100,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
             ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("--network none --user 10000:10000 --cap-drop=ALL", workflow)
+        self.assertIn("--cpus=0.5 --memory=256m --pids-limit=32", workflow)
         self.assertIn('CLIENT_CONFIG_SOURCE=present:', workflow)
         self.assertIn('CLIENT_HOME_OWNER_MODE="', workflow)
         self.assertIn('CLIENT_CONFIG_VISIBLE=yes', workflow)
@@ -112,7 +113,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
 
-    def test_acceptance_workflow_has_scoped_manual_and_test_push_triggers_and_pins_helper_image(self):
+    def test_acceptance_workflow_has_scoped_manual_and_one_time_push_triggers_and_pins_helper_image(self):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         workflow_text = workflow_path.read_text(encoding="utf-8")
         workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
@@ -120,7 +121,11 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertIn("CANDIDATE_TEST_RUNNER_ERROR_CLASS:", workflow_text)
         self.assertIn("api[_-]?key", workflow_text)
         self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
-        self.assertEqual(workflow["on"]["push"]["branches"], ["codex/hermes-gha-acceptance"])
+        self.assertEqual(
+            workflow["on"]["push"]["branches"],
+            ["codex/hermes-gha-acceptance", "codex/ai-growth-partner"],
+        )
+        self.assertEqual(workflow["on"]["push"]["paths"], [".github/hermes-acceptance.trigger"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         dispatch = workflow["on"]["workflow_dispatch"]
         confirmation = dispatch["inputs"]["confirm_external_execution"]
@@ -137,13 +142,22 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn("github.event_name == 'push'", job["if"])
         self.assertIn("github.ref_name == 'codex/hermes-gha-acceptance'", job["if"])
+        self.assertIn("github.event.head_commit.message == 'test: run one-time synthetic Hermes acceptance'", job["if"])
+        self.assertIn("startsWith(github.event.head_commit.message, 'test: retry synthetic Hermes acceptance')", job["if"])
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
-        self.assertEqual(job["timeout-minutes"], "90")
+        self.assertEqual(job["timeout-minutes"], "30")
+        self.assertIn("--cpus=2 --memory=2g --pids-limit=128", workflow_text)
+        self.assertIn("--cpus=0.5 --memory=512m --pids-limit=64", workflow_text)
         runner_check = next(step for step in job["steps"] if step.get("name") == "Verify runner and branch scope")
         self.assertIn('if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then', runner_check["run"])
         self.assertIn('[[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]', runner_check["run"])
         self.assertIn('[[ "$GITHUB_EVENT_NAME" == push ]]', runner_check["run"])
         self.assertIn('[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]', runner_check["run"])
+        self.assertIn('[[ "$(uname -m)" == "x86_64" ]]', runner_check["run"])
+        self.assertIn(
+            '[[ "$trigger_value" == RUN_SYNTHETIC_HERMES_ACCEPTANCE* ]]',
+            runner_check["run"],
+        )
         self.assertIn(
             '[[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]',
             runner_check["run"],
