@@ -4,7 +4,7 @@ import { recordAudit } from "@/server/audit";
 import { sha256 } from "@/server/security/crypto";
 import { automationGate, checkOrgAutomation } from "@/server/automation/gate";
 import { toolInventoryReady } from "@/server/integrations/hermes/inventory";
-import { workforceRoleShortName } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, workforceRoleShortName } from "@/lib/agents";
 import { isAgentRole } from "@/server/crm/agent-tools/catalog";
 
 /**
@@ -79,10 +79,12 @@ export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Pr
   if (!instruction || instruction.length > MAX_INSTRUCTION) return { status: "blocked", detail: `The instruction must be between 1 and ${MAX_INSTRUCTION} characters, so nothing was asked.` };
   if (!req.runId || !req.stepKey) return { status: "blocked", detail: "The workflow step couldn't be identified, so nothing was asked." };
 
-  const { rows } = await db.query<{ id: string; display_name: string; enabled: boolean; status: string; last_health_ok: boolean | null; last_health_detail: string | null; hermes_base_url: string | null; hermes_profile: string | null; credential_id: string | null; tool_inventory_contract: string | null; tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null; tool_inventory_tool_count: number | null }>(
-    `select id, display_name, enabled, status, last_health_ok, last_health_detail, hermes_base_url, hermes_profile, credential_id,
-            tool_inventory_contract, tool_inventory_digest, tool_inventory_verified_at, tool_inventory_expires_at, tool_inventory_tool_count
-     from agent_instances where org_id = $1 and role_key = $2`,
+  const { rows } = await db.query<{ id: string; display_name: string; enabled: boolean; status: string; last_health_ok: boolean | null; last_health_detail: string | null; hermes_base_url: string | null; hermes_profile: string | null; credential_id: string | null; tool_inventory_contract: string | null; tool_inventory_digest: string | null; tool_inventory_verified_at: Date | null; tool_inventory_expires_at: Date | null; tool_inventory_tool_count: number | null; partner_runtime_agent_id: string | null }>(
+    `select a.id, a.display_name, a.enabled, a.status, a.last_health_ok, a.last_health_detail, a.hermes_base_url, a.hermes_profile, a.credential_id,
+            a.tool_inventory_contract, a.tool_inventory_digest, a.tool_inventory_verified_at, a.tool_inventory_expires_at, a.tool_inventory_tool_count,
+            p.runtime_agent_instance_id as partner_runtime_agent_id
+     from agent_instances a left join ai_growth_partners p on p.org_id = a.org_id
+     where a.org_id = $1 and a.role_key = $2`,
     [req.orgId, req.roleKey],
   );
   const agent = rows[0];
@@ -95,6 +97,9 @@ export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Pr
     return { status: "blocked", detail };
   };
   if (!agent || !agent.enabled) return blocked(`The ${roleName} isn't included in this workspace, so nothing was asked.`);
+  if (req.roleKey === AI_GROWTH_PARTNER_ROLE_KEY && agent.partner_runtime_agent_id !== agent.id) {
+    return blocked("The AI Growth Partner isn't linked to this workspace's single verified runtime, so nothing was asked.");
+  }
 
   if (req.contactId) {
     // A malformed id would abort the caller's transaction in PostgreSQL, so it is refused before any query.

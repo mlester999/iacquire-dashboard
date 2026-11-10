@@ -687,6 +687,33 @@ describe("requestAgentTask (workflow AI step)", () => {
     await withSystem((db) => db.query("update automation_pauses set active = false where org_id = $1", [w.org.id]));
     expect(await withSystem((db) => requestAgentTask(db, { orgId: w.org.id, roleKey: "crm_manager", instruction: "x", contactId: "nope", runId: "11111111-1111-4111-8111-111111111111", stepKey: "ai_3" }))).toMatchObject({ status: "blocked" });
   });
+
+  it("does not queue a Growth Partner task when the tenant's canonical runtime link is missing", async () => {
+    const agent = await ready(a, "growth_partner");
+    const linked = await one<{ runtime_agent_instance_id: string | null }>("select runtime_agent_instance_id from ai_growth_partners where org_id = $1", [a.org.id]);
+    expect(linked?.runtime_agent_instance_id).toBe(agent);
+    const beforeRuns = await count("select 1 from agent_runs where org_id = $1 and agent_instance_id = $2", [a.org.id, agent]);
+    await withSystem((db) => db.query("update ai_growth_partners set runtime_agent_instance_id = null where org_id = $1", [a.org.id]));
+
+    try {
+      const result = await withSystem((db) => requestAgentTask(db, {
+        orgId: a.org.id,
+        roleKey: "growth_partner",
+        instruction: "Review this synthetic lead and suggest a next step.",
+        runId: "22222222-2222-4222-8222-222222222222",
+        stepKey: "partner_task",
+      }));
+      expect(result).toMatchObject({ status: "blocked", detail: expect.stringMatching(/isn't linked to this workspace's single verified runtime/) });
+      expect(await count("select 1 from agent_runs where org_id = $1 and agent_instance_id = $2", [a.org.id, agent])).toBe(beforeRuns);
+      const audit = await one<{ result: string; metadata: Record<string, unknown> }>(
+        `select result, metadata from audit_logs where org_id = $1 and agent_instance_id = $2 and action = 'crm.agent_task_requested' order by id desc limit 1`,
+        [a.org.id, agent],
+      );
+      expect(audit).toMatchObject({ result: "denied", metadata: { role: "growth_partner", outcome: "blocked", detail: expect.stringMatching(/single verified runtime/) } });
+    } finally {
+      await withSystem((db) => db.query("update ai_growth_partners set runtime_agent_instance_id = $2 where org_id = $1", [a.org.id, agent]));
+    }
+  });
 });
 
 describe("HTTP surface and the settings screen", () => {
