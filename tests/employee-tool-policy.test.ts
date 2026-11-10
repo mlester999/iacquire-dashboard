@@ -7,7 +7,7 @@ import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, roleMayUseCapability, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { AGENT_TOOL_SCOPES, ROLE_SCOPES } from "@/lib/agent-tool-scopes";
 import {
-  RUNTIME_TOOL_ROLES, allPolicyActionIds, authorizeEmployeeAction, employeeActions, requiredRuntimeToolsFor, roleToolEnforcement, runtimeToolExposure, runtimeToolsFor, runtimeToolsetsFor,
+  CHAT_ACTION_ABILITIES, ROLE_ABILITIES, RUNTIME_TOOL_ROLES, allPolicyActionIds, authorizeEmployeeAction, employeeActions, requiredRuntimeToolsFor, roleToolEnforcement, runtimeToolExposure, runtimeToolsFor, runtimeToolsetsFor,
 } from "@/lib/employee-tool-policy";
 import { evaluateRequirements, EMPTY_WORKSPACE_FACTS } from "@/lib/employee-requirements";
 import { decideAgentAction, enforceAgentAction } from "@/server/workforce/action-policy";
@@ -25,6 +25,14 @@ const FROZEN: Record<AgentRoleKey, string[]> = {
   crm_manager: ["capability:crm_quality_review", "crm:contacts:read", "crm:contacts:write", "crm:tags:write", "crm:tasks:write", "crm:opportunities:read", "crm:opportunities:write", "crm:reports:read", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
   performance_analyst: ["capability:social_performance_review", "capability:receivables_review", "capability:reputation_review", "capability:performance_snapshot", "crm:opportunities:read", "crm:reports:read", "runtime:memory", "runtime:session_search", "runtime:todo_list", "runtime:vision_analyze"],
 };
+
+const PARTNER_ONLY_ACTIONS = [
+  "chat:messaging_hours_update", "chat:partner_preferences_update", "chat:partner_goal_update", "chat:outbound_control",
+  "chat:crm_contact_create", "chat:appointment_policy_update", "chat:calendar_create",
+];
+const PARTNER_ONLY_ABILITIES = ["calendar.booking_rules.update", "calendar.create", "crm.request_update", "crm.contacts.create", "drafts.create"];
+
+const union = <T,>(items: readonly (readonly T[])[]): Set<T> => new Set(items.flatMap((item) => [...item]));
 
 describe("the policy table, role by role", () => {
   it("is exactly the frozen table for each of the six roles", () => {
@@ -108,6 +116,50 @@ describe("the policy table, role by role", () => {
     expect(ids.some((id) => /send|publish|delete|export|import|campaign/.test(id))).toBe(false);
     expect(runtimeToolExposure("growth_partner", ["memory", "session_search", "todo_list", "vision_analyze", "web_search", "web_extract"]))
       .toEqual({ ok: true, excess: [], missing: [] });
+  });
+});
+
+describe("the unified Partner's reviewed legacy coverage", () => {
+  it("retains each legacy action and adds only the named Partner controls", () => {
+    const legacyActions = union(AGENT_ROLE_KEYS.map((role) => FROZEN[role]));
+    const partnerActions = new Set(employeeActions("growth_partner").map((action) => action.id));
+
+    for (const id of legacyActions) expect(partnerActions.has(id), id).toBe(true);
+    expect([...partnerActions].filter((id) => !legacyActions.has(id)).sort()).toEqual([...PARTNER_ONLY_ACTIONS].sort());
+    for (const id of allPolicyActionIds()) {
+      expect(authorizeEmployeeAction("growth_partner", id).allowed, id).toBe(partnerActions.has(id));
+    }
+  });
+
+  it("matches the six-role union across capabilities, CRM scopes, runtime tools and ability switches", () => {
+    const legacyCapabilities = new Set(CAPABILITY_KEYS.filter((key) => AGENT_ROLE_KEYS.some((role) => roleMayUseCapability(role, key))));
+    const partnerCapabilities = new Set(CAPABILITY_KEYS.filter((key) => roleMayUseCapability("growth_partner", key)));
+    expect([...partnerCapabilities].sort()).toEqual([...legacyCapabilities].sort());
+
+    const legacyScopes = union(AGENT_ROLE_KEYS.map((role) => ROLE_SCOPES[role]));
+    expect([...ROLE_SCOPES.growth_partner].sort()).toEqual([...legacyScopes].sort());
+
+    const legacyTools = union(AGENT_ROLE_KEYS.map((role) => runtimeToolsFor(role)));
+    expect(runtimeToolsFor("growth_partner").sort()).toEqual([...legacyTools].sort());
+
+    const legacyAbilities = union(AGENT_ROLE_KEYS.map((role) => ROLE_ABILITIES[role]));
+    const partnerAbilities = new Set(ROLE_ABILITIES.growth_partner);
+    for (const ability of legacyAbilities) expect(partnerAbilities.has(ability), ability).toBe(true);
+    expect([...partnerAbilities].filter((ability) => !legacyAbilities.has(ability)).sort()).toEqual([...PARTNER_ONLY_ABILITIES].sort());
+
+    for (const action of employeeActions("growth_partner").filter((item) => item.kind === "chat_proposal")) {
+      for (const ability of CHAT_ACTION_ABILITIES[action.id] ?? []) expect(partnerAbilities.has(ability), `${action.id} / ${ability}`).toBe(true);
+    }
+  });
+
+  it("keeps every Partner action non-autonomous when it drafts or proposes a change", () => {
+    for (const action of employeeActions("growth_partner")) {
+      if (action.effect !== "read") expect(action.approval, action.id).toBe("person_decides");
+      if (action.kind === "capability") {
+        const capability = WORKFORCE_CAPABILITIES[action.id.slice("capability:".length) as CapabilityKey];
+        expect(action.effect, action.id).toBe(capability.risk === "read_only" ? "read" : "draft");
+      }
+    }
   });
 });
 
