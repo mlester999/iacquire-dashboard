@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { extractTlsClientHelloServerName, parseFontProxyTarget } from "../.github/scripts/font-egress-proxy.mjs";
 
 function u16(value: number) {
@@ -32,6 +33,15 @@ function clientHello(serverName: string, extraExtensions = Buffer.alloc(0)) {
 }
 
 describe("build font egress allowlist", () => {
+  it("runs Next directly in the internal build network without npm update traffic", () => {
+    const workflow = readFileSync(".github/workflows/hermes-inference-worker.yml", "utf8");
+    expect(workflow).toContain("docker network create --driver bridge --internal");
+    expect(workflow).toContain("--env npm_config_update_notifier=false");
+    expect(workflow).toContain('--workdir /workspace --entrypoint node "$node_image" /workspace/node_modules/next/dist/bin/next build');
+    expect(workflow).not.toContain("registry.npmjs.org");
+    expect(workflow).not.toContain("production build gated");
+  });
+
   it("accepts HTTPS only for the two exact approved hosts on port 443", () => {
     expect(parseFontProxyTarget("fonts.googleapis.com:443")).toEqual({ host: "fonts.googleapis.com", port: 443 });
     expect(parseFontProxyTarget("fonts.gstatic.com:443")).toEqual({ host: "fonts.gstatic.com", port: 443 });

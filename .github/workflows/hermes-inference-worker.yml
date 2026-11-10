@@ -38,10 +38,10 @@ concurrency:
 
 jobs:
   # The whole application suite, TypeScript and lint run offline on Linux. The suite is judged by .github/scripts/known-failures.mjs, whose list of recorded
-  # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation. The production build is gated because next/font/google
-  # downloads assets at build time; run it only after its outbound path has an approved host allowlist.
+  # failures is empty since 2026-10-31: any failing test file fails the job, and the exact counts are in the failure annotation. The production build runs in an internal
+  # network behind a proxy that permits only the approved Google Fonts hosts and verifies the TLS server name.
   app-checks:
-    name: Full tests, TypeScript and lint (offline; production build gated)
+    name: Full regression, TypeScript, lint and font-allowlisted build
     if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -168,6 +168,7 @@ jobs:
             --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=1g \
             --env HOME=/tmp --env NEXT_TELEMETRY_DISABLED=1 \
+            --env npm_config_update_notifier=false \
             --env NODE_USE_ENV_PROXY=1 \
             --env HTTP_PROXY=http://font-egress-proxy:3128 \
             --env HTTPS_PROXY=http://font-egress-proxy:3128 \
@@ -177,7 +178,7 @@ jobs:
             --env no_proxy=localhost,127.0.0.1,font-egress-proxy \
             --dns 127.0.0.1 --add-host "font-egress-proxy:$proxy_ip" \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
-            --workdir /workspace --entrypoint npm "$node_image" run build
+            --workdir /workspace --entrypoint node "$node_image" /workspace/node_modules/next/dist/bin/next build
 
           docker logs "$proxy" > "$RUNNER_TEMP/font-egress-proxy.log" 2>&1
           cat "$RUNNER_TEMP/font-egress-proxy.log"
@@ -188,11 +189,11 @@ jobs:
 
           allowed = {"fonts.googleapis.com", "fonts.gstatic.com"}
           expected_denials = {
-              "FONT_EGRESS_DENY_TARGET example.com:443",
-              "FONT_EGRESS_DENY_SNI fonts.googleapis.com sni=example.com",
+              "FONT_EGRESS_DENY_TARGET example.com:443": 1,
+              "FONT_EGRESS_DENY_SNI fonts.googleapis.com sni=example.com": 1,
           }
           seen = set()
-          denials = set()
+          denials = {line: 0 for line in expected_denials}
           for line in Path(sys.argv[1]).read_text().splitlines():
               if line == "FONT_PROXY_READY hosts=fonts.googleapis.com,fonts.gstatic.com port=3128":
                   continue
@@ -203,13 +204,13 @@ jobs:
                   seen.add(host)
                   continue
               if line in expected_denials:
-                  denials.add(line)
+                  denials[line] += 1
                   continue
               raise SystemExit(f"Unexpected font proxy log line: {line}")
           if seen != allowed:
               raise SystemExit(f"Expected successful font fetches from both approved hosts; observed: {sorted(seen)}")
           if denials != expected_denials:
-              raise SystemExit(f"Expected both proxy rejection checks; observed: {sorted(denials)}")
+              raise SystemExit(f"Expected exactly one of each proxy rejection check; observed: {denials}")
           print("FONT_EGRESS_ALLOWLIST_PASS hosts=fonts.googleapis.com,fonts.gstatic.com denied=other-hosts-and-mismatched-SNI")
           PY
 
