@@ -5,6 +5,7 @@ import { ensureInstanceStandalone, getSetupRevision } from "@/server/setup/core"
 import { getAgencySetupSnapshot } from "@/server/setup/snapshots";
 import { activateSetup, markReadyForReview, setServices, updateTaskStatus } from "@/server/setup/agency";
 import { runChecks } from "@/server/setup/automation";
+import { ensureGrowthPartnerRuntime, suggestedProfileName } from "@/server/workforce/service";
 import { createOrg, createUser, agencyUser, addMember } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
 
@@ -22,6 +23,32 @@ async function fixture(onboarded = true) {
   return { org, admin };
 }
 describe("resumable preparation (local database; external services unavailable)", () => {
+  it("uses the one Growth Partner identity in the Hermes profile runbook", async () => {
+    const { org, admin } = await fixture();
+    await withSystem(async (db) => {
+      await db.query("update agent_instances set enabled = false where org_id = $1", [org.id]);
+      await ensureGrowthPartnerRuntime(org.id, db);
+    });
+
+    const id = await queuePreparation(admin, org.id, { operation: "manual_hermes_profiles", idempotencyKey: "test:growth-partner:runbook" });
+    expect(await executePreparation(admin, org.id, id)).toMatchObject({ status: "awaiting_admin" });
+    const job = (await getPreparationJobs(admin, org.id)).jobs.find((candidate) => candidate.id === id);
+    expect(job?.prepared_configuration).toMatchObject({
+      profiles: [{ role: "growth_partner", suggestedProfile: suggestedProfileName(org.slug, "growth_partner") }],
+      remoteCreationSupported: false,
+    });
+    expect(job?.prepared_configuration.profiles).toHaveLength(1);
+  });
+
+  it("uses current identity language when configuration preparation has no enabled profile", async () => {
+    const { org, admin } = await fixture();
+    await withSystem((db) => db.query("update agent_instances set enabled = false where org_id = $1", [org.id]));
+    const id = await queuePreparation(admin, org.id, { operation: "prepare_ai_configuration", idempotencyKey: "test:configuration:no-identity" });
+    expect(await executePreparation(admin, org.id, id)).toMatchObject({ status: "failed" });
+    const job = (await getPreparationJobs(admin, org.id)).jobs.find((candidate) => candidate.id === id);
+    expect(job?.last_error).toBe("Set up an AI Growth Partner or previous AI profile before preparing configuration.");
+  });
+
   it("deduplicates onboarding jobs and repeated requests, preserving six configuration drafts", async () => {
     const { org, admin } = await fixture();
     await withSystem((db) => queueOnboardingPreparations(db, org.id, admin.id));

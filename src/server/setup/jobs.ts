@@ -8,7 +8,7 @@ import { recordAudit } from "@/server/audit";
 import { assertAgencyAccess, lockAgencySetupAccess, mutateSetup } from "@/server/setup/core";
 import { runChecks } from "@/server/setup/automation";
 import { createConfigVersion, currentSettings, suggestedProfileName } from "@/server/workforce/service";
-import type { AgentRoleKey } from "@/lib/agents";
+import type { WorkforceRoleKey } from "@/lib/agents";
 import { CHECK_LABEL, type CheckKey, type CheckStatus } from "@/lib/setup";
 
 export const PREPARATION_OPERATIONS = ["prepare_ai_configuration", "prepare_automation_configuration", "manual_ghl_mapping", "manual_hermes_profiles", "verify_integrations"] as const;
@@ -172,7 +172,7 @@ async function prepare(job: PreparationJob, admin: SessionUser, leaseToken: stri
     if (!org.rows[0]?.onboarding_completed_at) throw new AppError("conflict", "The client must submit company onboarding before preparation.");
     if (job.operation === "prepare_ai_configuration") {
       const { rows: agents } = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and enabled order by role_key for update", [job.org_id]);
-      if (!agents.length) throw new AppError("conflict", "Select the included AI employees before preparation.");
+      if (!agents.length) throw new AppError("conflict", "Set up an AI Growth Partner or previous AI profile before preparing configuration.");
       const versionIds: string[] = [];
       for (const agent of agents) {
         const marker = `Provisioning job ${job.id}`;
@@ -191,7 +191,7 @@ async function prepare(job: PreparationJob, admin: SessionUser, leaseToken: stri
     if (job.operation === "manual_ghl_mapping") {
       return { status: "awaiting_admin", detail: "Create the sub-account manually from the approved Master Snapshot, then save and test its Location ID in Client Integrations. Snapshot installation needs separate evidence.", configuration: { manualSubaccountCreation: true, snapshotVerificationRequired: true, crmWritesEnabled: false } };
     }
-    const { rows: agents } = await db.query<{ id: string; role_key: AgentRoleKey; hermes_profile: string | null }>("select id, role_key, hermes_profile from agent_instances where org_id = $1 and enabled order by role_key", [job.org_id]);
+    const { rows: agents } = await db.query<{ id: string; role_key: WorkforceRoleKey; hermes_profile: string | null }>("select id, role_key, hermes_profile from agent_instances where org_id = $1 and enabled order by role_key", [job.org_id]);
     return { status: "awaiting_admin", detail: "Use the agency provisioning runbook to create isolated profiles with separate keys and restricted tools. Save each mapping and run the verified health test. No remote profile-creation API has been assumed.", configuration: { profiles: agents.map((a) => ({ employeeId: a.id, role: a.role_key, suggestedProfile: a.hermes_profile ?? suggestedProfileName(org.rows[0].slug, a.role_key) })), remoteCreationSupported: false } };
   });
 }
