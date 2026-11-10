@@ -254,3 +254,10 @@ See [acquisition-source-research.md](./acquisition-source-research.md) for sourc
 ## Product language follow-up
 
 - AQi's Super Admin guide now labels `/admin/employees` as AI Growth Partner operations and explains that the screen covers client runtimes, internal operations profiles, and preserved client profiles. It changes no role records or access.
+
+## Partner Control Center and Work Board sync (2026-11-11)
+
+- The Control Center now reads the existing permission-scoped Work Board summary and shows running jobs, approvals waiting on a person, jobs needing attention, and completions today, with a direct link to the same Work Board. Counts use the same tenant visibility and workspace time-zone rules; this adds no duplicate task storage or execution path.
+- `tests/growth-partner-capability-readiness-ui.test.tsx` passed **1/1**. `tests/workforce-proactive-review.test.ts` passed **7/7**, including tenant-scoped work visibility and summary counts. `npm run typecheck`, changed-file ESLint, and `git diff --check` passed.
+- A fresh `npm run build -- --webpack` passed on Next.js 16.4.2: optimized compile **2.9 minutes**, TypeScript **2.3 minutes**, and **16/16** static pages generated. The full regression was not rerun for this read-only summary-view increment; the latest full regression remains the 903-file run recorded above.
+- The view is backed by application Work Board records. Hermes runtime acceptance and native memory restart verification remain documented separately in run #94; discovery sources and outbound communications remain disabled for the acceptance evidence.

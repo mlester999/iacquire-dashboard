@@ -10,6 +10,7 @@ import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-sou
 import { listAgents } from "@/server/workforce/service";
 import { withUser } from "@/server/db";
 import { getControlState } from "@/server/automation/controls";
+import { workBoardSummary } from "@/server/workforce/work-board";
 import { getResearchSourcePolicy, type StoredResearchSourcePolicy } from "@/server/leads/research-source-policy";
 import type { ResearchSourcePoliciesView, ResearchSourcePolicyView } from "@/components/growth-partner/research-source-settings";
 
@@ -35,7 +36,7 @@ export default async function GrowthPartnerPage() {
   const canConfigure = ctx.can("agents.configure");
   const canConfigureResearch = ctx.can("leads.research");
   const submittedSource = canConfigure ? await getSubmittedBrainSource(ctx) : null;
-  const [controls, researchSourcePolicies, legacyKnowledgeReview] = await Promise.all([
+  const [controls, researchSourcePolicies, legacyKnowledgeReview, workSummary] = await Promise.all([
     withUser(ctx.user.id, (db) => getControlState(db, ctx.org.orgId)),
     canConfigureResearch
       ? withUser(ctx.user.id, async (db): Promise<ResearchSourcePoliciesView> => {
@@ -59,6 +60,7 @@ export default async function GrowthPartnerPage() {
     canConfigure && ctx.can("knowledge.view") && state
       ? listGrowthPartnerLegacyKnowledge(ctx)
       : Promise.resolve({ candidates: [], imports: [] } satisfies GrowthPartnerLegacyKnowledgeReview),
+    workBoardSummary(ctx),
   ]);
 
   return (
@@ -67,6 +69,7 @@ export default async function GrowthPartnerPage() {
       capabilityAccess={capabilityAccess}
       memories={memories}
       goals={goals}
+      workSummary={workSummary}
       canManageMemory={canConfigure}
       canManageGoals={canConfigure}
       canConfigure={canConfigure}

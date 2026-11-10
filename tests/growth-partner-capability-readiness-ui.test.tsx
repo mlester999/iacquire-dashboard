@@ -28,6 +28,7 @@ describe("Growth Partner capability readiness UI", () => {
       capabilityAccess={capabilityAccess}
       memories={[]}
       goals={[]}
+      workSummary={{ active: 2, waiting: 1, needsAttention: 3, completedToday: 5 }}
       canManageMemory={false}
       canManageGoals={false}
       canConfigure={false}
@@ -52,6 +53,12 @@ describe("Growth Partner capability readiness UI", () => {
     expect(screen.getAllByText(/service limits and approval rules are checked again before work starts/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/runtime|migration required|logical identity|Allowed actions/i)).toBeNull();
     expect(screen.getByText("Partner connection")).toBeTruthy();
+    const workBoard = screen.getByRole("region", { name: "Work Board status" });
+    expect(within(workBoard).getByText("Running now")).toBeTruthy();
+    expect(within(workBoard).getByText("Waiting for approval")).toBeTruthy();
+    expect(within(workBoard).getByText("Needs attention")).toBeTruthy();
+    expect(within(workBoard).getByText("Completed today")).toBeTruthy();
+    expect(within(workBoard).getByRole("link", { name: /Open Work Board/ }).getAttribute("href")).toBe("/work");
     expect(screen.getByText("Your AI Growth Partner needs a connection before it can work.")).toBeTruthy();
   });
 });

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHeading } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
+
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
 import {
   GROWTH_PARTNER_CAPABILITY_GROUPS,
@@ -42,6 +43,7 @@ import {
   type BusinessBrainFact,
 } from "@/lib/ai-growth-partner";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import type { WorkBoardSummary } from "@/server/workforce/work-board";
 import type { GrowthPartnerMemory } from "@/lib/ai-growth-partner-memory";
 import type { GrowthPartnerGoalProgress } from "@/lib/ai-growth-partner-goals";
 import type { GrowthPartnerLegacyKnowledgeReview as GrowthPartnerLegacyKnowledgeReviewData } from "@/server/ai-growth-partner/legacy-knowledge";
@@ -300,6 +302,7 @@ export function GrowthPartnerControlCenter({
   capabilityAccess,
   memories,
   goals,
+  workSummary,
   canManageMemory,
   canManageGoals,
   canConfigure,
@@ -318,6 +321,7 @@ export function GrowthPartnerControlCenter({
   capabilityAccess: GrowthPartnerCapabilityAccess[];
   memories: GrowthPartnerMemory[];
   goals: GrowthPartnerGoalProgress[];
+  workSummary: WorkBoardSummary;
   canManageMemory: boolean;
   canManageGoals: boolean;
   canConfigure: boolean;
@@ -427,6 +431,20 @@ export function GrowthPartnerControlCenter({
               </CardContent>
             </Card>
           ))}
+        </div>
+      </section>
+
+      <section aria-label="Work Board status">
+        <SectionHeading
+          title="Work Board"
+          description="Live counts from the same tenant-scoped queue shown on the board."
+          action={<ButtonLink href="/work" variant="secondary" size="sm">Open Work Board <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>}
+        />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Running now" value={String(workSummary.active)} detail="Jobs with an active worker lease." icon={<Activity className="size-5" />} tone="success" />
+          <MetricCard label="Waiting for approval" value={String(workSummary.waiting)} detail="A person must decide." icon={<ShieldCheck className="size-5" />} tone="warning" />
+          <MetricCard label="Needs attention" value={String(workSummary.needsAttention)} detail="Failed, blocked or awaiting recovery." icon={<ClipboardList className="size-5" />} tone="warning" />
+          <MetricCard label="Completed today" value={String(workSummary.completedToday)} detail="In this workspace's time zone." icon={<CircleCheck className="size-5" />} tone="success" />
         </div>
       </section>
 
