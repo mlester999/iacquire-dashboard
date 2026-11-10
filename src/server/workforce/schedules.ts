@@ -494,7 +494,10 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         definition
         && definition.risk === "read_only"
         && (definition.workBoardAction || definition.key === "lead_research")
-        && definition.allowedRoles[0] === row?.role_key
+        // `allowedRoles` is the full policy allowlist. The Growth Partner is intentionally an
+        // additional allowed runtime for several capabilities, not always the first legacy role.
+        && row !== undefined
+        && definition.allowedRoles.includes(row.role_key)
         && row?.enabled
         && row.active_config_version_id
         && row.status

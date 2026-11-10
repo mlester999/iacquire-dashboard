@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
-import { createConfigVersion } from "@/server/workforce/service";
+import { createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import type { Permission } from "@/lib/permissions";
 import { deleteSchedule, listSchedules, runDueSchedules, saveSchedule, setScheduleEnabled, schedulesOperatorEnabled } from "@/server/workforce/schedules";
@@ -151,6 +151,68 @@ describe("tenant AI workforce schedules", () => {
     // A second tick is not due yet, so it must not duplicate the job.
     const again = await runDueSchedules({ now: new Date() });
     expect(again.created).toBe(0);
+  }, 30000);
+
+  it("runs an explicitly allowed scheduled capability on the single Growth Partner runtime", async () => {
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
+    const growthPartnerOrg = await createOrg({ name: "Growth Partner Schedule Co" });
+    await addMember(growthPartnerOrg.id, owner.id, "owner");
+    const context = ctxFor(owner, growthPartnerOrg, "owner");
+    const growthPartnerId = await withSystem((db) => ensureGrowthPartnerRuntime(growthPartnerOrg.id, db));
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: growthPartnerOrg.id,
+      agentId: growthPartnerId,
+      settings: defaultSettings("growth_partner"),
+      source: "onboarding",
+      userId: owner.id,
+      apply: true,
+    }));
+    await withSystem((db) => db.query(
+      "update agent_instances set status = 'online', last_health_ok = true, last_health_check_at = now() where id = $1 and org_id = $2",
+      [growthPartnerId, growthPartnerOrg.id],
+    ));
+
+    const saved = await saveSchedule(context, {
+      agentRole: "growth_partner",
+      capability: "proactive_review",
+      cadence: "daily",
+      enabled: true,
+    });
+    try {
+      await withSystem((db) => db.query("update ai_work_schedules set next_run_at = now() - interval '1 minute' where id = $1", [saved.id]));
+      const run = await runDueSchedules({ now: new Date() });
+      expect(run).toMatchObject({ operatorEnabled: true, created: 1 });
+      expect(run.jobIds).toHaveLength(1);
+
+      const { rows } = await withSystem((db) => db.query<{
+        org_id: string;
+        agent_instance_id: string;
+        capability: string;
+        status: string;
+        input: Record<string, unknown>;
+      }>("select org_id, agent_instance_id, capability, status, input from ai_work_jobs where id = $1", [run.jobIds[0]]));
+      expect(rows[0]).toMatchObject({
+        org_id: growthPartnerOrg.id,
+        agent_instance_id: growthPartnerId,
+        capability: "proactive_review",
+        input: { scheduled: true, scheduleId: saved.id },
+      });
+      expect(["queued", "running", "completed"]).toContain(rows[0].status);
+      const workBoardJob = (await listWorkBoardJobs(context, "all")).find((job) => job.id === run.jobIds[0]);
+      expect(workBoardJob).toMatchObject({
+        employeeRole: "growth_partner",
+        capability: "proactive_review",
+      });
+      expect((await listWorkBoardJobs(ctxFor(owner, org, "owner"), "all")).some((job) => job.id === run.jobIds[0])).toBe(false);
+      expect(await waitForJob(run.jobIds[0])).toMatchObject({ status: "completed" });
+
+      const schedule = (await listSchedules(context)).find((row) => row.id === saved.id);
+      expect(schedule).toMatchObject({ id: saved.id, enabled: true, lastJobId: run.jobIds[0] });
+      expect(new Date(schedule!.nextRunAt).getTime()).toBeGreaterThan(Date.now());
+      expect((await runDueSchedules({ now: new Date() })).created).toBe(0);
+    } finally {
+      await deleteSchedule(context, saved.id);
+    }
   }, 30000);
 
   it("runs the real cron tick through durable tenant-scoped jobs, Work Board and Calendar history", { timeout: 30000 }, async () => {

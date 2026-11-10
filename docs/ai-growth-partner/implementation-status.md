@@ -1,6 +1,6 @@
 # AI Growth Partner implementation and acceptance status
 
-**Updated:** 2026-11-09
+**Updated:** 2026-11-10
 **Code state:** Verification and implementation work is isolated on `codex/ai-growth-partner`. No production deployment, hosted migration, live tenant migration, or profile revocation has been performed.
 
 ## Implemented and verified locally
@@ -206,3 +206,10 @@ See [acquisition-source-research.md](./acquisition-source-research.md) for sourc
 - Direct server-action calls validate the Super Admin role and the client's workforce-management permission; the service separately refuses unknown, non-client and inactive workspaces. The database test covers two tenants, a due enabled schedule, a same-capability Partner schedule, an open legacy job, hidden assignment text and before/after schedule/job snapshots. Action tests cover malformed IDs and both authorization denials.
 - Focused schedule preview, action authorization, accessibility and text-scale checks passed **13/13**. `npm run typecheck` passed. The first full regression run caught two presentation guards in the preview (semantic region label and 12 px minimum text); those were corrected, and the clean full rerun passed **902 test files** (2 skipped) and **13,846 tests** (103 skipped) in **1,495.90 seconds**. Repository lint passed with **0 errors** and the same 3 existing unused-import warnings in unrelated AQi/setup files.
 - No database schema changed, so the existing PGlite migration apply/rollback rehearsal through 0135 remains the latest migration evidence. The restricted production build pass in run #86 verified the prior source-settings increment; this schedule-preview increment still requires a fresh build on the approved hosted runner. A capability match does not prove runtime readiness, tenant permissions, owner approval or a safe cutover. No real tenant, provider, public source, customer notification, hosted migration or production system was used.
+
+## Growth Partner schedule runtime allowlist fix (2026-11-10)
+
+- The due-schedule worker previously compared an agent role only with the first role listed for a capability. The Growth Partner is deliberately included later in several read-only capability allowlists, so a valid Partner schedule could be saved but skipped by the cron worker. The worker now checks membership in the full reviewed allowlist; it does not add any role or capability permission.
+- A disposable two-workspace test configures a single Growth Partner runtime, saves a daily operations-review schedule, advances it to due, and verifies the real scheduler creates exactly one tenant-scoped job on the Work Board, completes it, advances the next run, and does not expose it to the other tenant. The existing legacy-role cron and Work Board tests also pass.
+- The focused schedule suite passed **10/10**; `npm run typecheck`, changed-file ESLint and `git diff --check` passed. `npm run build -- --webpack` passed on the current code with Next.js 16.4.2 and all **16 static pages** (`BUILD_EXIT=0`). This local fallback is needed because this Windows worktree links `node_modules` outside its root; the hosted run remains responsible for the normal Turbopack build. The full hosted regression/type/lint/build job for the prior commit was still in progress at this checkpoint; full CI for this increment is pending.
+- No schema, migration, integration credential, schedule or production state changed outside the disposable test database. The existing PGlite migration apply/rollback rehearsal through 0135 remains applicable.
