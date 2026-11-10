@@ -19,6 +19,7 @@ export interface AiControlsProps {
   perms: { reply: boolean; assign: boolean; resume: boolean };
   team: Array<{ id: string; name: string; role: string }>;
   aiEmployees: ConversationAiEmployee[];
+  unifiedAiIdentity?: boolean;
   busy: string | null;
   run: Run;
 }
@@ -27,9 +28,9 @@ export interface AiControlsProps {
  * Who is speaking for this conversation, and the controls over it: take over, pause the AI, hand it back, choose which AI profile, hand it to a
  * teammate. Every control is also checked on the server; hiding one here is a convenience, not the rule.
  */
-export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiControlsProps) {
+export function AiControls({ c, me, perms, team, aiEmployees, unifiedAiIdentity = false, busy, run }: AiControlsProps) {
   const mine = c.ownerKind === "human" && c.ownerUserId === me.id;
-  const employee = c.aiAgent ? employeeShortName(c.aiAgent) : null;
+  const employee = c.aiAgent ? employeeShortName(c.aiAgent, unifiedAiIdentity) : null;
   const [reason, setReason] = React.useState("");
   const [pauseOpen, setPauseOpen] = React.useState(false);
   const [handTo, setHandTo] = React.useState("");
@@ -115,7 +116,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, busy, run }: AiCon
           <div className="w-full max-w-[260px]">
             <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
-              {aiEmployees.map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
+              {aiEmployees.map((a) => <option key={a.id} value={a.id}>{employeeShortName(a, unifiedAiIdentity)}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>
           </div>
         </div>

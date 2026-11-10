@@ -1,7 +1,7 @@
 import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { employeeShortName, EMPTY_COPY, InboxListPanel, MORE_VIEWS, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
+import { employeeShortName, EMPTY_COPY, InboxListPanel, MORE_VIEWS, OwnerPill, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
 import { INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS } from "@/lib/inbox";
 
 // What the list panel says, rendered on the server. The interactive behaviour (selection, polling) is covered in the browser QA and by the sync tests.
@@ -54,6 +54,14 @@ describe("the views", () => {
 describe("Growth Partner identity in Inbox", () => {
   it("uses the single product identity for Growth Partner activity", () => {
     expect(employeeShortName({ name: "Workspace-specific display name", roleKey: "growth_partner" })).toBe("AI Growth Partner");
-    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Previous profile · Sales Assistant");
+    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" })).toBe("Sales Assistant");
+    expect(employeeShortName({ name: "AI Sales Assistant", roleKey: "sales_assistant" }, true)).toBe("Previous profile · Sales capability");
+    expect(employeeShortName({ name: "Custom profile", roleKey: "growth_partner" }, true)).toBe("AI Growth Partner");
+    const markup = renderToStaticMarkup(React.createElement(OwnerPill, {
+      item: { ownerKind: "ai", ownerName: null, aiAgent: { id: "previous-sales", name: "AI Sales Assistant", roleKey: "sales_assistant" }, aiPaused: false },
+      unifiedAiIdentity: true,
+    }));
+    expect(text(markup)).toContain("Previous profile · Sales capability");
+    expect(markup).not.toContain("Sales Assistant");
   });
 });

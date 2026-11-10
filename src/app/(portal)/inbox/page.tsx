@@ -81,6 +81,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       channelProviders={channelProviders}
       channelHealth={health}
       aiEmployees={aiEmployees}
+      unifiedAiIdentity={ctx.org.kind === "client"}
       aiAssist={ctx.can("inbox.reply")}
       cannedReplies={canned.replies.map((r) => ({ id: r.id, name: r.name, body: r.body, channel: r.channel, folderName: r.folderName }))}
       cannedValues={canned.values}
