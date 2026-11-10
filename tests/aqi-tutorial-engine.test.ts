@@ -68,6 +68,16 @@ describe("AQi starter tutorial library", () => {
     }
   });
 
+  it("describes the Super Admin destination in the unified Growth Partner model", () => {
+    const target = AQI_TARGETS.find((item) => item.id === "nav.agency.workforce");
+    expect(target).toMatchObject({
+      label: "AI Growth Partner operations",
+      description: "Client Growth Partner runtimes, internal operations profiles, and preserved client profiles.",
+      agency: "super_admin",
+      navigation: true,
+    });
+  });
+
   it("rejects an unknown highlight target, an unknown route and executable markup", () => {
     const base = STARTER_TUTORIALS.find((tutorial) => tutorial.slug === "getting-started")!.definition;
     const unknownTarget = validateTutorialDefinition({ ...base, steps: [{ ...base.steps[0], targetId: "[data-hack]" }] });

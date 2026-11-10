@@ -49,7 +49,7 @@ export const AQI_TARGETS: AqiTarget[] = [
   { id: "nav.agency.dashboard", label: "Agency dashboard", description: "Agency dashboard in the agency navigation.", routes: ["*"], agency: "staff", navigation: true },
   { id: "nav.agency.aqi", label: "AQi Management", description: "AQi Management in the agency navigation.", routes: ["*"], agency: "super_admin", navigation: true },
   { id: "nav.agency.clients", label: "Clients", description: "Clients in the agency navigation.", routes: ["*"], agency: "staff", navigation: true },
-  { id: "nav.agency.workforce", label: "Internal AI Employees", description: "Internal AI Employees in the agency navigation.", routes: ["*"], agency: "super_admin", navigation: true },
+  { id: "nav.agency.workforce", label: "AI Growth Partner operations", description: "Client Growth Partner runtimes, internal operations profiles, and preserved client profiles.", routes: ["*"], agency: "super_admin", navigation: true },
   { id: "nav.agency.integrations", label: "Agency Integrations", description: "Agency Integrations in the agency navigation.", routes: ["*"], agency: "staff", permission: "agency.integrations.health", navigation: true },
 
   // Overview.
