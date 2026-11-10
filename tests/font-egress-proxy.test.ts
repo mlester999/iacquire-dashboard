@@ -71,7 +71,9 @@ describe("build font egress allowlist", () => {
 
   it("marks intentional client teardown done before destroying its upstream", () => {
     const source = readFileSync(".github/scripts/font-egress-proxy.mjs", "utf8");
-    expect(source).toMatch(/client\.on\("close", \(\) => \{\s*clearTimeout\(timeout\);\s*if \(!done\) \{[\s\S]*?done = true;\s*upstream\?\.destroy\(\);/);
+    expect(source).toMatch(/const closeTunnel = \(\) => \{\s*clearTimeout\(timeout\);\s*if \(!done\) \{[\s\S]*?done = true;\s*upstream\?\.destroy\(\);/);
+    expect(source).toContain('client.on("error", closeTunnel);');
+    expect(source).toContain('client.on("close", closeTunnel);');
     expect(source).toMatch(/upstream\.once\("error", \(\) => \{\s*if \(done\) return;/);
   });
 });

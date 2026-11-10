@@ -144,8 +144,7 @@ export function createFontEgressProxy({ logger = (line) => console.log(line) } =
     };
 
     const timeout = setTimeout(() => deny("timeout"), CLIENT_HELLO_TIMEOUT_MS);
-    client.on("error", () => upstream?.destroy());
-    client.on("close", () => {
+    const closeTunnel = () => {
       clearTimeout(timeout);
       if (!done) {
         // Closing the client intentionally tears down the upstream tunnel too.
@@ -154,7 +153,9 @@ export function createFontEgressProxy({ logger = (line) => console.log(line) } =
         done = true;
         upstream?.destroy();
       }
-    });
+    };
+    client.on("error", closeTunnel);
+    client.on("close", closeTunnel);
 
     const onClientData = (chunk) => {
       if (done) return;
