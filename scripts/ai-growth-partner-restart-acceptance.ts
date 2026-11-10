@@ -1,5 +1,6 @@
 /**
- * Restart acceptance for app-owned Growth Partner memory/goals, reviewed legacy knowledge, the permanent conversation and Work Board ledger.
+ * Restart acceptance for app-owned Growth Partner memory/goals, a paused cron schedule,
+ * reviewed legacy knowledge, the permanent conversation and Work Board ledger.
  * Uses one disposable, file-backed PGlite database, closes it, then opens it in a fresh Node
  * process. This verifies application database recovery only; it does not exercise Hermes or its
  * separate long-term profile memory.
@@ -32,8 +33,9 @@ async function runWorker() {
   const orgId = process.env.IACCEPTANCE_ORG_ID ?? "";
   const userId = process.env.IACCEPTANCE_USER_ID ?? "";
   const jobId = process.env.IACCEPTANCE_JOB_ID ?? "";
+  const scheduleId = process.env.IACCEPTANCE_SCHEDULE_ID ?? "";
   const expectedConversationId = process.env.IACCEPTANCE_CONVERSATION_ID ?? "";
-  if (![orgId, userId, jobId, expectedConversationId].every(Boolean)) throw new Error("Restart verification identifiers are missing.");
+  if (![orgId, userId, jobId, scheduleId, expectedConversationId].every(Boolean)) throw new Error("Restart verification identifiers are missing.");
 
   const [{ withSystem, closeDb }, fixtures] = await Promise.all([
     import("../src/server/db/index"),
@@ -98,6 +100,27 @@ async function runWorker() {
     if (!partnerKnowledge.block.includes("Persistent approved legacy knowledge after restart.")) {
       throw new Error("The approved retained-profile knowledge did not recover as Partner context after process restart.");
     }
+    const schedule = (await withSystem((db) => db.query<{
+      role_key: string;
+      capability: string;
+      cadence: string;
+      timezone: string;
+      enabled: boolean;
+      recurrence_rule: { kind?: string; localTime?: string } | null;
+      business_hours: { mon?: string[][] };
+    }>(
+      `select a.role_key, s.capability, s.cadence, s.timezone, s.enabled, s.recurrence_rule, s.business_hours
+         from ai_work_schedules s
+         join agent_instances a on a.id = s.agent_instance_id and a.org_id = s.org_id
+        where s.id = $1 and s.org_id = $2`,
+      [scheduleId, orgId],
+    ))).rows[0];
+    if (!schedule || schedule.role_key !== "growth_partner" || schedule.capability !== "proactive_review"
+      || schedule.enabled || schedule.cadence !== "daily" || schedule.timezone !== "UTC"
+      || schedule.recurrence_rule?.kind !== "daily" || schedule.recurrence_rule.localTime !== "09:00"
+      || schedule.business_hours.mon?.[0]?.[0] !== "09:00" || schedule.business_hours.mon?.[0]?.[1] !== "17:00") {
+      throw new Error("The saved paused Growth Partner cron schedule did not recover with its approved settings after process restart.");
+    }
     const job = await getWorkJobView(ctx, jobId);
     if (!job || job.status !== "completed" || job.resultSummary !== "Persistent restart acceptance task state.") {
       throw new Error("The completed Work Board task did not recover after restart.");
@@ -112,6 +135,8 @@ async function runWorker() {
       goalConfigurationRecovered: true,
       goalPromptContextRecovered: true,
       approvedLegacyKnowledgePromptContextRecovered: true,
+      pausedCronScheduleRecovered: true,
+      pausedCronScheduleExecuted: false,
       workBoardTaskRecovered: true,
       hermesMemoryVerified: false,
     }));
@@ -131,10 +156,11 @@ async function seedAndRestart() {
   setIsolatedEnvironment(resolvedDataDir);
 
   try {
-    const [{ withSystem, closeDb }, fixtures, { ensureGrowthPartnerRuntime }, { createWorkJob, appendWorkEvent }] = await Promise.all([
+    const [{ withSystem, closeDb }, fixtures, { createConfigVersion, ensureGrowthPartnerRuntime }, { defaultSettings }, { createWorkJob, appendWorkEvent }] = await Promise.all([
       import("../src/server/db/index"),
       import("../tests/support/fixtures"),
       import("../src/server/workforce/service"),
+      import("../src/server/workforce/compiler"),
       import("../src/server/workforce/jobs"),
     ]);
     const org = await fixtures.createOrg({ name: `Restart Acceptance ${randomUUID().slice(0, 8)}` });
@@ -183,6 +209,29 @@ async function seedAndRestart() {
       );
       return { runtimeId, conversationId };
     });
+    await withSystem((db) => createConfigVersion(db, {
+      orgId: org.id,
+      agentId: runtimeId,
+      settings: defaultSettings("growth_partner"),
+      source: "onboarding",
+      userId: owner.id,
+      apply: true,
+    }));
+    await withSystem((db) => db.query(
+      "update agent_instances set status = 'online', last_health_ok = true, last_health_check_at = now() where id = $1 and org_id = $2",
+      [runtimeId, org.id],
+    ));
+    const scheduleId = await withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string }>(
+        `insert into ai_work_schedules
+           (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
+         values ($1, $2, $3, 'proactive_review', 'daily', 1440, 'UTC', $4::jsonb, '{}'::jsonb, $5::jsonb, false, now() + interval '1 day')
+         returning id`,
+        [org.id, runtimeId, owner.id, JSON.stringify({ mon: [["09:00", "17:00"]] }), JSON.stringify({ kind: "daily", localTime: "09:00" })],
+      );
+      if (!rows[0]) throw new Error("The paused Growth Partner schedule could not be persisted.");
+      return rows[0].id;
+    });
     const job = await withSystem(async (db) => {
       const created = await createWorkJob(db, {
         orgId: org.id,
@@ -214,6 +263,7 @@ async function seedAndRestart() {
       IACCEPTANCE_ORG_ID: org.id,
       IACCEPTANCE_USER_ID: owner.id,
       IACCEPTANCE_JOB_ID: job.id,
+      IACCEPTANCE_SCHEDULE_ID: scheduleId,
       IACCEPTANCE_CONVERSATION_ID: conversationId,
     };
     const child = spawnSync(process.execPath, ["--conditions=react-server", "--import", "tsx", scriptPath], {
