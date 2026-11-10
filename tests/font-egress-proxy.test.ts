@@ -68,4 +68,10 @@ describe("build font egress allowlist", () => {
     expect(extractTlsClientHelloServerName(Buffer.from("not tls"))).toBeNull();
     expect(extractTlsClientHelloServerName(clientHello("fonts.gstatic.com", Buffer.from([0xfe, 0x0d, 0, 0])))).toBeNull();
   });
+
+  it("marks intentional client teardown done before destroying its upstream", () => {
+    const source = readFileSync(".github/scripts/font-egress-proxy.mjs", "utf8");
+    expect(source).toMatch(/client\.on\("close", \(\) => \{\s*clearTimeout\(timeout\);\s*if \(!done\) \{[\s\S]*?done = true;\s*upstream\?\.destroy\(\);/);
+    expect(source).toMatch(/upstream\.once\("error", \(\) => \{\s*if \(done\) return;/);
+  });
 });

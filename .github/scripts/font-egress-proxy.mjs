@@ -147,7 +147,13 @@ export function createFontEgressProxy({ logger = (line) => console.log(line) } =
     client.on("error", () => upstream?.destroy());
     client.on("close", () => {
       clearTimeout(timeout);
-      if (!done) upstream?.destroy();
+      if (!done) {
+        // Closing the client intentionally tears down the upstream tunnel too.
+        // Mark it complete first so the resulting socket error is not mistaken
+        // for a failed font fetch.
+        done = true;
+        upstream?.destroy();
+      }
     });
 
     const onClientData = (chunk) => {
@@ -181,6 +187,7 @@ export function createFontEgressProxy({ logger = (line) => console.log(line) } =
         upstream.pipe(client);
       });
       upstream.once("error", () => {
+        if (done) return;
         done = true;
         clearTimeout(timeout);
         logger(`FONT_EGRESS_UPSTREAM_ERROR ${target.host}`);
