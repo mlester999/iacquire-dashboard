@@ -85,10 +85,21 @@ describe("a Settings > Business profile edit reaches the employees", () => {
   }, 120_000);
 
   it("syncs confirmed profile facts into the active Growth Partner brain and rebases an existing draft without activating it", async () => {
-    const c = await submitRealOnboarding({ name: "Brain Profile Roofing", clearPayment: true, withGrowthPartner: true });
+    const c = await submitRealOnboarding({
+      name: "Brain Profile Roofing",
+      clearPayment: true,
+      withGrowthPartner: true,
+      extraAnswers: { "a.contact_phone": "+1 512 555 0100" },
+    });
     const before = await getGrowthPartnerControlState(c.ctx);
     expect(before?.currentVersion).not.toBeNull();
     const activeBefore = before!.currentBusinessBrain!;
+    expect(activeBefore.sections.businessIdentity.contactEmail).toMatchObject({
+      value: c.owner.email, state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "a.contact_email" }],
+    });
+    expect(activeBefore.sections.businessIdentity.contactPhone).toMatchObject({
+      value: "+15125550100", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "a.contact_phone" }],
+    });
     await saveGrowthPartnerBusinessBrainFactDraft(c.ctx, {
       baseVersion: before!.currentVersion!, section: "salesKnowledge", key: "objectionHandling",
       valueText: "Ask a person to review refund objections before responding.",

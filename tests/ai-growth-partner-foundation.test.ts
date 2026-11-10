@@ -58,6 +58,8 @@ describe("AI Growth Partner foundation", () => {
       clientOverride: false,
     };
     expect(parseBusinessBrain(brain).sections.businessIdentity.companyName.state).toBe("unknown");
+    expect(brain.sections.businessIdentity.contactEmail).toMatchObject({ value: null, state: "unknown" });
+    expect(brain.sections.businessIdentity.contactPhone).toMatchObject({ value: null, state: "unknown" });
 
     brain.sections.businessIdentity.companyName.value = "Invented Roofing Co.";
     expect(() => parseBusinessBrain(brain)).toThrow(/Unknown Business Brain facts must have a null value/);
@@ -99,6 +101,8 @@ describe("AI Growth Partner foundation", () => {
     const brain = generateBusinessBrainFromOnboarding({
       "a.business_name": { value: "Northstar Roofing", skipped: false, source: "user", needsConfirmation: false, updatedAt: at },
       "a.website": { value: "https://northstar.example", skipped: false, source: "website_analysis", needsConfirmation: false, updatedAt: at },
+      "a.contact_email": { value: "hello@northstar.example", skipped: false, source: "user", needsConfirmation: false, updatedAt: at },
+      "a.contact_phone": { value: "+1 407 555 0123", skipped: false, source: "user", needsConfirmation: false, updatedAt: at },
       "e.policies": { value: "Draft: 30-day refund policy", skipped: false, source: "ai_suggestion", needsConfirmation: true, updatedAt: at },
       "b.services": { value: "Roof repair", skipped: true, source: "user", needsConfirmation: false, updatedAt: at },
       "unknown.question": { value: "ignore", skipped: false, source: "user", needsConfirmation: false, updatedAt: at },
@@ -107,6 +111,8 @@ describe("AI Growth Partner foundation", () => {
     expect(brain.generatedAt).toBe(at);
     expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: "Northstar Roofing", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "a.business_name" }] });
     expect(brain.sections.businessIdentity.website).toMatchObject({ value: "https://northstar.example", state: "client_confirmed", provenance: [{ source: "website", sourceId: "a.website" }] });
+    expect(brain.sections.businessIdentity.contactEmail).toMatchObject({ value: "hello@northstar.example", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "a.contact_email" }] });
+    expect(brain.sections.businessIdentity.contactPhone).toMatchObject({ value: "+1 407 555 0123", state: "client_confirmed", provenance: [{ source: "onboarding", sourceId: "a.contact_phone" }] });
     expect(brain.sections.policies.customerPolicies).toMatchObject({ state: "draft_suggestion" });
     expect(brain.sections.productsServicesOffers.services).toMatchObject({ value: null, state: "unknown" });
     expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: "Northstar Roofing", state: "client_confirmed" });
