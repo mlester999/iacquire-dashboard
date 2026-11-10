@@ -114,7 +114,7 @@ export function extractTlsClientHelloServerName(buffer) {
 
 const safeLabel = (value) => String(value).replace(/[^a-zA-Z0-9.:_-]/g, "?").slice(0, 180);
 
-export function createFontEgressProxy({ logger = (line) => console.log(line) } = {}) {
+export function createFontEgressProxy({ logger = (line) => console.log(line), connectUpstream = net.connect } = {}) {
   const server = http.createServer((request, response) => {
     logger(`FONT_EGRESS_DENY_METHOD ${safeLabel(request.method)}`);
     response.writeHead(403, { connection: "close", "content-length": "0" }).end();
@@ -175,7 +175,7 @@ export function createFontEgressProxy({ logger = (line) => console.log(line) } =
 
       connecting = true;
       // A trailing dot makes this an absolute DNS name and avoids resolver search suffixes.
-      upstream = net.connect({ host: `${target.host}.`, port: target.port });
+      upstream = connectUpstream({ host: `${target.host}.`, port: target.port });
       upstream.setTimeout(CLIENT_HELLO_TIMEOUT_MS, () => upstream.destroy(new Error("upstream timeout")));
       upstream.once("connect", () => {
         if (done) return;

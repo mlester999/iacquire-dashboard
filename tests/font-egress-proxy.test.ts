@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
-import { extractTlsClientHelloServerName, parseFontProxyTarget } from "../.github/scripts/font-egress-proxy.mjs";
+import net from "node:net";
+import { Duplex } from "node:stream";
+import { createFontEgressProxy, extractTlsClientHelloServerName, parseFontProxyTarget } from "../.github/scripts/font-egress-proxy.mjs";
 
 function u16(value: number) {
   const result = Buffer.alloc(2);
@@ -69,11 +72,75 @@ describe("build font egress allowlist", () => {
     expect(extractTlsClientHelloServerName(clientHello("fonts.gstatic.com", Buffer.from([0xfe, 0x0d, 0, 0])))).toBeNull();
   });
 
-  it("marks intentional client teardown done before destroying its upstream", () => {
+  it("does not report an upstream error caused by downstream tunnel teardown", async () => {
+    const logs: string[] = [];
+    const proxySockets = new Set<net.Socket>();
+    let markUpstreamConnected!: () => void;
+    const upstreamConnected = new Promise<void>((resolve) => { markUpstreamConnected = resolve; });
+    const connectUpstream = () => {
+      const socket = new Duplex({
+        read() {},
+        write(_chunk, _encoding, callback) { callback(); },
+      }) as Duplex & { setTimeout(msecs: number, callback?: () => void): unknown };
+      socket.setTimeout = () => socket;
+      socket.destroy = ((error?: Error) => {
+        if (!error && !socket.destroyed) {
+          process.nextTick(() => socket.emit("error", Object.assign(new Error("socket closed"), { code: "ECONNRESET" })));
+        }
+        return Duplex.prototype.destroy.call(socket, error);
+      }) as typeof socket.destroy;
+      process.nextTick(() => {
+        socket.emit("connect");
+        markUpstreamConnected();
+      });
+      return socket;
+    };
+    const proxy = createFontEgressProxy({ logger: (line) => logs.push(line), connectUpstream });
+    proxy.on("connection", (socket) => {
+      proxySockets.add(socket);
+      socket.once("close", () => proxySockets.delete(socket));
+    });
+
+    proxy.listen(0, "127.0.0.1");
+    await once(proxy, "listening");
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("Expected a TCP proxy address");
+    let client: net.Socket | null = null;
+
+    try {
+      client = net.connect(address.port, "127.0.0.1");
+      await once(client, "connect");
+      const response = new Promise<void>((resolve, reject) => {
+        let data = "";
+        const timer = setTimeout(() => reject(new Error("Timed out waiting for CONNECT response")), 3000);
+        client!.on("data", (chunk) => {
+          data += chunk.toString("latin1");
+          if (!data.includes("\r\n\r\n")) return;
+          clearTimeout(timer);
+          expect(data).toMatch(/^HTTP\/1\.1 200 Connection Established\r\n/);
+          resolve();
+        });
+      });
+      client.write("CONNECT fonts.googleapis.com:443 HTTP/1.1\r\nHost: fonts.googleapis.com:443\r\n\r\n");
+      await response;
+      client.write(clientHello("fonts.googleapis.com"));
+      await upstreamConnected;
+
+      client.destroy();
+      await once(client, "close");
+      await new Promise<void>((done) => setImmediate(done));
+      expect(logs).toContain("FONT_EGRESS_ALLOW fonts.googleapis.com");
+      expect(logs).not.toContain("FONT_EGRESS_UPSTREAM_ERROR fonts.googleapis.com");
+    } finally {
+      client?.destroy();
+      for (const socket of proxySockets) socket.destroy();
+      proxy.closeAllConnections();
+      await new Promise<void>((done, reject) => proxy.close((error) => error ? reject(error) : done()));
+    }
+  }, 10_000);
+
+  it("keeps an upstream connection failure observable", () => {
     const source = readFileSync(".github/scripts/font-egress-proxy.mjs", "utf8");
-    expect(source).toMatch(/const closeTunnel = \(\) => \{\s*clearTimeout\(timeout\);\s*if \(!done\) \{[\s\S]*?done = true;\s*upstream\?\.destroy\(\);/);
-    expect(source).toContain('client.on("error", closeTunnel);');
-    expect(source).toContain('client.on("close", closeTunnel);');
-    expect(source).toMatch(/upstream\.once\("error", \(\) => \{\s*if \(done\) return;/);
+    expect(source).toMatch(/upstream\.once\("error", \(\) => \{\s*if \(done\) return;\s*done = true;\s*clearTimeout\(timeout\);\s*logger\(`FONT_EGRESS_UPSTREAM_ERROR/);
   });
 });
