@@ -34,11 +34,12 @@ import {
   updateUsageLimitsAction,
   verifyGhlAction,
 } from "@/app/(admin)/admin/actions";
-import { prepareGrowthPartnerMigrationCandidateAction } from "@/app/(admin)/admin/migration-actions";
+import { prepareGrowthPartnerMigrationCandidateAction, previewGrowthPartnerScheduleMigrationAction } from "@/app/(admin)/admin/migration-actions";
 import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
 import { setupStatusCopy } from "@/lib/billing-clearance";
 import type { AgencyPaymentView } from "@/server/billing/payments-view";
 import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
+import type { GrowthPartnerScheduleMigrationPreview } from "@/server/admin/growth-partner-migration";
 import type { ProvisioningBundle } from "@/server/workforce/provisioning";
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, workforceIdentityLabel } from "@/lib/agents";
 import { cn, formatDate, formatDateTime, formatNumber, initials, relativeTime, sentenceCase } from "@/lib/utils";
@@ -233,6 +234,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [requeueFor, setRequeueFor] = React.useState<Detail["provisioning"][number] | null>(null);
   const [planChange, setPlanChange] = React.useState<{ agent: Detail["agents"][number]; enabled: boolean } | null>(null);
   const [prepareMigrationOpen, setPrepareMigrationOpen] = React.useState(false);
+  const [schedulePreview, setSchedulePreview] = React.useState<GrowthPartnerScheduleMigrationPreview | null>(null);
   const migration = data.migrationInventory;
   const candidatePrepared = Boolean(
     data.growthPartner?.status === "migration_required"
@@ -317,6 +319,89 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
             <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted">
               These are persisted record counts only. Profile reachability, actual credential validity, runtime memory, external provider state, permissions and paid entitlements still need a separate review. Preparing the candidate below only adds an unbound identity in migration-required state; it does not copy Business Brain data, create a runtime or conversation, pause work, change access, or perform a cutover.
             </p>
+            {data.access.workforceManage && (
+              <div className="space-y-3 border-t border-line pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[14px] font-semibold text-ink">Schedule reconciliation preview</h3>
+                    <p className="mt-1 text-[12px] text-muted">Read current schedules and open work before any future cutover. Saved assignment instructions stay private.</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    disabled={Boolean(pending)}
+                    loading={pending === "schedule-migration-preview"}
+                    onClick={async () => {
+                      const result = await run(
+                        "schedule-migration-preview",
+                        () => previewGrowthPartnerScheduleMigrationAction(data.org.id),
+                      );
+                      if (result?.data) setSchedulePreview(result.data);
+                    }}
+                  >
+                    Preview schedule mapping
+                  </Button>
+                </div>
+                {schedulePreview && (
+                  <section className="space-y-3 rounded-xl border border-line bg-surface p-4" aria-label="Read-only schedule migration preview">
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-muted">
+                      <span>{schedulePreview.summary.enabled} enabled of {schedulePreview.summary.total}</span>
+                      <span>{schedulePreview.summary.potentiallySupported} current capability matches</span>
+                      <span>{schedulePreview.summary.openWorkItems} open work items</span>
+                      <span>{schedulePreview.summary.partnerScheduleMatches} existing partner schedule matches</span>
+                      <span>{schedulePreview.summary.dueSchedules} due now</span>
+                    </div>
+                    {schedulePreview.schedules.length === 0 ? (
+                      <p className="text-[13px] text-muted">No previous profile schedules are saved for this workspace.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {schedulePreview.schedules.map((schedule) => (
+                          <article key={schedule.id} className="rounded-lg border border-line bg-surface-2/40 p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-[13px] font-semibold text-ink">{schedule.capabilityLabel}</h4>
+                              <Badge tone={schedule.potentiallySupportedByGrowthPartner ? "success" : "warning"}>
+                                {schedule.potentiallySupportedByGrowthPartner ? "Capability available to Partner" : "Capability needs review"}
+                              </Badge>
+                              {schedule.matchingGrowthPartnerSchedule && <Badge tone="warning">Partner schedule already exists</Badge>}
+                              {schedule.due && <Badge tone="primary">Due now</Badge>}
+                            </div>
+                            <p className="mt-1 text-[12px] text-muted">
+                              Previous profile: {AGENT_BY_KEY[schedule.legacyRole].shortName} · {schedule.enabled ? "Enabled" : "Paused"} · {schedule.cadence} ({schedule.intervalMinutes} min) · {schedule.timezone}
+                            </p>
+                            <p className="mt-1 text-[12px] text-muted">
+                              Next run {formatDateTime(schedule.nextRunAt, schedule.timezone)} · {schedule.openWorkItemsForCapability} open work items for this profile and capability
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                    {schedulePreview.openWorkItems.length > 0 ? (
+                      <details className="rounded-lg border border-line bg-surface-2/40 p-3">
+                        <summary className="cursor-pointer text-[13px] font-medium text-ink">
+                          Open Work Board items and idempotency keys ({schedulePreview.openWorkItems.length})
+                        </summary>
+                        <div className="mt-3 space-y-2">
+                          {schedulePreview.openWorkItems.map((job) => (
+                            <div key={job.id} className="rounded-md border border-line bg-surface p-2.5 text-[12px]">
+                              <p className="font-medium text-ink">
+                                {AGENT_BY_KEY[job.legacyRole].shortName} · {job.capability.replaceAll("_", " ")} · {job.status}
+                              </p>
+                              <p className="mt-1 break-all font-mono text-[12px] text-muted">Job {job.id}</p>
+                              <p className="mt-1 break-all font-mono text-[12px] text-muted">Key {job.idempotencyKey}</p>
+                              {job.scheduleId && <p className="mt-1 break-all font-mono text-[12px] text-muted">Schedule {job.scheduleId}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : (
+                      <p className="text-[12px] text-muted">No open Work Board items remain on the previous profiles.</p>
+                    )}
+                    <p className="text-[12px] leading-relaxed text-muted">
+                      A capability match only means the current policy allows the Growth Partner role to use this capability. Runtime readiness, workspace permissions, tool setup, assignment review and owner-approved cutover still need separate checks. This preview changed no schedules or jobs.
+                    </p>
+                  </section>
+                )}
+              </div>
+            )}
             {candidatePrepared ? (
               <p className="rounded-xl border border-warning/25 bg-warning-soft/30 px-3 py-2.5 text-[13px] text-ink-2">The identity candidate is staged and inactive. Review and import of approved knowledge, owner choices, runtime setup, schedule reconciliation and cutover remain separate steps.</p>
             ) : canPrepareMigration ? (
