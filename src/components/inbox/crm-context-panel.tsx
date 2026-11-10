@@ -61,7 +61,7 @@ function SectionBody<T>({ section, empty, render }: { section: Section<T>; empty
 
 const money = (value: number | null, currency: string) => (value === null ? null : new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: 0 }).format(value));
 
-export function CrmContextPanel({ conversationId, version, timeZone, onChanged }: { conversationId: string; version: number; timeZone: string; onChanged: () => void }) {
+export function CrmContextPanel({ conversationId, version, timeZone, unifiedAiIdentity = false, onChanged }: { conversationId: string; version: number; timeZone: string; unifiedAiIdentity?: boolean; onChanged: () => void }) {
   const { state, reload } = useCrmContext(conversationId, version);
   if (state.kind === "loading") {
     return (
@@ -170,7 +170,7 @@ export function CrmContextPanel({ conversationId, version, timeZone, onChanged }
       </Card>
       <Card title="AI activity" icon={Bot}>
         <dl className="space-y-1.5 text-[13px]">
-          <div className="flex justify-between gap-2"><dt className="text-muted">AI identities involved</dt><dd className="text-right">{d.ai.employees.length ? d.ai.employees.map((e) => employeeShortName(e)).join(", ") : "None"}</dd></div>
+          <div className="flex justify-between gap-2"><dt className="text-muted">{unifiedAiIdentity ? "AI profiles involved" : "AI identities involved"}</dt><dd className="text-right">{d.ai.employees.length ? d.ai.employees.map((e) => employeeShortName(e, unifiedAiIdentity)).join(", ") : "None"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Messages the AI sent</dt><dd>{d.ai.aiMessages}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Drafts waiting for approval</dt><dd>{d.ai.draftsWaiting}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-muted">Asked for a person</dt><dd>{d.ai.handoffs}</dd></div>

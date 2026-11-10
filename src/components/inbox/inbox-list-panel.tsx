@@ -59,6 +59,8 @@ export interface ListPanelProps {
   onRetry: () => void;
   /** After a bulk action: read the list again and let other tabs know. */
   onChanged: () => void;
+  /** Client workspaces show one Partner identity while retaining old handler records as previous profiles. */
+  unifiedAiIdentity?: boolean;
   /** Rendered above the list (the "needs a person" queue). */
   aboveList?: React.ReactNode;
 }
@@ -74,16 +76,25 @@ function ChannelMark({ channel, provider }: { channel: ConversationChannel; prov
   );
 }
 
-/** Keep the current identity visible while clearly marking historical AI assignments as retained profiles. */
-export function employeeShortName(agent: { name: string; roleKey: string }): string {
+const CAPABILITY_LABEL_BY_LEGACY_ROLE: Record<string, string> = {
+  operations_manager: "Operations",
+  lead_hunter: "Prospecting",
+  appointment_setter: "Appointments",
+  sales_assistant: "Sales",
+  crm_manager: "CRM",
+  performance_analyst: "Performance",
+};
+
+/** Keep internal workspace labels intact; client workspaces present previous profiles by capability under the single Partner identity. */
+export function employeeShortName(agent: { name: string; roleKey: string }, unifiedAiIdentity = false): string {
   if (agent.roleKey === AI_GROWTH_PARTNER_ROLE_KEY) return "AI Growth Partner";
-  const legacyName = AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
-  return `Previous profile · ${legacyName}`;
+  if (unifiedAiIdentity) return CAPABILITY_LABEL_BY_LEGACY_ROLE[agent.roleKey] ? `Previous profile · ${CAPABILITY_LABEL_BY_LEGACY_ROLE[agent.roleKey]} capability` : "Previous profile";
+  return AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
 }
 
-export function OwnerPill({ item }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused"> }) {
+export function OwnerPill({ item, unifiedAiIdentity = false }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused">; unifiedAiIdentity?: boolean }) {
   if (item.ownerKind === "ai") {
-    const label = item.aiAgent ? employeeShortName(item.aiAgent) : "AI";
+    const label = item.aiAgent ? employeeShortName(item.aiAgent, unifiedAiIdentity) : "AI";
     if (item.aiPaused) return <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[12px] font-medium text-warning-ink"><PauseCircle className="size-3" aria-hidden />{label} · paused</span>;
     return <span className="inline-flex items-center gap-1 rounded-full bg-violet-soft px-2 py-0.5 text-[12px] font-medium text-violet-ink"><Bot className="size-3" aria-hidden />{label}</span>;
   }
@@ -106,7 +117,7 @@ function StatusChips({ c }: { c: ConversationListItem }) {
   return <>{chips}</>;
 }
 
-export function ConversationRow({ c, selected, onOpen, provider, selectMode, checked, onCheck }: { c: ConversationListItem; selected: boolean; onOpen: (id: string) => void; provider?: string | null; selectMode: boolean; checked: boolean; onCheck: (id: string, on: boolean) => void }) {
+export function ConversationRow({ c, selected, onOpen, provider, selectMode, checked, onCheck, unifiedAiIdentity = false }: { c: ConversationListItem; selected: boolean; onOpen: (id: string) => void; provider?: string | null; selectMode: boolean; checked: boolean; onCheck: (id: string, on: boolean) => void; unifiedAiIdentity?: boolean }) {
   const attention = c.attention.map((a) => ATTENTION_LABELS[a]).join(". ");
   return (
     <li className="flex items-stretch gap-2">
@@ -130,7 +141,7 @@ export function ConversationRow({ c, selected, onOpen, provider, selectMode, che
           <span className="mt-0.5 block truncate text-[13px] text-muted">{c.preview ?? "No messages yet"}</span>
           <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <ChannelMark channel={c.channel} provider={provider} />
-            <OwnerPill item={c} />
+            <OwnerPill item={c} unifiedAiIdentity={unifiedAiIdentity} />
             <StatusChips c={c} />
             {c.priority === "high" && !c.attention.length && <Badge tone="warning">High</Badge>}
             {c.unread > 0 && <span role="img" className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold text-primary-on" aria-label={`${c.unread} unread`}>{c.unread}</span>}
@@ -390,6 +401,7 @@ export function InboxListPanel(p: ListPanelProps) {
               provider={p.channelProviders?.[c.channel]}
               selectMode={selectMode}
               checked={checked.has(c.id)}
+              unifiedAiIdentity={p.unifiedAiIdentity}
               onCheck={(id, on) => setChecked((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; })}
             />
           ))}

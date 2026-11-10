@@ -15,7 +15,7 @@ import { AiAssistPanel } from "@/components/inbox/ai-assist-panel";
 import { requestSuggestedReply } from "@/components/inbox/assist-client";
 import { ChannelHealthBar } from "@/components/inbox/channel-health-bar";
 import { CrmContextPanel } from "@/components/inbox/crm-context-panel";
-import { InboxListPanel } from "@/components/inbox/inbox-list-panel";
+import { employeeShortName, InboxListPanel } from "@/components/inbox/inbox-list-panel";
 import { useInboxSync } from "@/components/inbox/use-inbox-sync";
 import { BLOCK_REASON_LABELS, CONVERSATION_CHANNEL_LABELS, MESSAGE_STATUS_LABELS, smsSegments, type ConversationChannel, type MessageStatus } from "@/lib/messaging";
 import { anyTokenLabel, customValueKeyOf, renderTemplate, type CustomValueTokenDef, type TokenValues } from "@/lib/messaging/tokens";
@@ -83,6 +83,8 @@ interface Props {
   channelHealth?: ChannelHealth[];
   /** The customer-facing AI profiles a manager may attach to a conversation. */
   aiEmployees?: ConversationAiEmployee[];
+  /** Client workspaces present the single Growth Partner identity and label retained handlers as previous capability profiles. */
+  unifiedAiIdentity?: boolean;
   /** Whether this person may ask for AI summaries and suggested replies (and the workspace has them). */
   aiAssist?: boolean;
   /** The database time the page was read at; live updates ask for changes from here. */
@@ -418,6 +420,7 @@ export function InboxWorkspace(props: Props) {
               error={list.error}
               hasMore={nextCursor !== null}
               perms={props.perms}
+              unifiedAiIdentity={props.unifiedAiIdentity}
               team={props.team}
               onChange={changeFilters}
               onOpen={openConversation}
@@ -1159,7 +1162,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void; onOpen
         </div>
       </header>
 
-      <AiControls c={c} me={me} perms={perms} team={props.team} aiEmployees={props.aiEmployees} busy={busy} run={run} />
+      <AiControls c={c} me={me} perms={perms} team={props.team} aiEmployees={props.aiEmployees} unifiedAiIdentity={props.unifiedAiIdentity} busy={busy} run={run} />
       {detail.escalation && <EscalationBanner detail={detail} me={me} perms={perms} busy={busy} run={run} />}
 
       <div ref={logRef} onScroll={(e) => { followRef.current = isScrolledToEnd(e.currentTarget); }} className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4" role="log" tabIndex={0} aria-label="Messages" aria-live="polite">
@@ -1390,7 +1393,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
   return (
     <aside aria-label={inline ? "Customer details (compact)" : "Customer details"} className="block min-w-0 space-y-4">
       <AiAssistPanel conversationId={c.id} newestInboundId={[...detail.messages].reverse().find((m) => m.direction === "inbound")?.id ?? null} canUse={aiAssist} />
-      <CrmContextPanel conversationId={c.id} version={c.revision} timeZone={timeZone} onChanged={refresh} />
+      <CrmContextPanel conversationId={c.id} version={c.revision} timeZone={timeZone} unifiedAiIdentity={props.unifiedAiIdentity} onChanged={refresh} />
       <section className="rounded-2xl border border-line bg-surface p-4">
         <h2 className="text-[14px] font-semibold">Identity and consent</h2>
         <dl className="mt-3 space-y-2 text-[13px]">
@@ -1426,7 +1429,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
               <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI handler for this conversation</label>
               <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
                 {!c.aiAgent && <option value="">AI handler: none chosen</option>}
-                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
+                {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>{employeeShortName(a, props.unifiedAiIdentity)}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
               </Select>
             </>
           )}
