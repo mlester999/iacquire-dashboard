@@ -962,29 +962,37 @@ export async function buildRunInstructions(db: Queryable, orgId: string, agentId
     id: string | null;
     org_kind: WorkforceOrganizationKind;
     org_name: string;
+    partner_runtime_agent_id: string | null;
     role_key: string;
   }>(
-    `select v.compiled_instructions, v.id, o.kind as org_kind, o.name as org_name, a.role_key from agent_instances a
+    `select v.compiled_instructions, v.id, o.kind as org_kind, o.name as org_name, a.role_key,
+            p.runtime_agent_instance_id as partner_runtime_agent_id
+     from agent_instances a
      join organizations o on o.id = a.org_id
+     left join ai_growth_partners p on p.org_id = a.org_id
      left join agent_config_versions v on v.id = a.active_config_version_id
      where a.id = $1 and a.org_id = $2`,
     [agentId, orgId],
   );
   const base = rows[0];
+  if (!base) throw new AppError("agent_unavailable", "This employee isn't part of the active workspace.");
+  if (base.role_key === AI_GROWTH_PARTNER_ROLE_KEY && base.partner_runtime_agent_id !== agentId) {
+    throw new AppError("agent_unavailable", "This AI Growth Partner runtime isn't linked to the workspace's single identity.");
+  }
   if (!base?.compiled_instructions) throw new AppError("agent_unavailable", "This employee hasn't been configured yet.");
   const instructions = base.role_key === AI_GROWTH_PARTNER_ROLE_KEY
-    ? await insertActiveBusinessBrain(db, orgId, base.compiled_instructions)
+    ? await insertActiveBusinessBrain(db, orgId, agentId, base.compiled_instructions)
     : base.compiled_instructions;
   return composeRunInstructions(db, orgId, agentId, instructions, base.id, { kind: base.org_kind, name: base.org_name }, memoryQuery);
 }
 
-async function insertActiveBusinessBrain(db: Queryable, orgId: string, compiled: string): Promise<string> {
+async function insertActiveBusinessBrain(db: Queryable, orgId: string, agentId: string, compiled: string): Promise<string> {
   const brainRow = (await db.query<{ version: number; business_brain: unknown }>(
     `select v.version, v.business_brain
      from ai_growth_partners p
      join ai_growth_partner_versions v on v.org_id = p.org_id and v.partner_id = p.id and v.version = p.current_version
-     where p.org_id = $1 limit 1`,
-    [orgId],
+     where p.org_id = $1 and p.runtime_agent_instance_id = $2 limit 1`,
+    [orgId, agentId],
   )).rows[0];
   if (!brainRow) return compiled;
   const parsed = BusinessBrainSchema.safeParse(brainRow.business_brain);

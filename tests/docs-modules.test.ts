@@ -62,7 +62,15 @@ describe("what the documents point at", () => {
   function sourceFiles(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? sourceFiles(path.join(dir, e.name)) : /\.(tsx?|mjs)$/.test(e.name) ? [path.join(dir, e.name)] : []));
   }
-  const readsEnvDirectly = (name: string): boolean => ["src", "scripts"].some((root) => sourceFiles(root).some((f) => read(f).includes(`process.env.${name}`)));
+  const directlyReferencedEnvNames = new Set<string>();
+  for (const root of ["src", "scripts"]) {
+    for (const sourceFile of sourceFiles(root)) {
+      for (const match of read(sourceFile).matchAll(/\bprocess\.env\.([A-Z][A-Z0-9_]*)/g)) {
+        directlyReferencedEnvNames.add(match[1]);
+      }
+    }
+  }
+  const readsEnvDirectly = (name: string): boolean => directlyReferencedEnvNames.has(name);
 
   /** Why a path named in backticks does not exist, or null. A star matches any ending ("tests/proposals-*.test.ts(x)" needs one such file); "(x)" means .ts or .tsx. */
   function problemWith(span: string): string | null {
