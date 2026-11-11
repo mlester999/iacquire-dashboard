@@ -423,7 +423,7 @@ export function buildOutcomeNotes(i: {
   /** Nothing had changed since the last submission, so nothing was done. */
   quiet?: boolean;
   knowledgeKept: readonly string[];
-  employees: ReadonlyArray<{ configStatus: string }>;
+  employees: ReadonlyArray<{ configStatus: string; role?: string }>;
   scheduling: { state: string; reason?: string; drift?: readonly string[] };
   wantsAppointments: boolean;
   targetingKept: boolean;
@@ -436,8 +436,15 @@ export function buildOutcomeNotes(i: {
     const names = i.knowledgeKept.map((s) => SECTION_LABELS[s] ?? s.replaceAll("_", " "));
     notes.push({ key: "knowledge.kept", message: `We kept your own wording in ${list(names)}.` });
   }
-  const held = i.employees.filter((e) => e.configStatus === "pending_agency_review").length;
-  if (held) notes.push({ key: "employees.held", message: `${held} employee update${held === 1 ? " is" : "s are"} waiting for iAcquire's review. Until then, ${held === 1 ? "that employee keeps" : "those employees keep"} the setup already approved.` });
+  const held = i.employees.filter((e) => e.configStatus === "pending_agency_review");
+  const heldPartner = held.filter((e) => e.role === "growth_partner").length;
+  const heldProfiles = held.length - heldPartner;
+  if (heldPartner) {
+    notes.push({ key: "growth_partner.held", message: "An update for your AI Growth Partner is waiting for iAcquire's review. Until then, it keeps the setup already approved." });
+  }
+  if (heldProfiles) {
+    notes.push({ key: "employees.held", message: `${heldProfiles} employee update${heldProfiles === 1 ? " is" : "s are"} waiting for iAcquire's review. Until then, ${heldProfiles === 1 ? "that employee keeps" : "those employees keep"} the setup already approved.` });
+  }
   const unchanged = i.employees.filter((e) => e.configStatus === "unchanged").length;
   if (i.reSubmission && unchanged && unchanged < i.employees.length) notes.push({ key: "employees.unchanged", message: `${unchanged} employee${unchanged === 1 ? " was" : "s were"} already set up as your answers say.` });
   if (i.wantsAppointments && i.scheduling.state === "skipped" && i.scheduling.reason) notes.push({ key: "scheduling.skipped", message: i.scheduling.reason });

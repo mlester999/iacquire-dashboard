@@ -39,6 +39,16 @@ describe("buildOutcomeNotes", () => {
     expect(two[0].message).toBe("2 employee updates are waiting for iAcquire's review. Until then, those employees keep the setup already approved.");
   });
 
+  it("names a held unified configuration as the AI Growth Partner", () => {
+    expect(buildOutcomeNotes({
+      ...base,
+      employees: [{ role: "growth_partner", configStatus: "pending_agency_review" }],
+    })).toEqual([{
+      key: "growth_partner.held",
+      message: "An update for your AI Growth Partner is waiting for iAcquire's review. Until then, it keeps the setup already approved.",
+    }]);
+  });
+
   it("says how many employees were already as the answers say, only when some changed and some did not", () => {
     const some = buildOutcomeNotes({ ...base, employees: [{ configStatus: "unchanged" }, { configStatus: "applied" }, { configStatus: "unchanged" }] });
     expect(some).toEqual([{ key: "employees.unchanged", message: "2 employees were already set up as your answers say." }]);
