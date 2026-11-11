@@ -71,7 +71,8 @@ import { createAppointmentType, createCalendar, listCalendars, listSchedulingPeo
 import { getPolicyView, savePolicy } from "@/server/appointments/settings";
 import { createContact, DuplicateContactError } from "@/server/crm/contacts";
 import { createOpportunity } from "@/server/crm/opportunities";
-import { memberActor } from "@/server/crm/actor";
+import { assertCan, auditActor, crmWrite, memberActor } from "@/server/crm/actor";
+import { moveOpportunityInTx } from "@/server/crm/opportunities";
 import type { BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import { createApproval } from "@/server/approvals/service";
 import { createWorkforceChatHandoff } from "@/server/chat/workforce-handoff";
@@ -1398,6 +1399,111 @@ async function handleChatOpportunityCreateIntent(
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The CRM couldn't save this opportunity just now.";
     return reply(`I couldn't create the CRM opportunity: ${chatSafeText(message)} No successful change was confirmed.`, systemNoticeMarker());
+  }
+}
+
+async function handleChatOpportunityMoveIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: Extract<ReturnType<typeof parseWorkforceChatCrmIntent>, { kind: "move_opportunity" }> },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:crm_opportunity_move"))) {
+    return reply("The AI Growth Partner's CRM update permission is switched off, so I couldn't move the opportunity. No record was changed.");
+  }
+  const switchedOff = await chatAbilityRefusal(ctx, {
+    agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:crm_opportunity_move", need: chatActionNeed("chat:crm_opportunity_move"),
+  });
+  if (switchedOff) return reply(switchedOff);
+  if (!ctx.can("contacts.view") || !ctx.can("sales.view") || !ctx.can("opportunities.edit")) {
+    return reply("Your workspace role needs permission to view contacts and sales records and update opportunities before I can move this deal. No record was changed.");
+  }
+  if (!input.userMessageId) return reply("I couldn't verify the saved chat request, so I didn't move the CRM opportunity.");
+
+  try {
+    const matches = await withUser(ctx.user.id, async (db) => (await db.query<{
+      id: string; name: string; contact_id: string; contact_name: string; pipeline_ref: string; stage_ref: string; stage_name: string; status: "open" | "won" | "lost"; version: number;
+    }>(
+      `select o.id, o.name, o.contact_id, coalesce(nullif(c.display_name, ''), nullif(concat_ws(' ', c.first_name, c.last_name), '')) as contact_name,
+              o.pipeline_ref, o.stage_ref, o.stage_name, o.status, o.version
+         from crm_opportunities o
+         join contacts c on c.id = o.contact_id and c.org_id = o.org_id
+        where o.org_id = $1 and o.provider = 'native' and o.archived_at is null and o.status in ('open', 'won', 'lost')
+          and c.deleted_at is null and c.archived_at is null
+          and lower(btrim(o.name)) = lower($2)
+          and lower(btrim(coalesce(nullif(c.display_name, ''), nullif(concat_ws(' ', c.first_name, c.last_name), '')))) = lower($3)
+        order by o.id limit 2`,
+      [ctx.org.orgId, intent.name, intent.contactName],
+    )).rows);
+    if (matches.length > 1) {
+      return reply(`More than one active opportunity named “${chatSafeText(intent.name)}” is linked to ${chatSafeText(intent.contactName)}. No stage was changed; use the CRM to identify the correct record.`);
+    }
+    const opportunity = matches[0];
+    if (!opportunity) {
+      return reply(`I couldn't find an active native CRM opportunity named “${chatSafeText(intent.name)}” for ${chatSafeText(intent.contactName)} in this workspace. No stage was changed.`);
+    }
+
+    const stages = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; name: string; kind: "open" | "won" | "lost" }>(
+      `select id, name, kind from crm_pipeline_stages
+        where org_id = $1 and pipeline_id = $2 and archived_at is null and lower(btrim(name)) = lower($3)
+        order by id limit 2`,
+      [ctx.org.orgId, opportunity.pipeline_ref, intent.stageName],
+    )).rows);
+    if (stages.length > 1) return reply(`More than one stage is named “${chatSafeText(intent.stageName)}” in this pipeline. No stage was changed; use its exact unique stage name.`);
+    const target = stages[0];
+    if (!target) return reply(`I couldn't find a stage named “${chatSafeText(intent.stageName)}” in this opportunity's pipeline. No stage was changed.`);
+    if (intent.lostReason && target.kind !== "lost") {
+      return reply("A loss reason is only used when moving an opportunity to a Lost stage. No stage was changed.");
+    }
+    if (target.kind === "lost" && !intent.lostReason) {
+      return reply("To move this opportunity to a Lost stage, include the reason after “because.” No stage was changed.");
+    }
+    if (opportunity.status !== "open" && target.kind !== "open" && target.kind !== opportunity.status) {
+      return reply("This opportunity is already closed with a different outcome. Move it to an open stage first, if you have permission, before changing its outcome. No stage was changed.");
+    }
+
+    const actor = memberActor(ctx);
+    assertCan(actor, "opportunities.edit");
+    const moved = await crmWrite(actor, async (db) => {
+      const result = await moveOpportunityInTx(db, actor, opportunity.id, {
+        stageId: target.id,
+        lostReason: intent.lostReason,
+        expectedVersion: opportunity.version,
+      });
+      if (result.changed) {
+        await recordAudit({
+          orgId: ctx.org.orgId,
+          ...auditActor(actor),
+          action: "crm.opportunity_stage_changed",
+          targetType: "crm_opportunity",
+          targetId: opportunity.id,
+          result: "success",
+          metadata: { fromStage: opportunity.stage_name, toStage: target.name, fromStatus: opportunity.status, toStatus: result.status, version: result.version },
+        }, db);
+      }
+      return result;
+    });
+    const verified = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; stage_name: string; status: "open" | "won" | "lost"; version: number }>(
+      `select id, stage_name, status, version from crm_opportunities
+        where id = $1 and org_id = $2 and provider = 'native' and archived_at is null`,
+      [opportunity.id, ctx.org.orgId],
+    )).rows[0] ?? null);
+    if (!verified || verified.id !== opportunity.id || verified.stage_name !== target.name || verified.status !== moved.status || verified.version !== moved.version) {
+      return reply("The CRM processed the stage change, but I couldn't verify its saved result in this workspace. Check the opportunity before relying on it.", systemNoticeMarker());
+    }
+    if (!moved.changed) return reply(`“${chatSafeText(opportunity.name)}” is already in the ${chatSafeText(target.name)} stage. No change was needed.`);
+    const outcome = moved.status === "won" ? " and marked it Won" : moved.status === "lost" ? " and marked it Lost" : "";
+    return reply(`Moved “${chatSafeText(opportunity.name)}” for ${chatSafeText(opportunity.contact_name)} to ${chatSafeText(target.name)}${outcome}. [Open the opportunity](/crm/opportunities/${opportunity.id}).`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The CRM couldn't move this opportunity just now.";
+    return reply(`I couldn't move the CRM opportunity: ${chatSafeText(message)} No successful change was confirmed.`, systemNoticeMarker());
   }
 }
 
@@ -2760,6 +2866,14 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   if (crmIntent.kind !== "none") {
     if (crmIntent.kind === "create_opportunity") {
       return handleChatOpportunityCreateIntent(ctx, {
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        userMessageId: prepared.userMessageId,
+        intent: crmIntent,
+      });
+    }
+    if (crmIntent.kind === "move_opportunity") {
+      return handleChatOpportunityMoveIntent(ctx, {
         agentId: agent.id,
         conversationId: prepared.conversationId,
         userMessageId: prepared.userMessageId,

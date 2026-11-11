@@ -28,9 +28,20 @@ describe("Growth Partner chat CRM intent", () => {
     expect(parseWorkforceChatCrmIntent("growth_partner", "Create an opportunity called Roof Replacement for Jamie Lee worth $1,2")).toMatchObject({ kind: "clarification" });
   });
 
+  it("recognizes a stage move only for an exact opportunity, contact, and target stage", () => {
+    expect(parseWorkforceChatCrmIntent("growth_partner", 'Move the opportunity "Roof Replacement" for contact "Jamie Lee" to the "Qualified" stage')).toEqual({
+      kind: "move_opportunity", name: "Roof Replacement", contactName: "Jamie Lee", stageName: "Qualified", lostReason: null,
+    });
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Move deal Roof Replacement for Jamie Lee to Lost stage because the project was canceled")).toEqual({
+      kind: "move_opportunity", name: "Roof Replacement", contactName: "Jamie Lee", stageName: "Lost", lostReason: "the project was canceled",
+    });
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Move opportunity Roof Replacement for Jamie Lee")).toMatchObject({ kind: "clarification" });
+  });
+
   it("does not expose CRM creation to legacy employee roles or unrelated requests", () => {
     expect(parseWorkforceChatCrmIntent("sales_assistant", "Create a contact named Dana Reyes with email dana@example.com")).toEqual({ kind: "none" });
     expect(parseWorkforceChatCrmIntent("sales_assistant", "Create an opportunity called Roof Replacement for Jamie Lee")).toEqual({ kind: "none" });
+    expect(parseWorkforceChatCrmIntent("sales_assistant", "Move deal Roof Replacement for Jamie Lee to Qualified stage")).toEqual({ kind: "none" });
     expect(parseWorkforceChatCrmIntent("growth_partner", "Find ten roofing companies in Florida")).toEqual({ kind: "none" });
   });
 });

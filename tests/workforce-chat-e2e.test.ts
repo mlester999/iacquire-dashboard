@@ -15,6 +15,7 @@ import { getTargeting, saveTargeting } from "@/server/leads/service";
 import { runDueSchedules, setScheduleEnabled } from "@/server/workforce/schedules";
 import { getControlState } from "@/server/automation/controls";
 import { memberActor } from "@/server/crm/actor";
+import { createOpportunity } from "@/server/crm/opportunities";
 import { updateAppointmentType } from "@/server/calendars/setup";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
@@ -620,6 +621,134 @@ describe("AI Growth Partner chat to native workflow", () => {
       await withSystem((db) => db.query("update agent_config_versions set settings = $2::jsonb where id = $1 and org_id = $3", [originalConfigId, JSON.stringify(settings), org.id]));
       await resetAgentMessageRateLimit(owner.id);
     }
+  });
+
+  it("moves a named CRM opportunity through its own pipeline with audit, lost-reason, permission and idempotency checks", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const contactName = `Stage Contact ${suffix}`;
+    const opportunityName = `Stage Deal ${suffix}`;
+    const contact = (await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name) values ($1, $2) returning id",
+      [org.id, contactName],
+    ))).rows[0];
+    const seeded = await createOpportunity(memberActor(ctx), { name: opportunityName, contactId: contact.id, source: "chat stage acceptance" });
+    const opportunity = (await withSystem((db) => db.query<{ pipeline_ref: string; status: string }>(
+      "select pipeline_ref, status from crm_opportunities where id = $1 and org_id = $2",
+      [seeded.id, org.id],
+    ))).rows[0];
+    const stages = (await withSystem((db) => db.query<{ id: string; name: string; kind: string }>(
+      "select id, name, kind from crm_pipeline_stages where org_id = $1 and pipeline_id = $2 and archived_at is null and name in ('Qualified', 'Lost') order by name",
+      [org.id, opportunity.pipeline_ref],
+    ))).rows;
+    const qualified = stages.find((stage) => stage.name === "Qualified");
+    const lost = stages.find((stage) => stage.name === "Lost");
+    expect(qualified).toBeTruthy();
+    expect(lost).toBeTruthy();
+
+    const otherOrg = await createOrg({ name: `Stage Isolation ${suffix}` });
+    const otherOwner = await createUser({ name: `Stage Isolation Owner ${suffix}` });
+    await addMember(otherOrg.id, otherOwner.id, "owner");
+    const foreignContact = (await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name) values ($1, $2) returning id",
+      [otherOrg.id, `Foreign Stage Contact ${suffix}`],
+    ))).rows[0];
+    const foreignSeed = await createOpportunity(memberActor(ctxFor(otherOwner, otherOrg, "owner")), {
+      name: `Foreign Stage Deal ${suffix}`, contactId: foreignContact.id, source: "stage tenant isolation acceptance",
+    });
+    const foreignBefore = (await withSystem((db) => db.query<{ stage_ref: string; status: string; version: number }>(
+      "select stage_ref, status, version from crm_opportunities where id = $1 and org_id = $2",
+      [foreignSeed.id, otherOrg.id],
+    ))).rows[0];
+    await resetAgentMessageRateLimit(owner.id);
+    const foreignAttempt = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      content: `Move deal Foreign Stage Deal ${suffix} for Foreign Stage Contact ${suffix} to Qualified stage`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const foreignReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [foreignAttempt.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(foreignReply).toContain("couldn't find an active native CRM opportunity");
+    expect((await withSystem((db) => db.query<{ stage_ref: string; status: string; version: number }>(
+      "select stage_ref, status, version from crm_opportunities where id = $1 and org_id = $2",
+      [foreignSeed.id, otherOrg.id],
+    ))).rows[0]).toEqual(foreignBefore);
+
+    await resetAgentMessageRateLimit(owner.id);
+    const requestStart = mock.requests.length;
+    const moved = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      content: `Move the opportunity "${opportunityName}" for contact "${contactName}" to the "Qualified" stage`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    expect(moved).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+    const movedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [moved.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(movedReply).toContain(`Moved “${opportunityName}” for ${contactName} to Qualified`);
+    const qualifiedRecord = (await withSystem((db) => db.query<{ stage_ref: string; stage_name: string; status: string; version: number }>(
+      "select stage_ref, stage_name, status, version from crm_opportunities where id = $1 and org_id = $2",
+      [seeded.id, org.id],
+    ))).rows[0];
+    expect(qualifiedRecord).toMatchObject({ stage_ref: qualified!.id, stage_name: "Qualified", status: "open" });
+    expect((await withSystem((db) => db.query<{ actor_kind: string; actor_user_id: string; from_stage: string; to_stage: string }>(
+      "select actor_kind, actor_user_id, from_stage, to_stage from crm_opportunity_history where opportunity_id = $1 and org_id = $2 order by changed_at desc limit 1",
+      [seeded.id, org.id],
+    ))).rows[0]).toMatchObject({ actor_kind: "user", actor_user_id: owner.id, to_stage: qualified!.id });
+    expect((await withSystem((db) => db.query<{ actor_user_id: string; metadata: Record<string, unknown> }>(
+      "select actor_user_id, metadata from audit_logs where org_id = $1 and action = 'crm.opportunity_stage_changed' and target_id = $2 order by created_at desc limit 1",
+      [org.id, seeded.id],
+    ))).rows[0]).toMatchObject({ actor_user_id: owner.id, metadata: { fromStage: expect.any(String), toStage: "Qualified", toStatus: "open" } });
+    expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+
+    await resetAgentMessageRateLimit(owner.id);
+    const repeated = await sendChatMessage(ctx, {
+      agentRole: "growth_partner", content: `Move deal ${opportunityName} for ${contactName} to Qualified stage`, clientMessageId: crypto.randomUUID(),
+    });
+    const repeatedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [repeated.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatedReply).toContain("already in the Qualified stage");
+    expect((await withSystem((db) => db.query(
+      "select id from crm_opportunity_history where org_id = $1 and opportunity_id = $2 and to_stage = $3",
+      [org.id, seeded.id, qualified!.id],
+    ))).rows).toHaveLength(1);
+
+    await resetAgentMessageRateLimit(owner.id);
+    const missingReason = await sendChatMessage(ctx, {
+      agentRole: "growth_partner", content: `Move deal ${opportunityName} for ${contactName} to Lost stage`, clientMessageId: crypto.randomUUID(),
+    });
+    const missingReasonReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [missingReason.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(missingReasonReply).toContain("include the reason after");
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from crm_opportunities where id = $1 and org_id = $2", [seeded.id, org.id]))).rows[0].status).toBe("open");
+
+    await resetAgentMessageRateLimit(owner.id);
+    const lostResult = await sendChatMessage(ctx, {
+      agentRole: "growth_partner", content: `Move deal ${opportunityName} for ${contactName} to Lost stage because the synthetic customer canceled the project`, clientMessageId: crypto.randomUUID(),
+    });
+    const lostReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [lostResult.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(lostReply).toContain("and marked it Lost");
+    expect((await withSystem((db) => db.query<{ stage_ref: string; status: string; lost_reason: string | null }>(
+      "select stage_ref, status, lost_reason from crm_opportunities where id = $1 and org_id = $2",
+      [seeded.id, org.id],
+    ))).rows[0]).toMatchObject({ stage_ref: lost!.id, status: "lost", lost_reason: "the synthetic customer canceled the project" });
+
+    const support = await createUser({ name: "Stage Permission Check" });
+    await addMember(org.id, support.id, "support");
+    await resetAgentMessageRateLimit(support.id);
+    const denied = await sendChatMessage(ctxFor(support, org, "support"), {
+      agentRole: "growth_partner", content: `Move deal ${opportunityName} for ${contactName} to Qualified stage`, clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("needs permission to view contacts and sales records and update opportunities");
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from crm_opportunities where id = $1 and org_id = $2", [seeded.id, org.id]))).rows[0].status).toBe("lost");
   });
 
   it("updates a native appointment type's booking rule through its real calendar service", async () => {

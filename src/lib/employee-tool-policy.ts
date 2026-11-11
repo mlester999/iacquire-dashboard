@@ -34,6 +34,7 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceR
   "chat:outbound_control": { label: "Pause or resume all outbound AI actions for this workspace", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_contact_create": { label: "Create one CRM contact after checking for duplicates", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_opportunity_create": { label: "Create one CRM opportunity linked to an existing contact", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:crm_opportunity_move": { label: "Move one CRM opportunity within its existing pipeline", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:appointment_policy_update": { label: "Update appointment booking rules", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:calendar_create": { label: "Create a private calendar and hidden appointment type", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
 };
@@ -114,6 +115,7 @@ export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   "chat:outbound_control": [],
   "chat:crm_contact_create": ["crm.contacts.create"],
   "chat:crm_opportunity_create": ["crm.request_update"],
+  "chat:crm_opportunity_move": ["crm.request_update"],
   "chat:appointment_policy_update": ["calendar.booking_rules.update"],
   "chat:calendar_create": ["calendar.create"],
 };

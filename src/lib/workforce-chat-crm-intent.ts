@@ -4,12 +4,15 @@ export type WorkforceChatCrmIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
   | { kind: "create_contact"; displayName: string; email: string | null; phone: string | null }
-  | { kind: "create_opportunity"; name: string; contactName: string; value: number | null };
+  | { kind: "create_opportunity"; name: string; contactName: string; value: number | null }
+  | { kind: "move_opportunity"; name: string; contactName: string; stageName: string; lostReason: string | null };
 
 const NONE: WorkforceChatCrmIntent = { kind: "none" };
 const PRONOUN_NAME = /^(?:this|that|the|a|an)\s+(?:contact|customer|client|prospect|lead)$/i;
 const OPPORTUNITY_CREATE = /^(?:please\s+)?(?:create|add)\s+(?:(?:an?|new|crm)\s+)*(?:opportunity|deal)\b/i;
+const OPPORTUNITY_MOVE = /^(?:please\s+)?(?:move|change)\s+(?:(?:the|this|crm)\s+)*(?:opportunity|deal)\b/i;
 const OPPORTUNITY_HELP = "I can create one opportunity for a contact already in your CRM. Say “Create an opportunity called Roof Replacement for Jamie Lee”; include a value only when it is confirmed. No record was changed.";
+const OPPORTUNITY_MOVE_HELP = "I can move one named opportunity for an exact CRM contact to a stage in that same pipeline. Say “Move the opportunity Roof Replacement for Jamie Lee to the Qualified stage.” Include a loss reason when moving it to a Lost stage.";
 
 function parseOpportunity(text: string): WorkforceChatCrmIntent {
   const prefix = text.match(OPPORTUNITY_CREATE);
@@ -39,10 +42,36 @@ function parseOpportunity(text: string): WorkforceChatCrmIntent {
   return { kind: "create_opportunity", name, contactName, value };
 }
 
+function parseOpportunityMove(text: string): WorkforceChatCrmIntent {
+  const prefix = text.match(OPPORTUNITY_MOVE);
+  if (!prefix) return NONE;
+  let details = text.slice(prefix[0].length).trim().replace(/[.!?]+$/, "").trim();
+  let lostReason: string | null = null;
+  const reasonMatch = details.match(/\s+because\s+(.+)$/i);
+  if (reasonMatch) {
+    lostReason = reasonMatch[1].trim();
+    details = details.slice(0, reasonMatch.index).trim();
+    if (!lostReason || lostReason.length > 300) return { kind: "clarification", message: OPPORTUNITY_MOVE_HELP };
+  }
+
+  const match = details.match(/^(?:(?:called|named)\s+)?(.+?)\s+for\s+(?:(?:the|existing|crm)\s+)*(?:contact\s+)?(.+?)\s+to\s+(?:the\s+)?(.+?)(?:\s+stage)?$/i);
+  if (!match) return { kind: "clarification", message: OPPORTUNITY_MOVE_HELP };
+
+  const clean = (part: string) => part.trim().replace(/^["“'`]+|["”'`]+$/g, "").trim();
+  const name = clean(match[1]);
+  const contactName = clean(match[2]);
+  const stageName = clean(match[3]);
+  if (!name || name.length > 200 || !contactName || contactName.length > 80 || !stageName || stageName.length > 60) {
+    return { kind: "clarification", message: OPPORTUNITY_MOVE_HELP };
+  }
+  return { kind: "move_opportunity", name, contactName, stageName, lostReason };
+}
+
 /** Recognizes deliberately narrow, explicit CRM contact and opportunity requests from the unified Growth Partner. */
 export function parseWorkforceChatCrmIntent(role: WorkforceRoleKey, content: string): WorkforceChatCrmIntent {
   if (role !== "growth_partner") return NONE;
   const text = content.replace(/\s+/g, " ").trim();
+  if (OPPORTUNITY_MOVE.test(text)) return parseOpportunityMove(text);
   if (!/^(?:please\s+)?(?:add|create|save)\b/i.test(text)) return NONE;
   if (OPPORTUNITY_CREATE.test(text)) return parseOpportunity(text);
 
