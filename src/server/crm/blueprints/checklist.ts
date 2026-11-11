@@ -15,8 +15,8 @@ import { runtimeReadySql } from "@/lib/employee-runtime";
 // (draft calendars from a Blueprint or an import, required configuration values left empty). An item is "done" only on evidence in this
 // workspace: a verified and activated calendar, an enabled channel whose native provider passed its live capability test recently (the
 // Setup Center's own sender evidence), an
-// approved template, a verified n8n mapping, a connected voice provider, an included AI employee for "send as", a ready (connected and
-// checked) AI employee for AI tasks. Applying a Blueprint never ticks anything, and something iAcquire doesn't offer (taking payments) is
+// approved template, a verified n8n mapping, a connected voice provider, an included AI profile for "send as", a ready (connected and
+// checked) runtime for AI tasks. Applying a Blueprint never ticks anything, and something iAcquire doesn't offer (taking payments) is
 // "unavailable", never pending forever or done.
 
 /** Items a workspace can run without: offered, but not counted against "ready". */
@@ -300,10 +300,11 @@ async function evidenceFor(db: Queryable, orgId: string, key: RequirementKey, n:
         return bad.length ? pending(`${names([...new Set(bad.map((s) => s.flow))])} ${bad.length === 1 ? "sends" : "send"} to a webhook endpoint that isn't set up here yet.`)
           : done("Every webhook step sends to an active endpoint of this workspace.");
       }
-      // Senders ("send as") only need the employee included in this workspace; AI tasks need it connected to its AI service and checked.
+      // Senders ("send as") only need the profile included in this workspace; AI tasks need it connected to its runtime and checked.
       const roleOf = (s: (typeof steps)[number]) => (key === "ai_employee" ? (s.kind === "send_message" ? s.config.sendAs : null) : s.kind === "ai_task" ? s.config.roleKey : null);
       const roles = [...new Set(steps.map(roleOf).filter((r): r is string => typeof r === "string" && r.length > 0))];
       if (!roles.length) return null;
+      const growthPartnerOnly = roles.length === 1 && roles[0] === "growth_partner";
       const agents = await q<{ role_key: string; display_name: string; enabled: boolean; paused: boolean; ready: boolean }>(
         `select role_key, display_name, enabled, mode = 'paused' as paused,
                 (${runtimeReadySql("agent_instances")} and hermes_base_url is not null) as ready
@@ -313,12 +314,20 @@ async function evidenceFor(db: Queryable, orgId: string, key: RequirementKey, n:
       const nameOf = (r: string) => agents.find((a) => a.role_key === r)?.display_name ?? r.replace(/_/g, " ");
       if (key === "ai_employee") {
         const missing = roles.filter((r) => !agents.some((a) => a.role_key === r && a.enabled)).map(nameOf);
-        if (missing.length) return pending(`${names(missing)} ${missing.length === 1 ? "isn't" : "aren't"} included in this workspace, so messages sent as ${missing.length === 1 ? "it" : "them"} can't go out. Include ${missing.length === 1 ? "it" : "them"} for this client.`);
+        if (missing.length) {
+          if (growthPartnerOnly) return pending("The AI Growth Partner isn't included in this workspace, so its messages can't go out. Include it for this client.");
+          return pending(`${names(missing)} ${missing.length === 1 ? "isn't" : "aren't"} included in this workspace, so messages sent as ${missing.length === 1 ? "it" : "them"} can't go out. Include ${missing.length === 1 ? "it" : "them"} for this client.`);
+        }
         const paused = agents.filter((a) => a.enabled && a.paused).map((a) => a.display_name);
-        return done(`Every AI employee these workflows send as is included in this workspace (${plural(roles.length, "employee")}).${paused.length ? ` ${names(paused)} ${paused.length === 1 ? "is" : "are"} paused right now, so ${paused.length === 1 ? "its" : "their"} messages wait until resumed.` : ""}`);
+        if (growthPartnerOnly) return done(`The AI Growth Partner is included in this workspace for workflow messages.${paused.length ? " It is paused right now, so messages wait until resumed." : ""}`);
+        return done(`Every AI profile these workflows send as is included in this workspace (${plural(roles.length, "profile")}).${paused.length ? ` ${names(paused)} ${paused.length === 1 ? "is" : "are"} paused right now, so ${paused.length === 1 ? "its" : "their"} messages wait until resumed.` : ""}`);
       }
       const notReady = roles.filter((r) => !agents.some((a) => a.role_key === r && a.ready)).map(nameOf);
-      return notReady.length ? pending(`${names(notReady)} ${notReady.length === 1 ? "isn't" : "aren't"} connected to ${notReady.length === 1 ? "its" : "their"} AI service and verified for this client yet.`) : done("Every AI employee these workflows ask to do a task passed its connection check.");
+      if (notReady.length) {
+        if (growthPartnerOnly) return pending("The AI Growth Partner isn't connected to its runtime and verified for this client yet.");
+        return pending(`${names(notReady)} ${notReady.length === 1 ? "isn't" : "aren't"} connected to ${notReady.length === 1 ? "its" : "their"} AI runtime and verified for this client yet.`);
+      }
+      return growthPartnerOnly ? done("The AI Growth Partner passed its runtime connection check.") : done("Every AI profile these workflows ask to do a task passed its connection check.");
     }
     case "voice_provider": {
       const rows = await q<{ provider: string }>("select provider from crm_voice_connections where org_id = $1 and status = 'connected'", [orgId]);

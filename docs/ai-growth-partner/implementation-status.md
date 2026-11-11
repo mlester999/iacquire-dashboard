@@ -300,3 +300,9 @@ See [acquisition-source-research.md](./acquisition-source-research.md) for sourc
 - When a unified Growth Partner configuration is held for iAcquire review, the onboarding result now names the AI Growth Partner and explains that its previously approved setup remains in place. Legacy profile updates keep their existing wording and history.
 - `tests/onboarding-outcome-notes.test.ts` passed **15/15**. Repository typecheck and changed-file ESLint passed. `npm run build -- --webpack` passed on Next.js 16.4.2: optimized compile in **119 seconds**, build-time TypeScript in **84 seconds**, and **16/16** static pages generated.
 - This is a presentation-only change with no schema or runtime behavior changes. The full regression was not rerun for this wording increment; the latest full suite remains the 903-file / 13,860-test run recorded above. No external services, customer data, hosted databases, production branches or deployments were used.
+
+## Unified CRM Blueprint readiness language (2026-11-11)
+
+- The CRM Blueprint setup checklist now describes a sole `growth_partner` sender as the AI Growth Partner, including when it is missing or paused. Legacy and mixed-role workflows use neutral AI profile wording; role keys, readiness checks, and send behavior are unchanged.
+- `tests/crm-blueprints-review-fixes.test.ts` passed **22/22**, including a database-backed Growth Partner sender case. `npm run typecheck` and ESLint on both changed source/test files passed. `npm run build -- --webpack` passed on Next.js 16.4.2, compiled successfully in **103 seconds**, completed TypeScript in **19.7 seconds**, and generated all **16/16** static pages.
+- This is a copy-only server response change with no schema or migration impact. The full regression suite was not rerun for this increment. Data was synthetic and local; no provider, customer messaging, hosted database, production branch or deployment was used.
