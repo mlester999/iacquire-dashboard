@@ -22,7 +22,7 @@ vi.mock("@/server/tenancy/context", async (importOriginal) => {
 
 import { withSystem } from "@/server/db";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { buildRunInstructions, createConfigVersion } from "@/server/workforce/service";
+import { buildRunInstructions, createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { employeeKnowledgeContext, listEmployeeKnowledge, saveEmployeeKnowledgeEntry, decideHeldEmployeeNote } from "@/server/workforce/knowledge";
 import { decideHeldDocument, deleteKnowledgeDocument, getKnowledge, saveKnowledgeSection, uploadKnowledgeDocument } from "@/server/knowledge/service";
 import { getAdminOverview, getTenantDetail } from "@/server/admin/queries";
@@ -163,7 +163,27 @@ describe("flagged documents", () => {
     expect(await promptFor(operations)).toContain("DOC-SHARED-TOKEN");
     expect(await promptFor(operations)).not.toContain("DOC-ASSIGNED-TOKEN");
     expect(await audits("knowledge.document_review_approved", shared.id)).toEqual([{ actor_user_id: admin.id, agent_instance_id: null, org_id: org.id }]);
-    expect(await told(owner.id, "A document was approved for your AI team%")).toBe(1);
+    expect(await told(owner.id, "A document was approved for your AI profiles%")).toBe(1);
+  });
+
+  it("names the single Growth Partner in the shared-document approval notice", async () => {
+    const partnerOrg = await createOrg({ name: "Growth Partner Knowledge Notice" });
+    const partnerOwner = await createUser();
+    await addMember(partnerOrg.id, partnerOwner.id, "owner");
+    await withSystem(async (db) => {
+      await db.query("update agent_instances set enabled = false where org_id = $1", [partnerOrg.id]);
+      await ensureGrowthPartnerRuntime(partnerOrg.id, db);
+    });
+
+    const partnerCtx = ctxFor(partnerOwner, partnerOrg, "owner");
+    const document = await uploadKnowledgeDocument(partnerCtx, { name: "partner-hostile.txt", ...txt(`${FLAGGED} PARTNER-NOTICE-TOKEN`) });
+    await withSystem((db) => decideHeldDocument(db, { orgId: partnerOrg.id, documentId: document.id, approve: true, agencyUserId: admin.id }));
+
+    const notice = (await withSystem((db) => db.query<{ title: string; body: string }>(
+      "select title, body from notifications where user_id = $1 and kind = 'knowledge_update_ready' order by created_at desc limit 1",
+      [partnerOwner.id],
+    ))).rows[0];
+    expect(notice).toEqual({ title: "A document was approved for your AI Growth Partner", body: "partner-hostile.txt is now used by your AI Growth Partner." });
   });
 
   it("releases an assigned document only to its own employee", async () => {
@@ -172,6 +192,7 @@ describe("flagged documents", () => {
     expect(await promptFor(sales)).toContain("DOC-ASSIGNED-TOKEN");
     expect(await promptFor(operations)).not.toContain("DOC-ASSIGNED-TOKEN");
     expect(await audits("knowledge.document_review_approved", assigned.id)).toEqual([{ actor_user_id: admin.id, agent_instance_id: sales, org_id: org.id }]);
+    expect(await told(owner.id, "A document was approved for your selected AI profile%")).toBe(1);
   });
 
   it("never uses a rejected document: it is marked not approved, its text is cleared and a second decision is refused", async () => {

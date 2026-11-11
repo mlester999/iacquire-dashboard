@@ -13,6 +13,7 @@ import { uploadPrivateFile, readPrivateFile, removePrivateFile } from "@/server/
 import { extractDocumentText } from "@/server/knowledge/extract";
 import { writeKnowledgeTextTx } from "@/server/knowledge/write";
 import { syncGrowthPartnerBusinessBrainFromCompanyKnowledge } from "@/server/ai-growth-partner/service";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import type { OrgContext } from "@/server/tenancy/context";
 import { KNOWLEDGE_SECTIONS, type KnowledgeSection } from "@/lib/knowledge-sections";
 
@@ -428,6 +429,11 @@ export async function decideHeldDocument(db: Queryable, input: { orgId: string; 
   if (approve && doc.held_text === null) {
     throw new AppError("conflict", "This document was held before its text was kept for review. Reject it and ask the client to upload it again.");
   }
+  const profiles = doc.agent_instance_id
+    ? await db.query<{ role_key: string }>("select role_key from agent_instances where org_id = $1 and id = $2", [orgId, doc.agent_instance_id])
+    : await db.query<{ role_key: string }>("select role_key from agent_instances where org_id = $1 and enabled", [orgId]);
+  const partnerOnly = profiles.rows.length === 1 && profiles.rows[0].role_key === AI_GROWTH_PARTNER_ROLE_KEY;
+  const audience = partnerOnly ? "your AI Growth Partner" : doc.agent_instance_id ? "your selected AI profile" : "your AI profiles";
   if (approve) {
     await db.query(
       "update knowledge_documents set extracted_text = held_text, held_text = null, applied_at = now(), risk_flags = '{}', processing_detail = null where id = $1 and org_id = $2",
@@ -435,15 +441,15 @@ export async function decideHeldDocument(db: Queryable, input: { orgId: string; 
     );
   } else {
     await db.query(
-      "update knowledge_documents set held_text = null, status = 'rejected', processing_detail = 'Not approved for your AI team after iAcquire review.' where id = $1 and org_id = $2",
-      [documentId, orgId],
+      "update knowledge_documents set held_text = null, status = 'rejected', processing_detail = $3 where id = $1 and org_id = $2",
+      [documentId, orgId, `Not approved for ${audience} after iAcquire review.`],
     );
   }
   await notifyOrgRoles(db, orgId, ["owner", "admin"], {
     kind: "knowledge_update_ready",
     severity: approve ? "success" : "warning",
-    title: approve ? "A document was approved for your AI team" : "A document wasn't approved",
-    body: approve ? `${doc.filename} is now used by your AI team.` : `${doc.filename} conflicted with AI safety rules and won't be used. Upload a revised version or contact support.`,
+    title: approve ? `A document was approved for ${audience}` : "A document wasn't approved",
+    body: approve ? `${doc.filename} is now used by ${audience}.` : `${doc.filename} conflicted with AI safety rules and won't be used. Upload a revised version or contact support.`,
     link: "/knowledge",
   });
   await recordAudit(
