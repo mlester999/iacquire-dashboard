@@ -123,7 +123,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
         self.assertEqual(
             workflow["on"]["push"]["branches"],
-            ["codex/hermes-gha-acceptance"],
+            ["codex/hermes-gha-acceptance", "codex/hermes-gha-core-next-acceptance"],
         )
         self.assertNotIn("codex/ai-growth-partner", workflow["on"]["push"]["branches"])
         self.assertEqual(workflow["on"]["push"]["paths"], [".github/hermes-acceptance.trigger"])
@@ -143,7 +143,9 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn("github.event_name == 'push'", job["if"])
         self.assertIn("github.ref_name == 'codex/hermes-gha-acceptance'", job["if"])
+        self.assertIn("github.ref_name == 'codex/hermes-gha-core-next-acceptance'", job["if"])
         self.assertEqual(job["if"].count("github.ref_name == 'codex/hermes-gha-acceptance'"), 1)
+        self.assertEqual(job["if"].count("github.ref_name == 'codex/hermes-gha-core-next-acceptance'"), 1)
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
         self.assertEqual(job["timeout-minutes"], "30")
         self.assertIn("--cpus=2 --memory=2g --pids-limit=128", workflow_text)
@@ -152,7 +154,8 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertIn('if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then', runner_check["run"])
         self.assertIn('[[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]', runner_check["run"])
         self.assertIn('[[ "$GITHUB_EVENT_NAME" == push ]]', runner_check["run"])
-        self.assertIn('[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]', runner_check["run"])
+        self.assertIn('[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance', runner_check["run"])
+        self.assertIn('|| "$GITHUB_REF_NAME" == codex/hermes-gha-core-next-acceptance ]]', runner_check["run"])
         self.assertIn('[[ "$(uname -m)" == "x86_64" ]]', runner_check["run"])
         self.assertIn(
             '[[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]',
