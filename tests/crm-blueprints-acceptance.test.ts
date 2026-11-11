@@ -477,11 +477,13 @@ describe("CRM Blueprints acceptance: from a GoHighLevel template sub-account to 
     for (const ghlId of ALL_GHL_IDS) expect(everything, ghlId).not.toContain(ghlId);
   });
 
-  it("7. shows the client's setup checklist with evidence: a sender employee included, no Hermes task, placeholders to rebuild", async () => {
+  it("7. shows the client's setup checklist with evidence: the Growth Partner sender included, no Hermes task, placeholders to rebuild", async () => {
     const list = await getBlueprintChecklist(A.owner);
     const by = Object.fromEntries(list.items.map((i) => [i.key, i]));
-    // New clients have one enabled Growth Partner identity for approved workflow messages.
+    // This onboarding acceptance provisions one Growth Partner identity for the client's workflow messages.
     expect(by.ai_employee).toMatchObject({ status: "done" });
+    expect(by.ai_employee.detail).toContain("AI Growth Partner");
+    expect(by.ai_employee.detail).not.toMatch(/employee/i);
     expect(by.hermes).toBeUndefined();
     for (const key of ["calendar_hosts", "calendar_verification", "google_calendar", "form_rebuild", "workflow_rebuild", "custom_values", "form_publishing", "email_provider", "template_approval"] as const) {
       expect(by[key]?.status, key).toBe("pending");

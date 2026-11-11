@@ -235,12 +235,40 @@ describe("setup checklist", () => {
     }
     const bp = await insertPublishedBlueprint(content);
     await run(c.org.id, bp, { strategy: "add_missing" });
+    const missing = (await getBlueprintChecklistForOrg(c.org.id)).items.find((x) => x.key === "ai_employee");
+    expect(missing).toMatchObject({ status: "pending" });
+    expect(missing?.detail).toContain("AI Growth Partner isn't included");
+    expect(missing?.detail).not.toMatch(/employee/i);
+
     await q("insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner')", [c.org.id]);
 
     const item = (await getBlueprintChecklistForOrg(c.org.id)).items.find((x) => x.key === "ai_employee");
     expect(item).toMatchObject({ status: "done" });
     expect(item?.detail).toContain("AI Growth Partner");
     expect(item?.detail).not.toMatch(/employee/i);
+
+    await q("update agent_instances set mode = 'paused' where org_id = $1 and role_key = 'growth_partner'", [c.org.id]);
+    const paused = (await getBlueprintChecklistForOrg(c.org.id)).items.find((x) => x.key === "ai_employee");
+    expect(paused).toMatchObject({ status: "done" });
+    expect(paused?.detail).toContain("paused right now");
+    expect(paused?.detail).not.toMatch(/employee/i);
+  });
+
+  it("keeps legacy workflow senders understandable as retained profiles", async () => {
+    const c = await crmOrg();
+    const bp = await insertPublishedBlueprint(sampleContent());
+    await run(c.org.id, bp, { strategy: "add_missing" });
+    await q(
+      `insert into agent_instances (org_id, role_key, display_name)
+       values ($1, 'sales_assistant', 'Sales Assistant'), ($1, 'appointment_setter', 'Appointment Setter')
+       on conflict (org_id, role_key) do update set enabled = true`,
+      [c.org.id],
+    );
+
+    const item = (await getBlueprintChecklistForOrg(c.org.id)).items.find((x) => x.key === "ai_employee");
+    expect(item).toMatchObject({ status: "done" });
+    expect(item?.detail).toContain("2 profiles");
+    expect(item?.detail).not.toMatch(/AI Growth Partner|employee/i);
   });
 
   it("keeps what earlier applications still need after an update applied to some sections only", async () => {
