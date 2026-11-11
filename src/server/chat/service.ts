@@ -70,6 +70,7 @@ import { bookingIsNative } from "@/server/calendars/agent-booking";
 import { createAppointmentType, createCalendar, listCalendars, listSchedulingPeople, updateAppointmentType } from "@/server/calendars/setup";
 import { getPolicyView, savePolicy } from "@/server/appointments/settings";
 import { createContact, DuplicateContactError } from "@/server/crm/contacts";
+import { createOpportunity } from "@/server/crm/opportunities";
 import { memberActor } from "@/server/crm/actor";
 import type { BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
 import { createApproval } from "@/server/approvals/service";
@@ -1325,6 +1326,78 @@ async function handleChatCrmIntent(
     }
     const message = error instanceof AppError ? error.message : "The CRM couldn't save this contact just now.";
     return reply(`I couldn't create the CRM contact: ${chatSafeText(message)} No successful change was confirmed.`);
+  }
+}
+
+async function handleChatOpportunityCreateIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: Extract<ReturnType<typeof parseWorkforceChatCrmIntent>, { kind: "create_opportunity" }> },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId,
+      conversationId: input.conversationId, content, evidence,
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  };
+
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:crm_opportunity_create"))) {
+    return reply("The AI Growth Partner's CRM opportunity permission is switched off, so I couldn't create a deal. No record was changed.");
+  }
+  const switchedOff = await chatAbilityRefusal(ctx, {
+    agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:crm_opportunity_create", need: chatActionNeed("chat:crm_opportunity_create"),
+  });
+  if (switchedOff) return reply(switchedOff);
+  if (!ctx.can("contacts.view") || !ctx.can("sales.view") || !ctx.can("opportunities.create")) {
+    return reply("Your workspace role needs permission to view contacts and sales records and create opportunities before I can make that change. No record was changed.");
+  }
+  if (!input.userMessageId) return reply("I couldn't verify the saved chat request, so I didn't create the CRM opportunity.");
+
+  try {
+    const contactMatches = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; name: string }>(
+      `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name
+         from contacts
+        where org_id = $1 and deleted_at is null and archived_at is null
+          and lower(btrim(coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')))) = lower($2)
+        order by id limit 2`,
+      [ctx.org.orgId, intent.contactName],
+    )).rows);
+    if (contactMatches.length > 1) {
+      return reply(`More than one active CRM contact is named “${chatSafeText(intent.contactName)}”. No opportunity was created; use a more specific contact name.`);
+    }
+    const contact = contactMatches[0];
+    if (!contact) return reply(`I couldn't find an active CRM contact named “${chatSafeText(intent.contactName)}” in this workspace. No opportunity was created; add or confirm the contact first.`);
+
+    const duplicates = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string }>(
+      `select id from crm_opportunities
+        where org_id = $1 and provider = 'native' and archived_at is null and status = 'open'
+          and contact_id = $2 and lower(btrim(name)) = lower($3)
+        order by id limit 2`,
+      [ctx.org.orgId, contact.id, intent.name],
+    )).rows);
+    if (duplicates.length) {
+      return reply(`An open opportunity named “${chatSafeText(intent.name)}” is already linked to ${chatSafeText(contact.name)}, so I didn't create another. [Open the opportunity](/crm/opportunities/${duplicates[0].id}).`);
+    }
+
+    const created = await createOpportunity(memberActor(ctx), {
+      name: intent.name,
+      contactId: contact.id,
+      ...(intent.value === null ? {} : { value: intent.value }),
+      source: "AI Growth Partner chat",
+    }, { idempotencyKey: `growth-partner-chat:${input.userMessageId}` });
+    const verified = await withUser(ctx.user.id, async (db) => (await db.query<{ id: string; name: string; contact_id: string | null }>(
+      `select id, name, contact_id from crm_opportunities
+        where id = $1 and org_id = $2 and provider = 'native' and archived_at is null`,
+      [created.id, ctx.org.orgId],
+    )).rows[0] ?? null);
+    if (!verified || verified.id !== created.id || verified.contact_id !== contact.id || verified.name !== intent.name) {
+      return reply("The CRM accepted the opportunity, but I couldn't verify its saved contact and name in this workspace. Check the CRM before relying on it.", systemNoticeMarker());
+    }
+    return reply(`Created the CRM opportunity “${chatSafeText(verified.name)}” for ${chatSafeText(contact.name)}. No customer message was sent directly. [Open the opportunity](/crm/opportunities/${verified.id}).`, serverMarker("approved_write"));
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "The CRM couldn't save this opportunity just now.";
+    return reply(`I couldn't create the CRM opportunity: ${chatSafeText(message)} No successful change was confirmed.`, systemNoticeMarker());
   }
 }
 
@@ -2685,6 +2758,14 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     ? parseWorkforceChatCrmIntent(input.agentRole, prepared.userContent)
     : { kind: "none" as const };
   if (crmIntent.kind !== "none") {
+    if (crmIntent.kind === "create_opportunity") {
+      return handleChatOpportunityCreateIntent(ctx, {
+        agentId: agent.id,
+        conversationId: prepared.conversationId,
+        userMessageId: prepared.userMessageId,
+        intent: crmIntent,
+      });
+    }
     return handleChatCrmIntent(ctx, {
       agentId: agent.id,
       conversationId: prepared.conversationId,

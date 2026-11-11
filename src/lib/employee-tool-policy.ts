@@ -33,6 +33,7 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceR
   "chat:partner_goal_update": { label: "Set a measurable AI Growth Partner goal", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:outbound_control": { label: "Pause or resume all outbound AI actions for this workspace", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_contact_create": { label: "Create one CRM contact after checking for duplicates", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:crm_opportunity_create": { label: "Create one CRM opportunity linked to an existing contact", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:appointment_policy_update": { label: "Update appointment booking rules", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:calendar_create": { label: "Create a private calendar and hidden appointment type", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
 };
@@ -112,6 +113,7 @@ export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   // Workspace pause/resume is directly authorized by the signed-in owner/admin, not by model autonomy.
   "chat:outbound_control": [],
   "chat:crm_contact_create": ["crm.contacts.create"],
+  "chat:crm_opportunity_create": ["crm.request_update"],
   "chat:appointment_policy_update": ["calendar.booking_rules.update"],
   "chat:calendar_create": ["calendar.create"],
 };

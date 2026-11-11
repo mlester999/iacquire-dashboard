@@ -523,6 +523,105 @@ describe("AI Growth Partner chat to native workflow", () => {
     }
   });
 
+  it("creates a tenant-scoped CRM opportunity for an existing contact, prevents duplicates, and enforces both permissions", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const contactName = `Opportunity Contact ${suffix}`;
+    const opportunityName = `Opportunity Chat ${suffix}`;
+    const contact = (await withSystem((db) => db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name) values ($1, $2) returning id",
+      [org.id, contactName],
+    ))).rows[0];
+    const command = `Create an opportunity called \"${opportunityName}\" for ${contactName} worth USD 12,500.50`;
+
+    await resetAgentMessageRateLimit(owner.id);
+    const created = await sendChatMessage(ctx, { agentRole: "growth_partner", content: command, clientMessageId: crypto.randomUUID() });
+    expect(created).toMatchObject({ conversationId: growthPartnerConversationId, runId: null, jobId: null });
+    const response = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [created.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(response).toContain(`Created the CRM opportunity “${opportunityName}” for ${contactName}`);
+    expect(response).toContain("No customer message was sent directly");
+    const opportunity = (await withSystem((db) => db.query<{ id: string; contact_id: string; monetary_value: string; currency: string; source: string }>(
+      `select id, contact_id, monetary_value::text as monetary_value, currency, source
+         from crm_opportunities where org_id = $1 and provider = 'native' and name = $2 and archived_at is null`,
+      [org.id, opportunityName],
+    ))).rows[0];
+    expect(opportunity).toMatchObject({ contact_id: contact.id, monetary_value: "12500.50", currency: "USD", source: "AI Growth Partner chat" });
+    expect((await withSystem((db) => db.query<{ actor_user_id: string }>(
+      "select actor_user_id from audit_logs where org_id = $1 and action = 'crm.opportunity_created' and target_id = $2 order by created_at desc limit 1",
+      [org.id, opportunity.id],
+    ))).rows[0].actor_user_id).toBe(owner.id);
+
+    await resetAgentMessageRateLimit(owner.id);
+    const duplicate = await sendChatMessage(ctx, { agentRole: "growth_partner", content: command, clientMessageId: crypto.randomUUID() });
+    const duplicateReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [duplicate.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(duplicateReply).toContain("already linked");
+    expect((await withSystem((db) => db.query(
+      "select id from crm_opportunities where org_id = $1 and provider = 'native' and name = $2 and contact_id = $3 and archived_at is null",
+      [org.id, opportunityName, contact.id],
+    ))).rows).toHaveLength(1);
+
+    const support = await createUser({ name: "Opportunity Permission Check" });
+    await addMember(org.id, support.id, "support");
+    await resetAgentMessageRateLimit(support.id);
+    const denied = await sendChatMessage(ctxFor(support, org, "support"), {
+      agentRole: "growth_partner", content: `Create an opportunity called Restricted Deal ${suffix} for ${contactName}`, clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("needs permission to view contacts and sales records and create opportunities");
+    expect((await withSystem((db) => db.query(
+      "select id from crm_opportunities where org_id = $1 and provider = 'native' and name = $2 and archived_at is null",
+      [org.id, `Restricted Deal ${suffix}`],
+    ))).rows).toHaveLength(0);
+
+    const otherOrg = await createOrg({ name: `Opportunity Isolation ${suffix}` });
+    await withSystem((db) => db.query("insert into contacts (org_id, display_name) values ($1, $2)", [otherOrg.id, `Foreign Contact ${suffix}`]));
+    await resetAgentMessageRateLimit(owner.id);
+    const foreign = await sendChatMessage(ctx, {
+      agentRole: "growth_partner", content: `Create an opportunity called Foreign Deal ${suffix} for Foreign Contact ${suffix}`, clientMessageId: crypto.randomUUID(),
+    });
+    const foreignReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [foreign.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(foreignReply).toContain("couldn't find an active CRM contact");
+    expect((await withSystem((db) => db.query(
+      "select id from crm_opportunities where org_id = $1 and provider = 'native' and name = $2 and archived_at is null",
+      [org.id, `Foreign Deal ${suffix}`],
+    ))).rows).toHaveLength(0);
+
+    const active = (await withSystem((db) => db.query<{ config_version_id: string | null; settings: unknown }>(
+      `select a.active_config_version_id as config_version_id, v.settings from agent_instances a join agent_config_versions v on v.id = a.active_config_version_id
+       where a.id = $1 and a.org_id = $2`,
+      [growthPartnerAgentId, org.id],
+    ))).rows[0];
+    const originalConfigId = active.config_version_id;
+    const settings = active.settings && typeof active.settings === "object" && !Array.isArray(active.settings) ? active.settings as Record<string, unknown> : {};
+    const existingDisabled = Array.isArray(settings.disabledTools) ? settings.disabledTools.filter((value): value is string => typeof value === "string") : [];
+    await withSystem((db) => db.query("update agent_config_versions set settings = $2::jsonb where id = $1 and org_id = $3", [originalConfigId, JSON.stringify({ ...settings, disabledTools: [...new Set([...existingDisabled, "crm.request_update"])] }), org.id]));
+    try {
+      await resetAgentMessageRateLimit(owner.id);
+      const switchedOff = await sendChatMessage(ctx, {
+        agentRole: "growth_partner", content: `Create an opportunity called Disabled Deal ${suffix} for ${contactName}`, clientMessageId: crypto.randomUUID(),
+      });
+      const switchedOffReply = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [switchedOff.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(switchedOffReply).toContain('"Propose CRM updates (needs approval)" switched off in Allowed actions');
+      expect((await withSystem((db) => db.query(
+        "select id from crm_opportunities where org_id = $1 and provider = 'native' and name = $2 and archived_at is null",
+        [org.id, `Disabled Deal ${suffix}`],
+      ))).rows).toHaveLength(0);
+    } finally {
+      await withSystem((db) => db.query("update agent_config_versions set settings = $2::jsonb where id = $1 and org_id = $3", [originalConfigId, JSON.stringify(settings), org.id]));
+      await resetAgentMessageRateLimit(owner.id);
+    }
+  });
+
   it("updates a native appointment type's booking rule through its real calendar service", async () => {
     const ctx = ctxFor(owner, org, "owner");
     const type = (await withSystem((db) => db.query<{ id: string; duration_minutes: number }>(

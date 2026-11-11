@@ -28,7 +28,7 @@ const FROZEN: Record<AgentRoleKey, string[]> = {
 
 const PARTNER_ONLY_ACTIONS = [
   "chat:messaging_hours_update", "chat:partner_preferences_update", "chat:partner_goal_update", "chat:outbound_control",
-  "chat:crm_contact_create", "chat:appointment_policy_update", "chat:calendar_create",
+  "chat:crm_contact_create", "chat:crm_opportunity_create", "chat:appointment_policy_update", "chat:calendar_create",
 ];
 const PARTNER_ONLY_ABILITIES = ["calendar.booking_rules.update", "calendar.create", "crm.request_update", "crm.contacts.create", "drafts.create"];
 
@@ -109,6 +109,7 @@ describe("the policy table, role by role", () => {
     expect(ids).toContain("chat:messaging_hours_update");
     expect(ids).toContain("chat:partner_goal_update");
     expect(ids).toContain("chat:crm_contact_create");
+    expect(ids).toContain("chat:crm_opportunity_create");
     expect(ids).toContain("chat:appointment_policy_update");
     expect(ids).toContain("chat:calendar_create");
     expect(ids).toContain("chat:outbound_control");
