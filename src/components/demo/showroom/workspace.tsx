@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { Logo } from "@/components/brand";
 import { TooltipProvider } from "@/components/ui/overlays";
-import { AGENT_ROLES } from "@/lib/agents";
 import { ROOM_COPY, type Notice } from "@/lib/demo/outcomes";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
 import type { RoomChatState } from "@/lib/demo/room-types";
@@ -33,8 +32,6 @@ import "@/components/demo/showroom/showroom.css";
 // AQi as the floating assistant in the corner. It is a public component set: it never mounts the portal's own shell, and nothing here reads a workspace. Everything shown is the record's:
 // the window, the messages, the conversation and the two requests come from the server's view of this one demo, and moving between views changes none of them and counts no message. The
 // address carries the view (?view=...), so a view can be opened directly and the page works without scripts.
-
-const ROLES = AGENT_ROLES.map((r) => ({ key: r.key as string, name: r.name }));
 
 const SUGGESTIONS: Record<ViewId, string[]> = {
   overview: ["What can the AI Growth Partner do for a business like mine?", "What is included in the implementation?", "Do I need to pay a monthly fee?"],
@@ -236,7 +233,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
             </div>
 
             {/* AQi and the consultation action. Below lg they share one bottom bar, so nothing floats over the page; from lg AQi is the button in the corner (the rail has the consultation action). */}
-            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} roles={ROLES} draft={draft} suggestions={SUGGESTIONS[view]} bar={<ConsultCta size="md" variant="bar" className="w-full" />} />
+            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} draft={draft} suggestions={SUGGESTIONS[view]} bar={<ConsultCta size="md" variant="bar" className="w-full" />} />
 
             <ConfirmHost />
 

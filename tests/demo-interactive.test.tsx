@@ -80,13 +80,12 @@ afterEach(() => {
 // The chat
 // ---------------------------------------------------------------------------
 
-const ROLES = [{ key: "lead_hunter", name: "AI Lead Hunter" }, { key: "appointment_setter", name: "AI Appointment Setter" }];
 const line = (over: Partial<RoomLine> = {}): RoomLine => ({ id: "1", seq: 1, role: "user", employeeRole: null, body: "Hello", state: "answered", at: "2026-11-02T09:00:00.000Z", ...over });
 const chatState = (over: Partial<RoomChatState> = {}): RoomChatState => ({ transcript: [], messagesLeft: 10, messageAllowance: 10, canSend: true, refusalMessage: null, ...over });
 const FALLBACK = "11111111-2222-4333-8444-555555555555";
 
 function chat(over: Partial<React.ComponentProps<typeof DemoChat>> = {}) {
-  return render(<DemoChat initial={chatState()} roles={ROLES} fallbackMessageId={FALLBACK} pageNotice={null} {...over} />);
+  return render(<DemoChat initial={chatState()} fallbackMessageId={FALLBACK} pageNotice={null} {...over} />);
 }
 const question = () => screen.getByLabelText("Your question") as HTMLTextAreaElement;
 const sendButton = () => screen.getByRole("button", { name: /^Send$/ });
@@ -114,9 +113,9 @@ describe("the chat", () => {
     });
     const log = screen.getByRole("log", { name: "AQi conversation" });
     expect(within(log).getAllByText("You")).toHaveLength(3);
-    expect(within(log).getByText("AI Lead Hunter (AI)")).toBeTruthy();
-    // An answer that is not from one named employee is AQi's, the demo guide.
-    expect(within(log).getByText("AQi")).toBeTruthy();
+    // Legacy role data stays in the record but never changes the public demo guide's identity.
+    expect(within(log).queryByText("AI Lead Hunter (AI)")).toBeNull();
+    expect(within(log).getAllByText("AQi")).toHaveLength(2);
     expect(within(log).getByText("Not counted: no answer came.")).toBeTruthy();
     expect(within(log).getByText("Waiting for an answer.")).toBeTruthy();
     expect(log.getAttribute("aria-live")).toBe("polite");

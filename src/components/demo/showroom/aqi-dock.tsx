@@ -25,7 +25,6 @@ export interface AqiDockProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   chat: { initial: RoomChatState; fallbackMessageId: string; pageNotice: Notice | null; show: boolean };
-  roles: ReadonlyArray<{ key: string; name: string }>;
   /** A question to put in the box (not send). A new `nonce` puts it there again. */
   draft: { text: string; nonce: number } | null;
   suggestions: readonly string[];
@@ -35,7 +34,7 @@ export interface AqiDockProps {
 
 const noSubscribe = () => () => {};
 
-export function AqiDock({ open, onOpenChange, chat, roles, draft, suggestions, bar }: AqiDockProps) {
+export function AqiDock({ open, onOpenChange, chat, draft, suggestions, bar }: AqiDockProps) {
   const { aiEnabled, ended, messagesLeft, messageAllowance, reportChat } = useShowroom();
   const launcherRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -179,7 +178,6 @@ export function AqiDock({ open, onOpenChange, chat, roles, draft, suggestions, b
           {chat.show ? (
             <DemoChat
               initial={chat.initial}
-              roles={roles}
               fallbackMessageId={chat.fallbackMessageId}
               pageNotice={chat.pageNotice}
               draft={draft}

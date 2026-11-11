@@ -1,6 +1,6 @@
 # AI Growth Partner implementation and acceptance status
 
-**Updated:** 2026-11-10
+**Updated:** 2026-11-11
 **Code state:** Verification and implementation work is isolated on `codex/ai-growth-partner`. No production deployment, hosted migration, live tenant migration, or profile revocation has been performed.
 
 ## Implemented and verified locally
@@ -251,9 +251,19 @@ See [acquisition-source-research.md](./acquisition-source-research.md) for sourc
 - This is pinned-runtime acceptance with synthetic inference. It does not establish real-model reasoning, public-source discovery, or live external CRM/calendar integrations. It does not alter the separate fixture-only discovery limitation above.
 - No schema or migration changed in this increment. The latest disposable PGlite apply/guarded-rollback/reapply rehearsal through migration 0135 remains the applicable migration evidence; no hosted database was contacted.
 
+## Pinned Hermes synthetic runtime retry (#95, 2026-11-11)
+
+- Hosted workflow [run #95](https://github.com/mlester999/iacquire-dashboard/actions/runs/42928777404) completed successfully on `ubuntu-24.04` x86_64 at `df8278d469b5c7c0ba14e3eb6f6c479923fc63e0`; elapsed time was about **6m15s** with a **30-minute timeout**. The public repository's standard GitHub-hosted runner is free and unlimited under GitHub's current billing rules. The workflow token had `contents: read` only. No account minute quota or paid upgrade was needed.
+- The pushed commit changed only the synthetic trigger marker and preserved the successful branch history. Workflow/test fixes were already on that branch. The acceptance candidate source remains the same Growth Partner product revision as run #94 (`40d40427`); this retry does not verify later UI-only commits on `codex/ai-growth-partner`.
+- The workflow passed **158** pinned-image compatibility and worker-security tests. It verified the pinned Hermes v0.22.5 image and local model route, then created one profile for each of two synthetic tenants through real iAcquireOS onboarding/provisioner routes. The run reported 61 local-model canary calls, 5 audit events, 0 secret leaks, 2 cross-tenant denials, 2 wrong-profile-key denials, one idempotent callback replay, two healthy partner profiles, and one approved configuration sync.
+- Runtime containers were confirmed on internal-only networks with external networking disabled, read-only filesystems and synthetic credentials only. After restarting the pinned Hermes gateway, both profiles recovered their own native memory and denied both foreign-memory probes. The cleanup step passed and removed the synthetic containers, networks, volumes and credential files.
+- This is real pinned Hermes behavior with synthetic inference. It does not verify real-model reasoning, live OSM/public-site discovery, external CRM/calendar providers, or production readiness. No production branch, deployment or database was changed.
+- The default-branch copy of the workflow does not declare `workflow_dispatch`, so a manual dispatch from this non-default acceptance branch was unavailable. The reviewed push trigger changed only `.github/hermes-acceptance.trigger`; GitHub ran the branch-local workflow definition without merging the product transformation to the default branch.
+
 ## Product language follow-up
 
 - AQi's Super Admin guide now labels `/admin/employees` as AI Growth Partner operations and explains that the screen covers client runtimes, internal operations profiles, and preserved client profiles. It changes no role records or access.
+- The public demo transcript now consistently presents AQi as its single product guide even when an older demo record contains a legacy employee-role value. Those historic values remain stored for compatibility, but no longer produce role-specific names or avatars in the visitor experience. Four focused demo UI suites passed (137 tests); typecheck and changed-file lint passed. The fresh webpack production build compiled successfully and generated **16/16** static pages. The full regression was not rerun for this isolated UI increment; the latest full suite remains the 903-file run above.
 
 ## Partner Control Center and Work Board sync (2026-11-11)
 
