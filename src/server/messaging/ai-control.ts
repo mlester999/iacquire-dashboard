@@ -88,13 +88,22 @@ export async function assignAiEmployee(ctx: OrgContext, conversationId: string, 
   if (!ctx.can("inbox.assign")) throw new AppError("forbidden", "Only owners and managers can choose the AI employee for a conversation.");
   await assertConversationVisible(ctx, conversationId);
   return withSystem(async (db) => {
-    const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; display_name: string }>("select id, role_key, enabled, display_name from agent_instances where id = $1 and org_id = $2", [agentId, ctx.org.orgId]);
+    const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; display_name: string; canonical_agent_id: string | null }>(
+      `select a.id, a.role_key, a.enabled, a.display_name, p.runtime_agent_instance_id as canonical_agent_id
+         from agent_instances a
+         left join ai_growth_partners p on p.org_id = a.org_id and p.runtime_agent_instance_id is not null
+        where a.id = $1 and a.org_id = $2`,
+      [agentId, ctx.org.orgId],
+    );
     const agent = rows[0];
     if (!agent) throw new AppError("not_found", "That AI employee isn't part of this workspace.");
     if (!canHandleConversations(agent.role_key)) throw new AppError("invalid_input", `${agent.display_name} works behind the scenes and can't talk to customers. Choose the AI Growth Partner or a supported previous profile.`);
     if (!agent.enabled) throw new AppError("conflict", `${agent.display_name} isn't included in this workspace.`);
     const conv = await lockConversation(db, ctx.org.orgId, conversationId);
     if (conv.ai_agent_id === agentId) return { agentId, ownerKind: conv.owner_kind };
+    if (agent.canonical_agent_id && agent.canonical_agent_id !== agentId) {
+      throw new AppError("conflict", "This workspace uses one AI Growth Partner. Previous profile assignments are preserved, but new inbox assignments must use the Growth Partner.");
+    }
     const becomesOwner = conv.owner_kind !== "human";
     if (becomesOwner) {
       const problems = await aiResumeProblems(db, ctx.org.orgId, { ai_agent_id: agentId, channel: conv.channel }, conversationId);

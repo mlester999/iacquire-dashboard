@@ -92,6 +92,16 @@ export function employeeShortName(agent: { name: string; roleKey: string }, unif
   return AGENT_ROLES.find((r) => r.key === agent.roleKey)?.shortName ?? agent.name.replace(/^AI\s+/i, "");
 }
 
+/** Keep a saved legacy handler visible in the selector while only offering current, assignable profiles. */
+export function currentAiAssignmentOption(
+  current: { id: string; name: string; roleKey: string } | null,
+  available: ReadonlyArray<{ id: string }>,
+  unifiedAiIdentity = false,
+): { id: string; label: string } | null {
+  if (!current || available.some((agent) => agent.id === current.id)) return null;
+  return { id: current.id, label: `${employeeShortName(current, unifiedAiIdentity)} · current assignment` };
+}
+
 export function OwnerPill({ item, unifiedAiIdentity = false }: { item: Pick<ConversationListItem, "ownerKind" | "ownerName" | "aiAgent" | "aiPaused">; unifiedAiIdentity?: boolean }) {
   if (item.ownerKind === "ai") {
     const label = item.aiAgent ? employeeShortName(item.aiAgent, unifiedAiIdentity) : "AI";

@@ -15,7 +15,7 @@ import { AiAssistPanel } from "@/components/inbox/ai-assist-panel";
 import { requestSuggestedReply } from "@/components/inbox/assist-client";
 import { ChannelHealthBar } from "@/components/inbox/channel-health-bar";
 import { CrmContextPanel } from "@/components/inbox/crm-context-panel";
-import { employeeShortName, InboxListPanel } from "@/components/inbox/inbox-list-panel";
+import { currentAiAssignmentOption, employeeShortName, InboxListPanel } from "@/components/inbox/inbox-list-panel";
 import { useInboxSync } from "@/components/inbox/use-inbox-sync";
 import { BLOCK_REASON_LABELS, CONVERSATION_CHANNEL_LABELS, MESSAGE_STATUS_LABELS, smsSegments, type ConversationChannel, type MessageStatus } from "@/lib/messaging";
 import { anyTokenLabel, customValueKeyOf, renderTemplate, type CustomValueTokenDef, type TokenValues } from "@/lib/messaging/tokens";
@@ -1375,6 +1375,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
   const idp = inline ? "m-" : "";
   const refresh = useInboxRefresh();
   const c = detail.conversation;
+  const currentAiOption = currentAiAssignmentOption(c.aiAgent, props.aiEmployees ?? [], props.unifiedAiIdentity);
   const [fact, setFact] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
   async function run(key: string, fn: () => Promise<{ ok: boolean; error?: string }>, ok?: string) {
@@ -1429,6 +1430,7 @@ function ContactPanel({ detail, perms, team, timeZone, aiAssist, inline = false,
               <label className="sr-only" htmlFor={`${idp}ai-employee`}>AI handler for this conversation</label>
               <Select id={`${idp}ai-employee`} value={c.aiAgent?.id ?? ""} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }} className="mt-2" disabled={busy === "ai-employee"}>
                 {!c.aiAgent && <option value="">AI handler: none chosen</option>}
+                {currentAiOption && <option value={currentAiOption.id} disabled>{currentAiOption.label}</option>}
                 {(props.aiEmployees ?? []).map((a) => <option key={a.id} value={a.id}>{employeeShortName(a, props.unifiedAiIdentity)}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
               </Select>
             </>

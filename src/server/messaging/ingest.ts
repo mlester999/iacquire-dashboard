@@ -226,7 +226,16 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
   const thread = (input.threadKey ?? "main").slice(0, 120);
   conv ??= (await db.query<ConvRow>("select id, owner_kind, ai_agent_id from conversations where org_id = $1 and contact_id = $2 and channel = $3 and thread_key = $4", [orgId, contactId, input.channel, thread])).rows[0];
   if (!conv) {
-    const agent = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'sales_assistant' and enabled", [orgId]);
+    // A tenant with a bound Growth Partner gets that single customer-facing identity. The former Sales Assistant is only the
+    // compatibility default while a legacy workspace has no bound Partner; a prepared or disabled Partner never falls back to it.
+    const agent = await db.query<{ id: string }>(
+      `select a.id from agent_instances a
+        where a.org_id = $1 and a.enabled and a.role_key in ('sales_assistant', 'growth_partner')
+          and (a.id = (select p.runtime_agent_instance_id from ai_growth_partners p where p.org_id = $1 and p.runtime_agent_instance_id is not null)
+            or (a.role_key = 'sales_assistant' and not exists (select 1 from ai_growth_partners p where p.org_id = a.org_id and p.runtime_agent_instance_id is not null)))
+        order by case when a.role_key = 'growth_partner' then 0 else 1 end limit 1`,
+      [orgId],
+    );
     const created = await db.query<ConvRow>(
       `insert into conversations (org_id, contact_id, channel, thread_key, subject, ai_agent_id, owner_kind, ghl_conversation_id)
        values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, owner_kind, ai_agent_id`,

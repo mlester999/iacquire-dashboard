@@ -38,11 +38,29 @@ describe("which AI employees may handle a conversation", () => {
   });
 
   it("lets a manager assign the unified Growth Partner to an inbox conversation", async () => {
-    await withSystem((db) => ensureGrowthPartnerRuntime(m.org.id, db));
-    const partner = await setupAgent(m, "growth_partner");
-    const c = await inbound(m.org.id);
-    expect(await assignAiEmployee(m.ctx("manager"), c.conversationId, partner)).toEqual({ agentId: partner, ownerKind: "ai" });
+    const canonical = await messagingOrg({ name: "Canonical Inbox Control Co" });
+    await withSystem((db) => ensureGrowthPartnerRuntime(canonical.org.id, db));
+    const partner = await setupAgent(canonical, "growth_partner");
+    const c = await inbound(canonical.org.id);
+    expect(await assignAiEmployee(canonical.ctx("manager"), c.conversationId, partner)).toEqual({ agentId: partner, ownerKind: "ai" });
     expect((await conv(c.conversationId)).ai_agent_id).toBe(partner);
+  });
+
+  it("keeps an existing previous-profile assignment, but refuses new ones after the Growth Partner is mapped", async () => {
+    const canonical = await messagingOrg({ name: "Mapped Inbox Control Co" });
+    const prior = await inbound(canonical.org.id, { address: "+15550001001" });
+    await assignAiEmployee(canonical.ctx("manager"), prior.conversationId, canonical.salesAgentId);
+    await withSystem((db) => ensureGrowthPartnerRuntime(canonical.org.id, db));
+    const partner = await setupAgent(canonical, "growth_partner");
+    const mappedPartner = (await withSystem((db) => db.query<{ runtime_agent_instance_id: string }>("select runtime_agent_instance_id from ai_growth_partners where org_id = $1", [canonical.org.id]))).rows[0]?.runtime_agent_instance_id;
+    expect(mappedPartner).toBe(partner);
+    const fresh = await inbound(canonical.org.id, { address: "+15550001002" });
+
+    expect((await conv(fresh.conversationId)).ai_agent_id).toBe(partner);
+    await expect(assignAiEmployee(canonical.ctx("manager"), fresh.conversationId, canonical.salesAgentId)).rejects.toThrow(/one AI Growth Partner/);
+    expect((await conv(fresh.conversationId)).ai_agent_id).toBe(partner);
+    expect((await conv(prior.conversationId)).ai_agent_id).toBe(canonical.salesAgentId);
+    expect(await assignAiEmployee(canonical.ctx("manager"), prior.conversationId, partner)).toEqual({ agentId: partner, ownerKind: "ai" });
   });
 
   it("lets a manager choose between the two, and refuses the four that work behind the scenes", async () => {

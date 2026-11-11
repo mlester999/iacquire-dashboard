@@ -1,7 +1,7 @@
 import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { employeeShortName, EMPTY_COPY, InboxListPanel, MORE_VIEWS, OwnerPill, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
+import { currentAiAssignmentOption, employeeShortName, EMPTY_COPY, InboxListPanel, MORE_VIEWS, OwnerPill, PRIMARY_VIEWS, RESTRICTED_EMPTY, type ListPanelProps } from "@/components/inbox/inbox-list-panel";
 import { INBOX_VIEWS, INBOX_VIEW_HELP, INBOX_VIEW_LABELS } from "@/lib/inbox";
 
 // What the list panel says, rendered on the server. The interactive behaviour (selection, polling) is covered in the browser QA and by the sync tests.
@@ -63,5 +63,18 @@ describe("Growth Partner identity in Inbox", () => {
     }));
     expect(text(markup)).toContain("Previous profile · Sales capability");
     expect(markup).not.toContain("Sales Assistant");
+  });
+
+  it("keeps a saved previous-profile handler visible without making it an assignment choice", () => {
+    expect(currentAiAssignmentOption(
+      { id: "legacy-sales", name: "AI Sales Assistant", roleKey: "sales_assistant" },
+      [{ id: "growth-partner" }],
+      true,
+    )).toEqual({ id: "legacy-sales", label: "Previous profile · Sales capability · current assignment" });
+    expect(currentAiAssignmentOption(
+      { id: "growth-partner", name: "AI Growth Partner", roleKey: "growth_partner" },
+      [{ id: "growth-partner" }],
+      true,
+    )).toBeNull();
   });
 });

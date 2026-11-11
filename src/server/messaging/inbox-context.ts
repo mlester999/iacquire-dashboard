@@ -223,7 +223,12 @@ export async function listConversationAiEmployees(ctx: OrgContext): Promise<Conv
   if (!ctx.can("inbox.assign")) return [];
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{ id: string; display_name: string; role_key: string; enabled: boolean; status: string; mode: string }>(
-      "select id, display_name, role_key, enabled, status, mode from agent_instances where org_id = $1 and enabled order by display_name",
+      `select a.id, a.display_name, a.role_key, a.enabled, a.status, a.mode
+         from agent_instances a
+         left join ai_growth_partners p on p.org_id = a.org_id and p.runtime_agent_instance_id is not null
+        where a.org_id = $1 and a.enabled
+          and (p.org_id is null or (a.id = p.runtime_agent_instance_id and a.role_key = 'growth_partner'))
+        order by a.display_name`,
       [ctx.org.orgId],
     );
     return rows

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/primitives";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { assignAiEmployeeAction, pauseAiAction, resumeAiAction, takeOverAction, transferConversationAction } from "@/app/actions/inbox";
-import { employeeShortName } from "@/components/inbox/inbox-list-panel";
+import { currentAiAssignmentOption, employeeShortName } from "@/components/inbox/inbox-list-panel";
 import { sentenceCase } from "@/lib/utils";
 import type { ConversationListItem } from "@/server/messaging/inbox-list";
 import type { ConversationAiEmployee } from "@/server/messaging/inbox-context";
@@ -31,6 +31,7 @@ export interface AiControlsProps {
 export function AiControls({ c, me, perms, team, aiEmployees, unifiedAiIdentity = false, busy, run }: AiControlsProps) {
   const mine = c.ownerKind === "human" && c.ownerUserId === me.id;
   const employee = c.aiAgent ? employeeShortName(c.aiAgent, unifiedAiIdentity) : null;
+  const currentAiOption = currentAiAssignmentOption(c.aiAgent, aiEmployees, unifiedAiIdentity);
   const [reason, setReason] = React.useState("");
   const [pauseOpen, setPauseOpen] = React.useState(false);
   const [handTo, setHandTo] = React.useState("");
@@ -116,6 +117,7 @@ export function AiControls({ c, me, perms, team, aiEmployees, unifiedAiIdentity 
           <div className="w-full max-w-[260px]">
             <Select id="ai-employee" className="h-9 sm:h-8 text-[14px]" value={c.aiAgent?.id ?? ""} disabled={busy === "ai-employee"} onChange={(e) => { const v = e.target.value; if (v) void run("ai-employee", () => assignAiEmployeeAction(c.id, v), "AI assignment updated."); }}>
               {!c.aiAgent && <option value="">None chosen</option>}
+              {currentAiOption && <option value={currentAiOption.id} disabled>{currentAiOption.label}</option>}
               {aiEmployees.map((a) => <option key={a.id} value={a.id}>{employeeShortName(a, unifiedAiIdentity)}{a.ready ? "" : ` (${a.problem?.toLowerCase() ?? "not ready"})`}</option>)}
             </Select>
           </div>

@@ -1009,7 +1009,7 @@ describe("setup checklist", () => {
     expect(withPayments.total).toBe(withPayments.items.length - 1);
   });
 
-  it("tells a sender AI employee (included is enough) apart from an AI task (needs its AI service connected and checked)", async () => {
+  it("tells a sender AI employee (included is enough) apart from an AI task (needs its AI runtime connected and verified)", async () => {
     const c = await crmOrg();
     const content = smallContent("ai-task-sample");
     content.assets.workflows.push({
@@ -1023,10 +1023,10 @@ describe("setup checklist", () => {
     const { plan } = await run(c.org.id, bp, { strategy: "add_missing" });
     expect(plan.requirements).toEqual(expect.arrayContaining(["ai_employee", "hermes"]));
     const by = Object.fromEntries((await getBlueprintChecklistForOrg(c.org.id)).items.map((i) => [i.key, i]));
-    // Every employee is included in a new test workspace, so the sender is fine; the AI task's employee has no AI service connection.
+    // Every employee is included in a new test workspace, so the sender is fine; the AI task's employee has no verified AI runtime.
     expect(by.ai_employee).toMatchObject({ status: "done", assetIds: ["workflow.welcome"] });
     expect(by.hermes).toMatchObject({ status: "pending", assetIds: ["workflow.summarize"] });
-    expect(by.hermes.detail).toMatch(/isn't connected to its AI service/);
+    expect(by.hermes.detail).toMatch(/isn't connected to its AI runtime and verified for this client yet/);
     expect(by.hermes.detail).not.toMatch(/Sales/i);
 
     // A Blueprint that only sends as an employee never asks for Hermes at all.

@@ -8,6 +8,7 @@ import { dispatchMessage } from "@/server/messaging/send";
 import { inboxSync, loadInboxThread, SYNC_MAX_CHANGES } from "@/server/messaging/inbox-sync";
 import { describeChannel, getChannelHealth } from "@/server/messaging/channel-health";
 import { addContactNoteFromConversation, createDealFromConversation, createTaskFromConversation, getInboxCrmContext, listConversationAiEmployees, setLeadStatusFromConversation } from "@/server/messaging/inbox-context";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { INBOX_VIEWS } from "@/lib/inbox";
 import { roleHasPermission } from "@/lib/permissions";
 import { inbound, messagingOrg, recordingProvider, type MessagingOrg } from "./support/messaging";
@@ -334,6 +335,14 @@ describe("the customer's CRM record beside the conversation", () => {
     expect(list.map((e) => e.roleKey).sort()).toEqual(["appointment_setter", "sales_assistant"]);
     expect(list.find((e) => e.roleKey === "sales_assistant")).toMatchObject({ ready: true, problem: null });
     expect(await listConversationAiEmployees(m.ctx("support"))).toEqual([]);
+  });
+
+  it("offers only the mapped Growth Partner for new inbox assignments", async () => {
+    const canonical = await messagingOrg({ name: "Canonical Inbox Assignment List Co" });
+    await withSystem((db) => ensureGrowthPartnerRuntime(canonical.org.id, db));
+    const list = await listConversationAiEmployees(canonical.ctx("manager"));
+    expect(list.map((agent) => agent.roleKey)).toEqual(["growth_partner"]);
+    expect(list[0]).toMatchObject({ name: expect.any(String), ready: false, problem: "Not connected yet" });
   });
 
   it("reads the thread's AI facts from the database, not from a model", async () => {
