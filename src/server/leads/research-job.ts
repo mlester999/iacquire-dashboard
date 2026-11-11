@@ -305,9 +305,10 @@ export async function runLeadResearchJob(
         const discoveryPolicy = await getResearchSourcePolicy(db, job.org_id, "openstreetmap");
         if (!discoveryPolicy?.enabled) throw missingGrowthPartnerDiscoverySource();
       }
-      const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id);
-      if (!runInstructions.versionId) throw new ResearchBlocked(employeeName + " has no applied configuration, so no research was started.");
       const targeting = targetingSchema.safeParse(request.criteria);
+      const brainQuery = [request.prompt, targeting.success ? JSON.stringify(targeting.data) : ""].filter(Boolean).join("\n");
+      const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id, brainQuery);
+      if (!runInstructions.versionId) throw new ResearchBlocked(employeeName + " has no applied configuration, so no research was started.");
       const company = await loadCompanyContext(db, job.org_id);
       // A client with no confirmed business facts must not inherit another tenant's profile. Stop
       // before the provider run and let the job record the exact clarification instead.

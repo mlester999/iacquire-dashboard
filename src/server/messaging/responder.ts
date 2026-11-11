@@ -133,7 +133,7 @@ export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
   const prepared = await withSystem(async (db) => {
     const conn = await loadConnection(db, ctx.agentId);
     if (!conn) return null;
-    const { instructions } = await buildRunInstructions(db, ctx.orgId, ctx.agentId);
+    const { instructions } = await buildRunInstructions(db, ctx.orgId, ctx.agentId, ctx.customerMessage);
     return { conn, instructions };
   }).catch(() => null);
   if (!prepared) return { kind: "unavailable", reason: "The AI employee is not connected." };

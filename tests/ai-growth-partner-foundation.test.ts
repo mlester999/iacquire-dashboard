@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_NAME, BUSINESS_BRAIN_SECTIONS, emptyBusinessBrain, generateBusinessBrainFromOnboarding, parseBusinessBrain, preserveClientOverrides } from "@/lib/ai-growth-partner";
+import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_NAME, BUSINESS_BRAIN_SECTIONS, emptyBusinessBrain, generateBusinessBrainFromOnboarding, parseBusinessBrain, preserveClientOverrides, retrieveBusinessBrainFacts } from "@/lib/ai-growth-partner";
 import type { StoredAnswers } from "@/lib/onboarding/types";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBrainFromOnboarding, ensureGrowthPartnerIdentity, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainDraft, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
@@ -117,6 +117,41 @@ describe("AI Growth Partner foundation", () => {
     expect(brain.sections.productsServicesOffers.services).toMatchObject({ value: null, state: "unknown" });
     expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: "Northstar Roofing", state: "client_confirmed" });
     expect(brain.sections.productsServicesOffers.pricing).toMatchObject({ value: null, state: "unknown" });
+  });
+
+  it("retrieves core identity and topic-matched confirmed Business Brain facts", () => {
+    const at = "2026-11-04T00:00:00.000Z";
+    const confirmed = (value: unknown) => ({
+      value,
+      state: "client_confirmed" as const,
+      provenance: [{ source: "onboarding" as const, sourceId: "test.fact", evidenceUrl: null, observedAt: at }],
+      updatedAt: at,
+      clientOverride: false,
+    });
+    const brain = emptyBusinessBrain();
+    brain.sections.businessIdentity.companyName = confirmed("Northstar Roofing");
+    brain.sections.businessIdentity.industry = confirmed("Residential roofing");
+    brain.sections.productsServicesOffers.pricing = confirmed("Roof inspections start at $150.");
+    brain.sections.policies.cancellation = confirmed("Appointments require 24 hours notice to cancel.");
+    brain.sections.idealCustomers.qualification = confirmed("The property should be inside the service area.");
+    brain.sections.productsServicesOffers.services = {
+      ...confirmed("UNCONFIRMED_SERVICE_MARKER"),
+      state: "draft_suggestion",
+    };
+
+    const priceContext = retrieveBusinessBrainFacts(brain, "What do we charge for a roof inspection?");
+    const priceFacts = priceContext.map(({ section, key }) => `${section}.${key}`);
+    expect(priceFacts).toContain("businessIdentity.companyName");
+    expect(priceFacts).toContain("businessIdentity.industry");
+    expect(priceFacts).toContain("productsServicesOffers.pricing");
+    expect(priceFacts).not.toContain("policies.cancellation");
+    expect(priceFacts).toContain("idealCustomers.qualification");
+    expect(priceContext.some(({ fact }) => JSON.stringify(fact.value).includes("UNCONFIRMED_SERVICE_MARKER"))).toBe(false);
+
+    expect(retrieveBusinessBrainFacts(brain, "").map(({ section, key }) => `${section}.${key}`)).toEqual([
+      "businessIdentity.companyName",
+      "businessIdentity.industry",
+    ]);
   });
 
   it("maps submitted onboarding into named Brain facts and excludes upload references", () => {
@@ -614,7 +649,7 @@ describe("AI Growth Partner foundation", () => {
         },
       },
     });
-    const runtime = await withSystem((db) => buildRunInstructions(db, syncOrg.id, growthPartnerAgent));
+    const runtime = await withSystem((db) => buildRunInstructions(db, syncOrg.id, growthPartnerAgent, "What services does the business offer?"));
     expect(runtime.instructions).toContain("productsServicesOffers.services: Roof replacement and storm repair.");
     expect(runtime.instructions).not.toContain("Residential roofing founded in 2004.");
     expect(runtime.instructions).not.toContain("Commercial properties only; no residential work.");

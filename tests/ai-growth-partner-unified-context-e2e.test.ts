@@ -68,6 +68,20 @@ describe("AI Growth Partner unified runtime context", () => {
       baseRevision: null,
     });
 
+    const pricing = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: 3,
+      section: "productsServicesOffers",
+      key: "pricing",
+      valueText: "Roof inspections start at $150.",
+    });
+    const cancellation = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: pricing.version,
+      section: "policies",
+      key: "cancellation",
+      valueText: "Appointment cancellations require 24 hours notice.",
+    });
+    await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: 3, version: cancellation.version });
+
     const otherOrg = await createOrg({ name: "Separate Unified Context Tenant" });
     const otherOwner = await createUser({ name: "Separate Context Owner" });
     await addMember(otherOrg.id, otherOwner.id, "owner");
@@ -126,9 +140,11 @@ describe("AI Growth Partner unified runtime context", () => {
     await reviewGrowthPartnerLegacyKnowledge(ownerContext, { importId: rejectedImport.id, status: "rejected" });
 
     const built = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "How should I research roofing prospects?"));
-    expect(built.instructions).toContain("## Active Business Brain (version 3)");
+    expect(built.instructions).toContain("## Active Business Brain (version 5)");
     expect(built.instructions).toContain("businessIdentity.companyName: Synthetic Roofing Co.");
     expect(built.instructions).toContain("businessIdentity.industry: Residential roofing");
+    expect(built.instructions).not.toContain("Roof inspections start at $150.");
+    expect(built.instructions).not.toContain("Appointment cancellations require 24 hours notice.");
     expect(built.instructions).toContain("WORKSPACE GROWTH GOALS");
     expect(built.instructions).toContain("Leads created: 5 per week.");
     expect(built.instructions).toContain("WORKSPACE MEMORY CONTEXT");
@@ -138,6 +154,10 @@ describe("AI Growth Partner unified runtime context", () => {
     expect(built.instructions).not.toContain("REJECTED_SOURCE_MARKER");
     expect(built.instructions).not.toContain("RAW_SHARED_KNOWLEDGE_MARKER");
     expect(built.instructions).not.toContain("CROSS_TENANT_PRIVATE_MARKER");
+
+    const pricingContext = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "What do we charge for a roof inspection?"));
+    expect(pricingContext.instructions).toContain("productsServicesOffers.pricing: Roof inspections start at $150.");
+    expect(pricingContext.instructions).not.toContain("Appointment cancellations require 24 hours notice.");
 
     const identityRows = await withSystem((db) => db.query<{ id: string; runtime_agent_instance_id: string }>(
       "select id, runtime_agent_instance_id from ai_growth_partners where org_id = $1",

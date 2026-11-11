@@ -145,6 +145,77 @@ export function parseBusinessBrain(input: unknown): BusinessBrain {
   return BusinessBrainSchema.parse(input);
 }
 
+const ALWAYS_RETRIEVED_BRAIN_FACTS = new Set([
+  "businessIdentity.companyName",
+  "businessIdentity.industry",
+  "businessIdentity.businessModel",
+  "businessIdentity.locations",
+  "businessIdentity.serviceAreas",
+  "businessIdentity.background",
+]);
+
+const BRAIN_SEARCH_STOP_WORDS = new Set([
+  "a", "about", "an", "and", "are", "as", "at", "be", "can", "do", "does", "for", "from", "how", "i", "in", "is", "it", "me", "my", "of", "on", "or", "our", "please", "should", "tell", "that", "the", "this", "to", "us", "we", "what", "when", "where", "which", "who", "with", "you", "your",
+]);
+
+const BRAIN_SEARCH_TOPIC_GROUPS = [
+  ["price", "pricing", "cost", "costs", "charge", "charges", "fee", "fees", "quote", "quotes", "budget", "rate", "rates"],
+  ["customer", "customers", "client", "clients", "prospect", "prospects", "lead", "leads", "buyer", "buyers", "homeowner", "homeowners", "audience", "target", "targets", "qualification", "qualify"],
+  ["service", "services", "product", "products", "offer", "offers", "repair", "inspection", "installation", "consultation"],
+  ["appointment", "appointments", "calendar", "booking", "book", "visit", "meeting", "availability", "slot", "slots"],
+  ["hour", "hours", "open", "opening", "schedule", "time", "timezone"],
+  ["brand", "tone", "language", "formality", "style", "voice", "response", "length", "terminology"],
+  ["policy", "policies", "refund", "refunds", "cancel", "cancellation", "reschedule", "privacy", "legal", "promise", "promises", "guarantee", "guarantees", "approval"],
+  ["goal", "goals", "priority", "priorities", "objective", "objectives", "conversion", "result", "results", "report", "reporting"],
+  ["followup", "follow-up", "outreach", "email", "sms", "whatsapp", "message", "messages", "channel", "channels"],
+  ["handoff", "support", "team", "crm", "pipeline", "routing", "escalation", "operation", "operations", "process", "procedures"],
+] as const;
+
+function brainSearchTerms(value: string): Set<string> {
+  return new Set((value.replace(/([a-z])([A-Z])/g, "$1 $2").toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]{2,}/gu) ?? [])
+    .filter((term) => !BRAIN_SEARCH_STOP_WORDS.has(term)));
+}
+
+function expandedBrainQueryTerms(query: string): Set<string> {
+  const queryTerms = brainSearchTerms(query);
+  const expanded = new Set(queryTerms);
+  for (const group of BRAIN_SEARCH_TOPIC_GROUPS) {
+    if (group.some((term) => queryTerms.has(term))) for (const term of group) expanded.add(term);
+  }
+  return expanded;
+}
+
+/** Selects a bounded, deterministic view of the active Brain for one request; the stored version is never changed. */
+export function retrieveBusinessBrainFacts(
+  input: unknown,
+  query: string,
+): Array<{ section: (typeof BUSINESS_BRAIN_SECTIONS)[number]; key: string; fact: BusinessBrainFact }> {
+  const brain = parseBusinessBrain(input);
+  const queryTerms = brainSearchTerms(query);
+  const expandedQueryTerms = expandedBrainQueryTerms(query);
+  const candidates = BUSINESS_BRAIN_SECTIONS.flatMap((section) => Object.entries(brain.sections[section])
+    .filter(([, fact]) => fact.state === "verified" || fact.state === "client_confirmed")
+    .map(([key, fact], order) => {
+      const keyTerms = brainSearchTerms(`${section} ${key}`);
+      const value = typeof fact.value === "string" ? fact.value : JSON.stringify(fact.value);
+      const valueTerms = brainSearchTerms(value ?? "");
+      const directKeyMatches = [...queryTerms].filter((term) => keyTerms.has(term)).length;
+      const relatedKeyMatches = [...expandedQueryTerms].filter((term) => !queryTerms.has(term) && keyTerms.has(term)).length;
+      const directValueMatches = [...queryTerms].filter((term) => valueTerms.has(term)).length;
+      const relatedValueMatches = [...expandedQueryTerms].filter((term) => !queryTerms.has(term) && valueTerms.has(term)).length;
+      const score = directKeyMatches * 8 + relatedKeyMatches * 4 + directValueMatches * 2 + relatedValueMatches;
+      return { section, key, fact, score, order };
+    }));
+
+  const always = candidates.filter(({ section, key }) => ALWAYS_RETRIEVED_BRAIN_FACTS.has(`${section}.${key}`));
+  const relevant = queryTerms.size === 0 ? [] : candidates
+    .filter(({ section, key, score }) => score > 0 && !ALWAYS_RETRIEVED_BRAIN_FACTS.has(`${section}.${key}`))
+    .sort((left, right) => right.score - left.score || left.order - right.order || left.key.localeCompare(right.key));
+  const unique = new Map<string, typeof candidates[number]>();
+  for (const fact of [...always, ...relevant]) unique.set(`${fact.section}.${fact.key}`, fact);
+  return [...unique.values()].slice(0, 24).map(({ section, key, fact }) => ({ section, key, fact }));
+}
+
 /**
  * Regeneration may add or revise system-derived facts, but a client-approved field is preserved
  * byte-for-byte until the client changes it. The caller must save the result as a new version.

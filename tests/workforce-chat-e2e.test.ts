@@ -1897,7 +1897,7 @@ describe("AI Growth Partner chat to native workflow", () => {
     expect(beforeActivation.instructions).not.toContain("Consultations are paid");
 
     await activateGrowthPartnerBusinessBrainVersion(ctx, { expectedCurrentVersion: 1, version: draft.version });
-    const afterActivation = await withSystem((db) => buildRunInstructions(db, org.id, growthPartnerAgentId));
+    const afterActivation = await withSystem((db) => buildRunInstructions(db, org.id, growthPartnerAgentId, "Are consultations paid, and should we offer them for free?"));
     expect(afterActivation.instructions).toContain("policies.customerPolicies: Consultations are paid; do not offer free consultations.");
     expect(afterActivation.instructions).toContain("Active Business Brain (version 2)");
   });
