@@ -11,7 +11,8 @@
 //   B. Upgrade from the production baseline: apply everything below 0077, populate a realistic dataset (several workspaces, members, contacts, conversations,
 //      messages, calls, appointments, AI employees, notifications, private files, tasks, leads, chat), hash every row of every table, then apply each later
 //      migration ONE AT A TIME. After each: every earlier row is unchanged (count and hash, all tables), except an explicitly verified migration-owned data change;
-//      0131 may advance only the three untouched AQi starter tutorials to their next published version; 0132 may add only crm.request_update to the existing
+//      0131 may advance only the three untouched AQi starter tutorials to version 2; 0136 may advance only two untouched version-2 tutorials to conversation-first version 3;
+//      0132 may add only crm.request_update to the existing
 //      Growth Partner role's default_tools. No earlier notification kind, permission, storage bucket,
 //      stored-file bucket, conversation channel or contact origin is lost, the application role sees exactly the same rows as before, every new table has
 //      row-level security and no grant to anon, authenticated, PUBLIC or the published-site role, the application role holds SELECT only (column level where the
@@ -405,8 +406,8 @@ const insertTargets = (file) => {
 };
 
 // 0131 intentionally publishes a new AQi tutorial version for three untouched starter seeds.
-// Only their parent metadata and original version status change; every other earlier row must
-// stay byte-for-byte identical, and exactly three version rows are added.
+// 0136 advances only two untouched version-2 tutorials to conversation-first navigation copy.
+// Each allowance verifies the exact affected records; every other earlier row must stay byte-for-byte identical.
 const stableJson = (value) => JSON.stringify(value, (_key, nested) => nested && typeof nested === "object" && !Array.isArray(nested)
   ? Object.fromEntries(Object.entries(nested).sort(([a], [b]) => a.localeCompare(b)))
   : nested);
@@ -434,46 +435,103 @@ const migrationRowAllowance = async (file, db, beforeSnap = null) => {
       detail: changed.size ? "only crm.request_update was added to the existing Growth Partner default_tools" : "crm.request_update was already present; no role row changed",
     };
   }
-  if (prefix(file) !== "0131") return { changed: new Map(), growth: new Map(), detail: "" };
-  const expected = new Map([
+  if (prefix(file) === "0131") {
+    const expected = new Map([
     ["getting-started", ["Getting started with iAcquireOS", "A short tour of the workspace, your AI team and where to get help."]],
     ["navigate-dashboard", ["Navigating your dashboard", "Understand the overview tiles, next actions and AI team panel."]],
     ["view-ai-employees", ["Viewing your AI employees", "Meet the AI workforce, understand status and open an employee."]],
-  ]);
-  const rows = await q(db, `select t.id::text as tutorial_id, t.slug, t.title, t.description, t.category, t.route_prefix,
-           t.status as tutorial_status, t.published_version_id::text as published_version_id,
-           old.id::text as old_id, old.version as old_version, old.status as old_status, old.notes as old_notes,
-           old.definition->>'title' as old_title, old.definition->>'description' as old_description,
-           current.id::text as current_id, current.version as current_version, current.status as current_status,
-           current.notes as current_notes, current.definition->>'title' as current_title,
-           current.definition->>'description' as current_description, current.definition->>'category' as current_category,
-           current.definition->>'routePrefix' as current_route_prefix
-      from aqi_tutorials t
-      join aqi_tutorial_versions old on old.tutorial_id = t.id and old.version = 1
-      join aqi_tutorial_versions current on current.tutorial_id = t.id and current.version = 2
-     where t.slug = any($1::text[]) order by t.slug`, [[...expected.keys()]]);
-  if (rows.length !== expected.size) throw new Error(`expected ${expected.size} migrated AQi tutorials, found ${rows.length}`);
-  for (const row of rows) {
-    const [oldTitle, oldDescription] = expected.get(row.slug) ?? [];
-    if (!oldTitle || row.old_title !== oldTitle || row.old_description !== oldDescription
-        || row.old_version !== 1 || row.old_status !== "archived" || row.old_notes !== "Starter library"
-        || row.current_version !== 2 || row.current_status !== "published" || row.current_notes !== "AI Growth Partner guidance migration 0131"
-        || row.published_version_id !== row.current_id || row.tutorial_status !== "published"
-        || row.title !== row.current_title || row.description !== row.current_description
-        || row.category !== row.current_category || row.route_prefix !== row.current_route_prefix) {
-      throw new Error(`the versioned AQi guidance state is incorrect for ${row.slug}`);
+    ]);
+    const rows = await q(db, `select t.id::text as tutorial_id, t.slug, t.title, t.description, t.category, t.route_prefix,
+             t.status as tutorial_status, t.published_version_id::text as published_version_id,
+             old.id::text as old_id, old.version as old_version, old.status as old_status, old.notes as old_notes,
+             old.definition->>'title' as old_title, old.definition->>'description' as old_description,
+             prior.id::text as prior_id, prior.version as prior_version, prior.status as prior_status, prior.notes as prior_notes,
+             current.id::text as current_id, current.version as current_version, current.status as current_status,
+             current.notes as current_notes, current.definition->>'title' as current_title,
+             current.definition->>'description' as current_description, current.definition->>'category' as current_category,
+             current.definition->>'routePrefix' as current_route_prefix
+        from aqi_tutorials t
+        join aqi_tutorial_versions old on old.tutorial_id = t.id and old.version = 1
+        join aqi_tutorial_versions prior on prior.tutorial_id = t.id and prior.version = 2
+        join aqi_tutorial_versions current on current.id = t.published_version_id
+       where t.slug = any($1::text[]) order by t.slug`, [[...expected.keys()]]);
+    if (rows.length !== expected.size) throw new Error(`expected ${expected.size} migrated AQi tutorials, found ${rows.length}`);
+    for (const row of rows) {
+      const [oldTitle, oldDescription] = expected.get(row.slug) ?? [];
+      const refreshed = ["getting-started", "view-ai-employees"].includes(row.slug);
+      const currentIs0136 = row.current_version === 3 && row.current_notes === "AI Growth Partner conversation-first guidance migration 0136";
+      if (!oldTitle || row.old_title !== oldTitle || row.old_description !== oldDescription
+          || row.old_version !== 1 || row.old_status !== "archived" || row.old_notes !== "Starter library"
+          || row.prior_version !== 2 || row.prior_notes !== "AI Growth Partner guidance migration 0131"
+          || row.prior_status !== (refreshed && currentIs0136 ? "archived" : "published")
+          || row.current_version !== (currentIs0136 ? 3 : 2)
+          || row.current_status !== "published"
+          || row.current_notes !== (currentIs0136 ? "AI Growth Partner conversation-first guidance migration 0136" : "AI Growth Partner guidance migration 0131")
+          || (!refreshed && currentIs0136)
+          || row.published_version_id !== row.current_id || row.tutorial_status !== "published"
+          || row.title !== row.current_title || row.description !== row.current_description
+          || row.category !== row.current_category || row.route_prefix !== row.current_route_prefix) {
+        throw new Error(`the versioned AQi guidance state is incorrect for ${row.slug}`);
+      }
     }
+    const migrationVersions = await one(db, "select count(*)::int as n from aqi_tutorial_versions where notes = 'AI Growth Partner guidance migration 0131'");
+    if (migrationVersions.n !== expected.size) throw new Error(`expected exactly ${expected.size} migration-created tutorial versions, found ${migrationVersions.n}`);
+    return {
+      changed: new Map([
+        ["aqi_tutorials", new Set(rows.map((row) => row.tutorial_id))],
+        ["aqi_tutorial_versions", new Set(rows.map((row) => row.old_id))],
+      ]),
+      growth: new Map([["aqi_tutorial_versions", expected.size]]),
+      detail: "3 original AQi starter tutorials were advanced to version 2; all unrelated rows were preserved",
+    };
   }
-  const migrationVersions = await one(db, "select count(*)::int as n from aqi_tutorial_versions where notes = 'AI Growth Partner guidance migration 0131'");
-  if (migrationVersions.n !== expected.size) throw new Error(`expected exactly ${expected.size} migration-created tutorial versions, found ${migrationVersions.n}`);
-  return {
-    changed: new Map([
-      ["aqi_tutorials", new Set(rows.map((row) => row.tutorial_id))],
-      ["aqi_tutorial_versions", new Set(rows.map((row) => row.old_id))],
-    ]),
-    growth: new Map([["aqi_tutorial_versions", expected.size]]),
-    detail: "3 original AQi starter tutorials were advanced to version 2; all unrelated rows were preserved",
-  };
+  if (prefix(file) === "0136") {
+    const expected = new Map([
+      ["getting-started", { step: 2, previous: "Open AI Growth Partner from the navigation to see its saved setup, Business Brain and current availability.", body: "Open AI Growth Partner from the navigation to enter your permanent conversation. The next step opens its Control Center and Business Brain." }],
+      ["view-ai-employees", { step: 0, previous: "AI Growth Partner is in the main navigation. Select it to continue.", body: "AI Growth Partner in the main navigation opens your permanent conversation. Select it to continue." }],
+    ]);
+    const rows = await q(db, `select t.id::text as tutorial_id, t.slug, t.title, t.description, t.category, t.route_prefix,
+             t.status as tutorial_status, t.published_version_id::text as published_version_id,
+             prior.id::text as prior_id, prior.version as prior_version, prior.status as prior_status,
+             prior.notes as prior_notes, prior.definition as prior_definition,
+             current.id::text as current_id, current.version as current_version, current.status as current_status,
+             current.notes as current_notes, current.definition as current_definition
+        from aqi_tutorials t
+        join aqi_tutorial_versions prior on prior.tutorial_id = t.id and prior.version = 2
+        join aqi_tutorial_versions current on current.id = t.published_version_id
+       where t.slug = any($1::text[]) order by t.slug`, [[...expected.keys()]]);
+    if (rows.length !== expected.size) throw new Error(`expected ${expected.size} conversation-first AQi tutorials, found ${rows.length}`);
+    for (const row of rows) {
+      const copy = expected.get(row.slug);
+      const priorSteps = row.prior_definition?.steps;
+      if (!copy || !Array.isArray(priorSteps)
+          || priorSteps[copy.step]?.key !== "workforce-nav"
+          || priorSteps[copy.step]?.body !== copy.previous) {
+        throw new Error(`0136 prior AQi tutorial copy is unexpected for ${row.slug}`);
+      }
+      const expectedDefinition = JSON.parse(JSON.stringify(row.prior_definition));
+      expectedDefinition.steps[copy.step].body = copy.body;
+      if (row.prior_version !== 2 || row.prior_status !== "archived" || row.prior_notes !== "AI Growth Partner guidance migration 0131"
+          || row.current_version !== 3 || row.current_status !== "published" || row.current_notes !== "AI Growth Partner conversation-first guidance migration 0136"
+          || stableJson(row.current_definition) !== stableJson(expectedDefinition)
+          || row.published_version_id !== row.current_id || row.tutorial_status !== "published"
+          || row.title !== row.current_definition.title || row.description !== row.current_definition.description
+          || row.category !== row.current_definition.category || row.route_prefix !== row.current_definition.routePrefix) {
+        throw new Error(`the conversation-first AQi guidance state is incorrect for ${row.slug}`);
+      }
+    }
+    const migrationVersions = await one(db, "select count(*)::int as n from aqi_tutorial_versions where notes = 'AI Growth Partner conversation-first guidance migration 0136'");
+    if (migrationVersions.n !== expected.size) throw new Error(`expected exactly ${expected.size} migration-created conversation-first versions, found ${migrationVersions.n}`);
+    return {
+      changed: new Map([
+        ["aqi_tutorials", new Set(rows.map((row) => row.tutorial_id))],
+        ["aqi_tutorial_versions", new Set(rows.map((row) => row.prior_id))],
+      ]),
+      growth: new Map([["aqi_tutorial_versions", expected.size]]),
+      detail: "2 untouched AQi tutorial navigation steps were advanced to version 3; all unrelated rows were preserved",
+    };
+  }
+  return { changed: new Map(), growth: new Map(), detail: "" };
 };
 
 // --------------------------------------------------------------------------------------------------------------------------------------------
@@ -1840,6 +1898,7 @@ async function runBCD() {
   // while D2 below proves the supported reverse order returns to the exact prior schema.
   const OUT_OF_ORDER_DEPENDENCY = new Map([
     ["0120", /cannot drop table ai_growth_partners because other objects depend on it/i],
+    ["0131", /Refusing to roll back 0131: tutorial .* changed after the migration/i],
   ]);
   const refusedNames = [];
   for (const file of HISTORY) {

@@ -24,7 +24,6 @@ function cleanTestEnvironment(): NodeJS.ProcessEnv {
     APP_ENCRYPTION_KEY: "test-only-key-0123456789abcdef0123456789abcdef",
     DATABASE_DRIVER: "pglite",
     PGLITE_DATA_DIR: dataDir,
-    INBOX_TEST_ROLLOUT: "off",
   };
 }
 
