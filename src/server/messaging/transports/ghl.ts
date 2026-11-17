@@ -1,9 +1,10 @@
 import "server-only";
 import { CHANNELS } from "@/lib/messaging";
 import { ghlProvider, type ChannelProvider, type ProviderSendRequest } from "@/server/messaging/provider";
+import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import type { ChannelTransport, TransportName, TransportSendRequest } from "@/server/messaging/transports/types";
 
-// GoHighLevel as a ChannelTransport. The HTTP call, its gate (GHL_WRITES_ENABLED), the official-host pin and the error mapping stay in
+// GoHighLevel as a ChannelTransport. The HTTP call, its gates (OUTBOUND_MESSAGING_ENABLED and GHL_WRITES_ENABLED), the official-host pin and the error mapping stay in
 // ghlProvider (provider.ts), unchanged, so a GoHighLevel workspace sends exactly what it sent before native transports existed.
 
 /**
@@ -45,7 +46,11 @@ export function transportFromProvider(provider: ChannelProvider): ChannelTranspo
     name: provider.name as TransportName,
     channels: CHANNELS,
     requiresContactRef: true,
-    send: (req) => provider.send(toProviderRequest(req)),
+    send: async (req) => {
+      const disabled = outboundMessagingDisabled();
+      if (disabled) return { ok: false, retryable: false, blocked: true, error: disabled.detail };
+      return provider.send(toProviderRequest(req));
+    },
   };
 }
 

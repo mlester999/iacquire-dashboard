@@ -23,6 +23,7 @@ export const SITES_QA_ENV = {
   RESEND_API_KEY: "",
   LLM_API_KEY: "",
   LLM_BASE_URL: "",
+  OUTBOUND_MESSAGING_ENABLED: "false",
   GHL_WRITES_ENABLED: "false",
   EMAIL_PROVIDER: "capture",
 };

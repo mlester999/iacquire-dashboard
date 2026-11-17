@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
+import { transportWritesDisabledReason } from "@/server/messaging/transports/policy";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { notifyAgency } from "@/server/notifications";
 import { resolveCredential } from "@/server/security/credentials";
@@ -28,7 +29,7 @@ import { applyInvitationEmailNotice } from "@/server/purchase-intents/delivery-e
 //     replying in a thread (In-Reply-To, "Re:" subject), webhook verification and the retry schedule.
 //   * Svix's manual verification guide and the standard-webhooks verifier Svix's library wraps: HMAC-SHA256 over "id.timestamp.body" with
 //     the base64 secret after "whsec_", "v1,<base64>" signatures separated by spaces, 5 minute tolerance either way.
-// Nothing here has been exercised against a live Resend account. Sending is off unless RESEND_WRITES_ENABLED=true.
+// Nothing here has been exercised against a live Resend account. Messaging sends require OUTBOUND_MESSAGING_ENABLED=true and RESEND_WRITES_ENABLED=true.
 
 const RESEND_API = "https://api.resend.com";
 // Resend's API refuses requests without a User-Agent (403, error 1010; API reference introduction).
@@ -42,7 +43,6 @@ const UUIDISH = /^[0-9a-fA-F-]{8,64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MESSAGE_ID = /^<[^<>\s@]{1,400}@[^<>\s]{1,400}>$/;
 
-const writesEnabled = () => env().RESEND_WRITES_ENABLED;
 const webhookSecret = () => env().RESEND_WEBHOOK_SECRET ?? null;
 
 // ---------------------------------------------------------------------------
@@ -351,7 +351,8 @@ export function createResendTransport(options: ResendTransportOptions = {}): Cha
     requiresContactRef: false,
     async send(req) {
       // The kill switch comes first: when it is off, nothing is read and nothing leaves.
-      if (!writesEnabled()) return { ok: false, retryable: false, blocked: true, error: "Sending email through Resend is switched off for this environment." };
+      const disabledReason = transportWritesDisabledReason("resend");
+      if (disabledReason) return { ok: false, retryable: false, blocked: true, error: disabledReason };
       if (req.channel !== "email") return { ok: false, retryable: false, blocked: true, error: "Resend only sends email." };
       if (!UUID.test(req.messageId)) return { ok: false, retryable: false, error: "The message id can't be used with Resend." };
       const to = normalizeEmail(req.to);

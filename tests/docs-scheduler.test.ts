@@ -20,7 +20,7 @@ const WAVE_1_JOBS = ["proposalExpiry", "proposalHousekeeping", "esignSync", "fee
 const REACH_CUSTOMERS_OR_PROVIDERS = ["invoiceReminders", "reviewRequestBatches", "customerPaymentReconcile"];
 // Every outbound or approval switch that is off by default and is its own founder decision. Step 3 of the activation checklist asks the operator to confirm each one.
 const SWITCHES = [
-  "GHL_WRITES_ENABLED", "RESEND_WRITES_ENABLED", "TWILIO_WRITES_ENABLED", "META_WHATSAPP_WRITES_ENABLED", "N8N_ACTIONS_ENABLED", "META_SOCIAL_WRITES_ENABLED",
+  "OUTBOUND_MESSAGING_ENABLED", "GHL_WRITES_ENABLED", "RESEND_WRITES_ENABLED", "TWILIO_WRITES_ENABLED", "META_WHATSAPP_WRITES_ENABLED", "N8N_ACTIONS_ENABLED", "META_SOCIAL_WRITES_ENABLED",
   "CUSTOMER_PAYMENTS_WRITES_ENABLED", "CUSTOMER_PAYMENTS_LIVE_ENABLED", "ESIGN_WRITES_ENABLED", "GOOGLE_BUSINESS_API_APPROVED", "GOOGLE_BUSINESS_REPLIES_ENABLED",
   "META_REVIEWS_ENABLED", "META_REVIEWS_REPLIES_ENABLED",
 ];
@@ -100,7 +100,7 @@ describe("the switches the activation checklist asks the operator to confirm", (
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The fifteen variables a founder has to know before the first tick: the write and approval switches, the emergency stops, two limits and the staging list.
+// The sixteen variables a founder has to know before the first tick: the write and approval switches, the emergency stops, two limits and the staging list.
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const STOPS = ["PROPOSALS_PUBLIC_DISABLED", "INVOICES_PUBLIC_DISABLED", "REVIEWS_PUBLIC_DISABLED", "WEBCHAT_PUBLIC_DISABLED"];
@@ -141,8 +141,8 @@ function tableRows(doc: string, heading: string): string[][] {
 describe("the Wave 1 switches, emergency stops and limits", () => {
   const SECTION = "## Wave 1 switches, emergency stops and limits";
 
-  it("are the same fifteen variables the task lists, all real, all shipped in .env.example with the schema's default", () => {
-    expect(WAVE_1_VARIABLES.length).toBe(15);
+  it("are the same sixteen variables the task lists, all real, all shipped in .env.example with the schema's default", () => {
+    expect(WAVE_1_VARIABLES.length).toBe(16);
     expect(WAVE_1_VARIABLES.filter((n) => !new RegExp(`\\b${n}:`).test(envSource))).toEqual([]);
     for (const n of WAVE_1_VARIABLES) expect(exampleDefault(n), `${n} in .env.example`).toBe(schemaDefault(n));
   });

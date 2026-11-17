@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
+import { transportWritesDisabledReason } from "@/server/messaging/transports/policy";
 import { AppError } from "@/server/errors";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { resolveCredential } from "@/server/security/credentials";
@@ -28,7 +29,7 @@ import type { CapabilityTest, ChannelTransport, TransportResult, TransportSendRe
 //     without replying. Advanced Opt-Out: OptOutType START|STOP|HELP means Twilio already matched the keyword and replied.
 //   * Twilio error dictionary (twilio-error-codes.json): 21610 unsubscribed recipient, 21211 invalid To, 21614 To not a mobile number, …
 //
-// Nothing here has been exercised against a live Twilio account. Sending is off unless TWILIO_WRITES_ENABLED=true.
+// Nothing here has been exercised against a live Twilio account. Sending requires OUTBOUND_MESSAGING_ENABLED=true and TWILIO_WRITES_ENABLED=true.
 
 const API_ORIGIN = "https://api.twilio.com";
 const MESSAGING_ORIGIN = "https://messaging.twilio.com";
@@ -313,7 +314,8 @@ async function loadSecret(credentialId: string, orgId: string): Promise<TwilioSe
  * response; it advances only from Twilio's status callbacks.
  */
 async function sendTwilio(req: TransportSendRequest): Promise<TransportResult> {
-  if (!env().TWILIO_WRITES_ENABLED) return { ok: false, retryable: false, blocked: true, error: "Sending through Twilio is switched off for this environment." };
+  const disabledReason = transportWritesDisabledReason("twilio");
+  if (disabledReason) return { ok: false, retryable: false, blocked: true, error: disabledReason };
   if (req.channel !== "sms") return { ok: false, retryable: false, blocked: true, error: "Twilio is connected for SMS only." };
   const senderId = req.sender.senderId;
   if (!senderId || !(SERVICE_SID.test(senderId) || E164.test(senderId)) || !req.sender.credentialId) {

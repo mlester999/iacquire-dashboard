@@ -21,6 +21,7 @@ describe("Automation Studio QA environment", () => {
     ["uploads outside its data directory", { UPLOAD_DIR: ".data/automation-qa/../elsewhere" }],
     ["another build directory", { IAQ_DIST_DIR: ".next" }],
     ["a hosted database", { DATABASE_URL: "postgres://user@db.example.com/app" }],
+    ["the outbound messaging master switch", { OUTBOUND_MESSAGING_ENABLED: "true" }],
     ["a message provider switched on", { TWILIO_WRITES_ENABLED: "true" }],
     ["an email provider key", { RESEND_API_KEY: "key" }],
     ["a variable the Native CRM QA environment doesn't know", { SOME_NEW_PROVIDER_KEY: "x" }],

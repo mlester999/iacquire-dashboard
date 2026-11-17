@@ -3,6 +3,12 @@
 What each native messaging transport relies on, checked against the provider's official, machine-readable or official-doc sources before
 the code was written. Nothing here has been exercised against a live provider account: every test mocks `fetch`.
 
+## Deployment-wide outbound stop
+
+`OUTBOUND_MESSAGING_ENABLED` is a server-only, environment-wide kill switch for customer-facing messages sent through the messaging transports and replies stored for the public website chat. It defaults to `false`. When it is off, new sends are refused or recorded as blocked, and queued or retried messages are checked again before any provider adapter is called. Approving an AI draft does not bypass the stop. The individual provider switches remain an additional gate when the master switch is on.
+
+The switch does not control inbound webhooks, in-app notifications, or the separate email outbox used for authentication, security and account notices. Tests explicitly opt their synthetic messaging fixtures in, while `tests/outbound-messaging-safety.test.ts` removes the setting and verifies the default, queued-message enforcement, website-chat behavior, and authentication email exemption. The isolated CRM and website QA environments pin the master switch off; no production setting was changed.
+
 ## The provider-neutral core
 
 Code: `src/server/messaging/transports/{types,index,ghl}.ts`, `src/server/messaging/{send,ingest,channels,redact}.ts`. Tests:
@@ -16,7 +22,7 @@ Code: `src/server/messaging/transports/{types,index,ghl}.ts`, `src/server/messag
 - `transportFor(name)` returns the `ChannelTransport`; `loadChannelTransport(db, orgId, channel)` returns the transport with the channel's
   sender (`identity`, `senderId`, `accountId`, `credentialId`). Native transport modules are imported on first use, so a GoHighLevel
   workspace never loads them; a module that fails to load turns the send into "not attempted" (nothing leaves, the credit hold is released).
-- Every transport has its own environment kill switch, off unless set to `true`: `GHL_WRITES_ENABLED`, `RESEND_WRITES_ENABLED`,
+- Every transport first checks `OUTBOUND_MESSAGING_ENABLED`, which defaults to `false`; after that is explicitly enabled, it also checks its own environment kill switch, off unless set to `true`: `GHL_WRITES_ENABLED`, `RESEND_WRITES_ENABLED`,
   `TWILIO_WRITES_ENABLED`, `META_WHATSAPP_WRITES_ENABLED` (`transportWritesEnabled(name)`). While it is off the transport answers
   `{ ok: false, blocked: true }` before any request, and the message is held as `provider_not_enabled`.
 

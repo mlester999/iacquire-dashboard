@@ -11,6 +11,7 @@ import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
 import { identityFacts, latestConsentSource } from "@/server/messaging/consent-identity";
 import { dispatchGate, HELD_BY_PERSON_DETAIL } from "@/server/messaging/dispatch-gate";
+import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
 import { fillInvoiceLink, fillManageLink, fillProposalLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasProposalLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
@@ -238,6 +239,8 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   );
   const conv = rows[0];
   if (!conv) throw new AppError("not_found", "Conversation not found.");
+  const outboundDisabled = outboundMessagingDisabled();
+  if (outboundDisabled) return deny(outboundDisabled.reason, outboundDisabled.detail, { permanent: true });
   // A website chat is never sent through a provider; its replies take queueWebChatOutbound. Anything else that reaches this chain with one is refused.
   if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;

@@ -46,6 +46,7 @@ describe("CRM browser QA stays isolated", () => {
     for (const unsafe of [
       { GHL_API_BASE: "https://services.leadconnectorhq.com" },
       { IAQ_DIST_DIR: ".next" },
+      { OUTBOUND_MESSAGING_ENABLED: "true" },
       { GHL_WRITES_ENABLED: "true" },
       { RESEND_API_KEY: "not-a-real-key" },
     ]) {

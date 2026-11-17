@@ -103,15 +103,18 @@ describe("A. the suite runs on an in-memory embedded database, whatever the shel
     expect(block).not.toMatch(/DATABASE_URL|SUPABASE|INBOX_TEST_ROLLOUT|INBOX_DISABLED/);
     // A test file gets its own process (and so its own empty in-memory database): the default for the forks pool, and these would change it.
     expect(config).toContain('pool: "forks"');
-    // The setup files allowed are the guard that refuses connections to other machines, which reads and sets no environment value, and the suite's clock (tests/support/test-clock.ts), which
-    // reads TEST_CLOCK and nothing else and sets none: neither can reach a database, a sign-in setting or the inbox switch.
-    const guard = 'setupFiles: [path.resolve(import.meta.dirname, "tests/support/no-network.ts"), path.resolve(import.meta.dirname, "tests/support/test-clock.ts")],';
-    expect(config.split(guard).length - 1).toBe(1);
-    expect(config.replace(guard, "")).not.toMatch(/isolate\s*:\s*false|singleFork|poolOptions|pool:\s*"(threads|vmThreads|vmForks)"|dotenv|globalSetup|setupFiles/);
+    // The setup files are the no-network guard, the fixed test clock, and one explicit synthetic-message opt-in. The latter sets only the application-level send gate;
+    // it cannot select a provider or destination, and this suite pins its own requirements below.
+    const setup = 'setupFiles: [path.resolve(import.meta.dirname, "tests/support/no-network.ts"), path.resolve(import.meta.dirname, "tests/support/test-clock.ts"), path.resolve(import.meta.dirname, "tests/support/outbound-messaging-default.ts")],';
+    expect(config.split(setup).length - 1).toBe(1);
+    expect(config.replace(setup, "")).not.toMatch(/isolate\s*:\s*false|singleFork|poolOptions|pool:\s*"(threads|vmThreads|vmForks)"|dotenv|globalSetup|setupFiles/);
     expect(read("tests/support/no-network.ts")).not.toMatch(/process\.env|dotenv|DATABASE|INBOX_|SUPABASE/);
     const clock = read("tests/support/test-clock.ts");
     expect([...clock.matchAll(/process\.env\.([A-Za-z_]+)/g)].map((match) => match[1])).toEqual(["TEST_CLOCK"]);
     expect(clock).not.toMatch(/process\.env\[|process\.env\s*=|dotenv|DATABASE|INBOX_|SUPABASE|AUTH_PROVIDER|SECRET_STORE/);
+    const outboundDefault = read("tests/support/outbound-messaging-default.ts");
+    expect([...outboundDefault.matchAll(/process\.env\.([A-Za-z_]+)/g)].map((match) => match[1])).toEqual(["OUTBOUND_MESSAGING_ENABLED"]);
+    expect(outboundDefault).not.toMatch(/DATABASE|SUPABASE|INBOX_|GHL|RESEND|TWILIO|META_|AUTH_PROVIDER|SECRET_STORE/);
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts.test).toBe("vitest run");
     for (const [name, command] of Object.entries(pkg.scripts)) {

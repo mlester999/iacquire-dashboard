@@ -26,6 +26,7 @@ const pins = {
   N8N_BASE_URL: "",
   SLACK_SUPPORT_WEBHOOK_URL: "",
   GHL_API_BASE: "",
+  OUTBOUND_MESSAGING_ENABLED: "false",
   GHL_WRITES_ENABLED: "false",
   EMAIL_PROVIDER: "capture",
 };

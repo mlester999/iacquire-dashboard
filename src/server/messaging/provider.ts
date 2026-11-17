@@ -3,13 +3,14 @@ import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
 import { env } from "@/server/env";
 import { loadGhlMapping } from "@/server/integrations/ghl";
+import { transportWritesDisabledReason } from "@/server/messaging/transports/policy";
 import type { Channel } from "@/lib/messaging";
 import type { TransportResult, TransportSendRequest, TransportSender } from "@/server/messaging/transports/types";
 
 // Contract sources: GoHighLevel OpenAPI (conversations: POST /conversations/messages, Version 2021-04-15) and the
 // GoHighLevel webhook authentication guide (x-wh-signature, RSA-SHA256), read 2026-10-14; the send body and response were re-checked
 // against GoHighLevel/api-v2-docs specs/conversations.json on 2026-10-16 (docs/messaging-providers.md).
-// Nothing here has been exercised against a live GoHighLevel location. Sending is off unless GHL_WRITES_ENABLED=true.
+// Nothing here has been exercised against a live GoHighLevel location. Sending requires both OUTBOUND_MESSAGING_ENABLED=true and GHL_WRITES_ENABLED=true.
 
 /**
  * The original GoHighLevel request shape. It is still what ghlProvider (and any provider written against it, such as test
@@ -65,7 +66,8 @@ export function ghlSendPayload(req: ProviderSendRequest): Record<string, unknown
 export const ghlProvider: ChannelProvider = {
   name: "ghl",
   async send(req) {
-    if (!env().GHL_WRITES_ENABLED) return { ok: false, retryable: false, blocked: true, error: "Sending through GoHighLevel is switched off for this environment." };
+    const disabledReason = transportWritesDisabledReason("ghl");
+    if (disabledReason) return { ok: false, retryable: false, blocked: true, error: disabledReason };
     const mapping = await withSystem((db) => loadGhlMapping(db, req.orgId)).catch(() => null);
     if (!mapping) return { ok: false, retryable: false, blocked: true, reconnectRequired: true, error: "GoHighLevel is not connected for this workspace." };
     const base = new URL(env().GHL_API_BASE);

@@ -4,6 +4,7 @@ import type { Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { automationGate } from "@/server/automation/gate";
 import { createApproval } from "@/server/approvals/service";
+import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import type { QueueResult, SendRequest } from "@/server/messaging/send";
 
 // A reply to a website visitor. The visitor's open widget collects it, so nothing leaves through a provider: no sender to verify, no consent
@@ -36,7 +37,7 @@ export async function queueWebChatOutbound(db: Queryable, req: SendRequest & { a
   const conv = rows[0];
   if (!conv) throw new AppError("not_found", "Conversation not found.");
 
-  const denial = await denyReason(db, req, conv);
+  const denial = outboundMessagingDisabled() ?? await denyReason(db, req, conv);
   const messageId = crypto.randomUUID();
   const author = req.actor.kind === "ai" ? { kind: "ai", userId: null, agentId: req.actor.agentId } : { kind: req.actor.kind, userId: req.actor.userId, agentId: null };
   const fence = req.actor.kind === "ai" ? (req.fenceVersion ?? conv.ownership_version) : null;
@@ -53,7 +54,7 @@ export async function queueWebChatOutbound(db: Queryable, req: SendRequest & { a
   if (denial) {
     // A person's own reply that cannot go is refused with the reason, like every other channel.
     if (req.actor.kind === "human") throw new AppError("conflict", denial.detail);
-    if (denial.needsApproval) {
+    if ("needsApproval" in denial && denial.needsApproval) {
       await insert("draft", { reason: "needs_approval", detail: denial.detail });
       const approvalId = await createApproval(db, {
         orgId: req.orgId,

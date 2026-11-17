@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
+import { transportWritesDisabledReason } from "@/server/messaging/transports/policy";
 import { AppError } from "@/server/errors";
 import { sendEmail, type OutgoingEmail } from "@/server/email";
 import { resolveCredential } from "@/server/security/credentials";
@@ -32,7 +33,7 @@ import type { CapabilityTest, ChannelTransport, TransportResult, TransportSendRe
 //   * Error codes: 131047 re-engagement (outside the 24-hour window), 131026 undeliverable, 131050 the user stopped marketing messages,
 //     190 expired token, 130429 / 131056 / 80007 / 4 rate limits, 132xxx template problems, …
 //
-// Nothing here has been exercised against a live Meta account. Sending is off unless META_WHATSAPP_WRITES_ENABLED=true.
+// Nothing here has been exercised against a live Meta account. Sending requires OUTBOUND_MESSAGING_ENABLED=true and META_WHATSAPP_WRITES_ENABLED=true.
 
 const GRAPH_ORIGIN = "https://graph.facebook.com";
 /** The Graph API version every call uses (latest stable on 2026-10-16). */
@@ -274,7 +275,8 @@ const LANGUAGE = /^[a-z]{2,3}(?:[_-][A-Za-z0-9]{2,8})?$/;
  * the response; it advances only from status webhooks.
  */
 async function sendMetaWhatsapp(req: TransportSendRequest): Promise<TransportResult> {
-  if (!env().META_WHATSAPP_WRITES_ENABLED) return { ok: false, retryable: false, blocked: true, error: "Sending through WhatsApp (Meta) is switched off for this environment." };
+  const disabledReason = transportWritesDisabledReason("meta_whatsapp");
+  if (disabledReason) return { ok: false, retryable: false, blocked: true, error: disabledReason };
   if (req.channel !== "whatsapp") return { ok: false, retryable: false, blocked: true, error: "Meta's Cloud API is connected for WhatsApp only." };
   const phoneNumberId = req.sender.senderId;
   if (!phoneNumberId || !NUMERIC_ID.test(phoneNumberId) || !req.sender.credentialId) {

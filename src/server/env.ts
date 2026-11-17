@@ -262,6 +262,9 @@ const schema = z.object({
 
   // Native messaging transports (see docs/messaging-providers.md). Each has its own kill switch, off unless set to true, exactly like
   // GHL_WRITES_ENABLED: while it is off nothing is sent through that provider and the message is held with the reason.
+  // This environment-wide stop applies to customer-facing messaging transports and website-chat replies, checked when queued and again before sending.
+  // It defaults off. The separate email outbox remains available for authentication, security and account notices.
+  OUTBOUND_MESSAGING_ENABLED: bool,
   RESEND_WRITES_ENABLED: bool,
   TWILIO_WRITES_ENABLED: bool,
   META_WHATSAPP_WRITES_ENABLED: bool,
