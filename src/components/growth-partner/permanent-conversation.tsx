@@ -289,7 +289,7 @@ export function PermanentGrowthPartnerConversation({
     <div className="mx-auto w-full max-w-[1120px] space-y-5 pb-10">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <ButtonLink href="/growth-partner" variant="ghost" size="sm" className="mb-3 -ml-2"><ArrowLeft className="size-4" aria-hidden /> AI Growth Partner</ButtonLink>
+          <ButtonLink href="/growth-partner" variant="ghost" size="sm" className="mb-3 -ml-2"><ArrowLeft className="size-4" aria-hidden /> Partner Control Center</ButtonLink>
           <div className="flex flex-wrap items-center gap-2"><h1 className="text-[26px] font-semibold tracking-[-0.035em] text-ink sm:text-[30px]">AI Growth Partner</h1><Badge tone={initial ? "success" : "warning"}>{initial ? "One shared conversation" : "Setup in progress"}</Badge></div>
           <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-muted">Your workspace shares one lasting conversation with the AI Growth Partner. There are no separate chats for roles, tasks or scheduled work.</p>
         </div>

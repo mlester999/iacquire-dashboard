@@ -312,6 +312,18 @@ describe("the existing AI profiles banner", () => {
     expect(within(records).queryByRole("link", { name: /Open chat/ })).toBeNull();
     expect(document.body.textContent).not.toMatch(/six AI employees/i);
   });
+
+  it("opens the canonical conversation when the Growth Partner is ready and keeps setup in the Control Center", () => {
+    const ready = { conversationId: "conversation-1", currentVersion: 1 } as never;
+    const { unmount } = render(<OnboardedBanner nativeCrm crmGuide growthPartner={ready} />);
+    expect(screen.getByText("Ready")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner/conversation");
+    unmount();
+
+    const settingUp = { conversationId: null, currentVersion: 1 } as never;
+    render(<OnboardedBanner nativeCrm crmGuide growthPartner={settingUp} />);
+    expect(screen.getByRole("link", { name: "Review Partner setup" }).getAttribute("href")).toBe("/growth-partner");
+  });
 });
 
 // The Setup page reads the workspace, the launch state and the saved answers; here those are fixtures, and what the page hands the browser is what is rendered.

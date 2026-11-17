@@ -66,17 +66,20 @@ function renderSidebar(permissions: Permission[] = ["agents.use", "agents.config
 const hrefs = () => screen.getAllByRole("link").map((a) => a.getAttribute("href"));
 
 describe("Growth Partner navigation (main iAcquire sidebar)", () => {
-  it("shows one Growth Partner destination and keeps old profiles under migration access", () => {
+  it("opens the permanent conversation first and gives its control center a separate destination", () => {
     renderSidebar();
     const links = hrefs();
+    expect(links).toContain("/growth-partner/conversation");
     expect(links).toContain("/growth-partner");
-    expect(screen.getByRole("link", { name: "AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner");
+    expect(screen.getByRole("link", { name: "AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner/conversation");
+    expect(screen.getByRole("link", { name: "Partner Control Center" }).getAttribute("href")).toBe("/growth-partner");
     expect(screen.getByRole("link", { name: "Previous role profiles" }).getAttribute("href")).toBe("/employees");
     expect(links.filter((href) => href?.startsWith("/employees/") || href?.startsWith("/chat/")).length).toBe(0);
   });
 
   it("keeps migration-only profiles hidden from people who cannot configure agents", () => {
     renderSidebar(["agents.use"]);
+    expect(hrefs()).toContain("/growth-partner/conversation");
     expect(hrefs()).toContain("/growth-partner");
     expect(hrefs()).not.toContain("/employees");
     expect(hrefs().filter((href) => href?.startsWith("/employees/") || href?.startsWith("/chat/")).length).toBe(0);
@@ -84,6 +87,7 @@ describe("Growth Partner navigation (main iAcquire sidebar)", () => {
 
   it("hides previous profiles from a Growth Partner-only workspace", () => {
     renderSidebar(["agents.use", "agents.configure"], { agents: [] });
+    expect(hrefs()).toContain("/growth-partner/conversation");
     expect(hrefs()).toContain("/growth-partner");
     expect(hrefs()).not.toContain("/employees");
   });
@@ -91,28 +95,38 @@ describe("Growth Partner navigation (main iAcquire sidebar)", () => {
   it("hides retained profile access after legacy runtimes are disabled", () => {
     const disabled = shell(["agents.use", "agents.configure"]).agents.map((agent) => ({ ...agent, enabled: false }));
     renderSidebar(["agents.use", "agents.configure"], { agents: disabled });
+    expect(hrefs()).toContain("/growth-partner/conversation");
     expect(hrefs()).toContain("/growth-partner");
     expect(hrefs()).not.toContain("/employees");
   });
 
   it("hides Growth Partner navigation from people without AI access", () => {
     renderSidebar([]);
+    expect(hrefs()).not.toContain("/growth-partner/conversation");
     expect(hrefs()).not.toContain("/growth-partner");
     expect(hrefs()).not.toContain("/employees");
   });
 
-  it("highlights the single partner route", () => {
+  it("highlights only the permanent conversation on its route", () => {
+    nav.pathname = "/growth-partner/conversation";
+    renderSidebar();
+    const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
+    expect(current.map((a) => a.getAttribute("href"))).toEqual(["/growth-partner/conversation"]);
+  });
+
+  it("highlights only the control center on its route", () => {
     nav.pathname = "/growth-partner";
     renderSidebar();
     const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
-    expect(current.map((a) => a.getAttribute("href"))).toContain("/growth-partner");
+    expect(current.map((a) => a.getAttribute("href"))).toEqual(["/growth-partner"]);
     expect(current.map((a) => a.getAttribute("href"))).not.toContain("/employees");
   });
 
   it("keeps the AQi walkthrough anchor on the Growth Partner link", () => {
     const { container } = renderSidebar();
     expect(container.querySelector('[data-tour="workforce"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/growth-partner"][data-aqi-target="nav.workforce"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/growth-partner/conversation"][data-aqi-target="nav.workforce"]')).not.toBeNull();
+    expect(container.querySelector('a[href="/growth-partner"][data-aqi-target="nav.partner-control-center"]')).not.toBeNull();
     expect(container.querySelector('a[href="/overview"][data-aqi-target]')).not.toBeNull();
   });
 

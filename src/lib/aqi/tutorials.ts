@@ -250,7 +250,7 @@ export const STARTER_TUTORIALS: AqiStarterTutorial[] = [
       steps: [
         { key: "overview", title: "This is your workspace", body: "Overview brings your pipeline, appointments and AI Growth Partner together. Every number here comes from real workspace data.", targetId: "overview.hero", route: "/overview" },
         { key: "metrics", title: "The numbers that matter", body: "These tiles show what needs attention right now. Select a tile to open the page behind it.", targetId: "overview.kpis", route: "/overview" },
-        { key: "workforce-nav", title: "Meet your AI Growth Partner", body: "Open AI Growth Partner from the navigation to see its saved setup, Business Brain and current availability.", targetId: "nav.workforce", route: null, advance: "click" },
+        { key: "workforce-nav", title: "Meet your AI Growth Partner", body: "Open AI Growth Partner from the navigation to enter your permanent conversation. The next step opens its Control Center and Business Brain.", targetId: "nav.workforce", route: null, advance: "click" },
         { key: "partner", title: "One partner, one Business Brain", body: "This page shows the saved partner identity, Business Brain facts and whether a runtime or permanent conversation is connected.", targetId: "growth-partner.header", route: "/growth-partner" },
         { key: "support-nav", title: "Help is always available", body: "Support is in the navigation. Select it to see how to reach the iAcquire team.", targetId: "nav.support", route: null, advance: "click" },
         { key: "support", title: "Start a real conversation", body: "This is the real Support page. A request is only created when you send it; AQi cannot create one for you.", targetId: "support.new-ticket", route: "/support" },
@@ -389,7 +389,7 @@ export const STARTER_TUTORIALS: AqiStarterTutorial[] = [
       aliases: ["view my growth partner", "where is my ai growth partner", "ai workforce", "growth partner setup", "configure my growth partner"],
       keywords: ["ai", "growth", "partner", "business brain", "workforce", "agent"],
       steps: [
-        { key: "workforce-nav", title: "Open AI Growth Partner", body: "AI Growth Partner is in the main navigation. Select it to continue.", targetId: "nav.workforce", route: null, advance: "click" },
+        { key: "workforce-nav", title: "Open AI Growth Partner", body: "AI Growth Partner in the main navigation opens your permanent conversation. Select it to continue.", targetId: "nav.workforce", route: null, advance: "click" },
         { key: "brain", title: "Review the Business Brain", body: "Review business facts, their sources and confirmation status. The same brain grounds work across all six capability areas.", targetId: "growth-partner.brain", route: "/growth-partner" },
         { key: "conversation", title: "Open the permanent conversation", body: "Use the Growth Partner conversation to keep one shared history across acquisition, sales, appointments, CRM, operations and analytics.", targetId: "growth-partner.conversation", route: "/growth-partner/conversation" },
       ],

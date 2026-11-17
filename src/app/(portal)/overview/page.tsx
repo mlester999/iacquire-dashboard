@@ -26,6 +26,7 @@ import { ClosingNotice } from "@/components/offboarding/closing-notice";
 import { getOffboardingForOwner } from "@/server/offboarding/service";
 import { listAgents } from "@/server/workforce/service";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import { growthPartnerPrimaryAction } from "@/lib/ai-growth-partner-navigation";
 import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export default async function OverviewPage() {
   const k = data.kpis;
   const metric = (m: (typeof k)[keyof typeof k]) => (m.available ? m.value : null);
   const reason = (m: (typeof k)[keyof typeof k]) => (m.available ? undefined : m.reason);
+  const growthPartnerAction = growthPartnerPrimaryAction(growthPartner);
   // Workspaces on iAcquire's own CRM count native calendars and deals, managed under /crm; the others read their connected GoHighLevel copies.
   const nativeDeals = data.sources.native.opportunities;
   const nativeCalendar = data.sources.native.appointments;
@@ -80,8 +82,8 @@ export default async function OverviewPage() {
           <ButtonLink href="/approvals" variant="secondary" size="md">
             <ShieldCheck className="size-4" /> Approvals
           </ButtonLink>
-          <ButtonLink href="/growth-partner" variant="brand" size="md">
-            Open AI Growth Partner <ArrowRight className="size-4" />
+          <ButtonLink href={growthPartnerAction.href} variant="brand" size="md">
+            {growthPartnerAction.label} <ArrowRight className="size-4" />
           </ButtonLink>
         </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI Growth Partner</p><p className="mt-3 text-[17px] font-semibold">{growthPartner?.status === "configured" ? "Business Brain ready" : growthPartner?.status === "paused" ? "Partner paused" : growthPartner ? "Partner setup in progress" : "Ready to set up"}</p><p className="mt-1 text-[13px] text-slate-300">{growthPartner?.currentVersion ? `Active Business Brain v${growthPartner.currentVersion}` : "One lasting conversation for coordinated business work."}</p><Link href="/growth-partner" className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-200">Open Partner Control Center<ArrowRight className="size-3"/></Link></div>}/>
 

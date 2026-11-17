@@ -62,7 +62,7 @@ const REQUESTS: NavItem[] = [
 const FOOTER: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings, tour: "settings" },
 ];
-export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/growth-partner", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", clientOnly: true }, { href: "/employees", label: "Previous role profiles", icon: Sparkles, permission: "agents.configure", clientOnly: true, legacyOnly: true }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...REQUESTS, ...FOOTER] as NavItem[];
+export const CLIENT_NAV = [...MAIN, ...CRM, { href: "/growth-partner/conversation", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", clientOnly: true, match: (path: string) => path === "/growth-partner/conversation" }, { href: "/growth-partner", label: "Partner Control Center", icon: LayoutDashboard, permission: "agents.use", clientOnly: true, match: (path: string) => path === "/growth-partner" }, { href: "/employees", label: "Previous role profiles", icon: Sparkles, permission: "agents.configure", clientOnly: true, legacyOnly: true }, { href: "/setup", label: "Setup Center", icon: ClipboardCheck }, ...GROW, ...REQUESTS, ...FOOTER] as NavItem[];
 function NavPendingBar() {
   // useLinkStatus must live inside the Link. A fixed-height bar cannot shift the row, and the
   // click feedback is visible even when the destination's server render is still in flight.
@@ -117,7 +117,8 @@ export function Sidebar({ onNavigate, compact = false, onCompact }: { onNavigate
       <NavLink onWarm={warmRoute} item={MAIN[0]} pathname={pathname} onNavigate={onNavigate} compact={compact} />
       {shell.setup.visible && <NavLink onWarm={warmRoute} item={{ href: "/setup", label: "Setup Center", icon: ClipboardCheck, tour: "setup" }} pathname={pathname} onNavigate={onNavigate} count={(shell.setup.launch ? shell.setup.launch.needsYou : shell.setup.needsAttention) || undefined} trailing={shell.setup.launch ? `${shell.setup.launch.percent}%` : undefined} hint={shell.setup.launch ? `launch readiness: ${shell.setup.launch.label}` : undefined} compact={compact} />}
       {shell.org.kind === "client" && can("agents.use") && <div data-tour="workforce" className="space-y-1 pb-2">
-        <NavLink onWarm={warmRoute} item={{ href: "/growth-partner", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", tour: "workforce", clientOnly: true }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
+        <NavLink onWarm={warmRoute} item={{ href: "/growth-partner/conversation", label: "AI Growth Partner", icon: Sparkles, permission: "agents.use", tour: "workforce", clientOnly: true, match: (path) => path === "/growth-partner/conversation" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
+        <NavLink onWarm={warmRoute} item={{ href: "/growth-partner", label: "Partner Control Center", icon: LayoutDashboard, permission: "agents.use", clientOnly: true, match: (path) => path === "/growth-partner" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />
         {can("agents.configure") && hasEnabledLegacyProfile && <NavLink onWarm={warmRoute} item={{ href: "/employees", label: "Previous role profiles", icon: Sparkles, permission: "agents.configure", clientOnly: true, legacyOnly: true }} pathname={pathname} onNavigate={onNavigate} compact={compact} />}
         <div className="mt-1 space-y-1">
           <NavLink onWarm={warmRoute} item={{ href: "/work", label: "Work Board", icon: ListChecks, match: (path) => path === "/work" }} pathname={pathname} onNavigate={onNavigate} compact={compact} />

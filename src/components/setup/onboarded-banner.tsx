@@ -5,6 +5,7 @@ import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
 import { PAYMENT_REQUIRED_SENTENCE } from "@/lib/billing-clearance";
 import type { AgentInstanceRow } from "@/server/workforce/service";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import { growthPartnerPrimaryAction } from "@/lib/ai-growth-partner-navigation";
 
 export interface EmployeeProvisioningState {
   role: AgentRoleKey;
@@ -66,6 +67,7 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
     return { role, label: "Action required", detail: employee.description, ready: false };
   });
   if (growthPartner) {
+    const primaryAction = growthPartnerPrimaryAction(growthPartner);
     return (
       <section role="status" aria-label="AI Growth Partner setup" className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -79,12 +81,12 @@ export function OnboardedBanner({ nativeCrm, crmGuide, agents = [], provisioning
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Business Brain</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.currentVersion ? `Active version ${growthPartner.currentVersion}` : growthPartner.draftVersion ? `Draft version ${growthPartner.draftVersion}` : "Preparation needed"}</p></div>
           <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Dedicated runtime</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.runtimeAgentInstanceId ? "Linked · connection verification required" : "Not linked yet"}</p></div>
-          <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Permanent conversation</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.conversationId ? "Ready in Partner Control Center" : "Opens after the runtime passes its checks"}</p></div>
+          <div className="rounded-2xl border border-line bg-surface-2/40 p-4"><p className="text-[12px] font-medium uppercase tracking-wide text-muted">Permanent conversation</p><p className="mt-1 text-[14px] font-semibold text-ink">{growthPartner.conversationId ? "Ready" : "Opens after the runtime passes its checks"}</p></div>
         </div>
         <p className="mt-4 text-[12px] leading-relaxed text-muted">{nativeCrm ? "The iAcquire team applies your industry Blueprint to your CRM." : "The iAcquire team links your CRM."} Calendar availability and customer messaging each require their own verified connections and approvals.
           {crmGuide && <> <Link href="/crm/setup" className="font-semibold text-primary underline underline-offset-2">Open your CRM setup guide</Link></>}
         </p>
-        <Link href="/growth-partner" className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-primary px-4 text-[13px] font-semibold text-white">Open AI Growth Partner</Link>
+        <Link href={primaryAction.href} className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-primary px-4 text-[13px] font-semibold text-white">{primaryAction.label}</Link>
       </section>
     );
   }
