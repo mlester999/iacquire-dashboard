@@ -889,7 +889,7 @@ export function ConfigureTab({ meta, agent, settings, companyContext, draftVersi
             </GuidedField>
           </ConfigSection>
 
-          <ConfigSection id="config-tools" step="05" title={operationsNotice ? "Role capability guidance" : "Tool permissions"} description={operationsNotice ? "These switches change instructions only. When authorized and ready, the internal Operations Manager receives a read-only operations snapshot for each run, but no callable iAcquireOS tool. It cannot create approvals or save summaries." : "Only the tools granted to this role are listed. You can switch tools off, never add new ones."}>
+          <ConfigSection id="config-tools" step="05" title={operationsNotice ? "Role capability guidance" : "Tool permissions"} description={operationsNotice ? "These switches change profile guidance only. When authorized and ready, iAcquire's internal AI operations profile receives a read-only operations snapshot for each run, but no callable iAcquireOS tool. It cannot create approvals or save summaries." : "Only the tools granted to this role are listed. You can switch tools off, never add new ones."}>
             <div className="space-y-2">
               {agent.defaultTools.map((t) => {
                 const on = !s.disabledTools.includes(t);

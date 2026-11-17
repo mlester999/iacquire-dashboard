@@ -128,6 +128,14 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("guided AI profile configuration", () => {
+  it("describes the internal operations profile without presenting another employee identity", () => {
+    renderForm({}, { internal: true });
+
+    expect(screen.getByText(/iAcquire's internal AI operations profile receives a read-only operations snapshot/i)).toBeTruthy();
+    expect(screen.getByText(/no callable iAcquireOS tool/i)).toBeTruthy();
+    expect(screen.getByText(/cannot create approvals or save summaries/i)).toBeTruthy();
+  });
+
   it("shows role-specific guidance, required/optional state and preserves existing values", () => {
     renderForm();
 

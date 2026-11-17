@@ -225,7 +225,7 @@ export default async function AgencyEmployeePage({ params }: { params: Promise<{
               <div>
                 <p className="mb-2 text-[12px] font-semibold">Configured role guidance</p>
                 <ul className="grid gap-1.5 sm:grid-cols-2">{agent.default_tools.map((tool) => <li key={tool} className="text-[13px] text-ink-2">• {agentToolLabel(tool)}</li>)}</ul>
-                <p className="mt-2 text-[12px] text-muted">These labels describe instruction guidance, not callable Hermes tools. Internal Operations Manager chat receives a read-only, tenant-scoped snapshot of agency tasks, approvals and persisted workforce activity; it cannot create approvals or save summaries.</p>
+                <p className="mt-2 text-[12px] text-muted">These labels describe instruction guidance, not callable Hermes tools. iAcquire&apos;s internal AI operations profile receives a read-only, tenant-scoped snapshot of agency tasks, approvals and persisted work activity; it cannot create approvals or save summaries.</p>
               </div>
             </CardContent>
           </Card>
