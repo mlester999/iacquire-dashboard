@@ -386,7 +386,9 @@ describe("sync_employees: bringing the AI team up to what the client approved", 
     const waiting = await readyClient({ name: "Sync Unapproved Roofing", timezone: "UTC" });
     await staleBusiness(waiting.org.id);
     await markSubmitted(waiting.org.id);
-    await withSystem((db) => db.query("update onboarding_answers set updated_at = now() + interval '1 minute' where org_id = $1 and question_id = 'a.timezone'", [waiting.org.id]));
+    // The test database may stamp two back-to-back transactions with the same millisecond. Put the approval baseline clearly before this answer edit.
+    await withSystem((db) => db.query("update onboarding_responses set submitted_at = now() - interval '1 day', submitted_snapshot = null where org_id = $1", [waiting.org.id]));
+    await withSystem((db) => db.query("update onboarding_answers set value = to_jsonb('America/New_York'::text) where org_id = $1 and question_id = 'a.timezone'", [waiting.org.id]));
     await expect(runLaunchIntent(waiting.ctx, "sync_employees")).rejects.toThrow(/not approved/i);
 
     const people = await readyClient({ name: "Sync People Roofing", timezone: "UTC" });

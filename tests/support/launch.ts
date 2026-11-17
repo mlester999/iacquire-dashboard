@@ -141,7 +141,7 @@ export async function draftClient(name: string, timezone: string) {
 export async function markSubmitted(orgId: string) {
   await withSystem((db) => db.query(
     `insert into onboarding_responses (org_id, completed_at, status, submitted_at, current_step) values ($1, now(), 'submitted', now(), 6)
-     on conflict (org_id) do update set status = 'submitted', submitted_at = now(), completed_at = coalesce(onboarding_responses.completed_at, now())`,
+     on conflict (org_id) do update set status = 'submitted', submitted_at = now(), completed_at = coalesce(onboarding_responses.completed_at, now()), submitted_snapshot = null`,
     [orgId],
   ));
 }
