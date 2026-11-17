@@ -5,6 +5,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { GrowthPartnerControlCenter } from "@/components/growth-partner/control-center";
 import { deriveGrowthPartnerCapabilityAccess } from "@/lib/ai-growth-partner-capability-access";
 import { ROLE_ABILITIES } from "@/lib/employee-tool-policy";
+import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 
 vi.mock("@/app/actions/ai-growth-partner", () => ({ prepareGrowthPartnerFromSubmittedOnboardingAction: vi.fn() }));
 vi.mock("@/components/growth-partner/memory-panel", () => ({ GrowthPartnerMemoryPanel: () => null }));
@@ -60,5 +61,66 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(workBoard).getByText("Completed today")).toBeTruthy();
     expect(within(workBoard).getByRole("link", { name: /Open Work Board/ }).getAttribute("href")).toBe("/work");
     expect(screen.getByText("Your AI Growth Partner needs a connection before it can work.")).toBeTruthy();
+  });
+
+  it("shows the single approved conversation profile and accurately labels runtime synchronization", () => {
+    const state: GrowthPartnerControlState = {
+      id: "partner-1",
+      name: "AI Growth Partner",
+      status: "configured" as const,
+      runtimeAgentInstanceId: "runtime-1",
+      runtimeEnabled: true,
+      runtimeStatus: "online" as const,
+      runtimeHealthOk: true,
+      behaviorProfile: {
+        configVersion: 4,
+        runtimeSyncStatus: "pending" as const,
+        tone: "premium" as const,
+        replyLength: "concise" as const,
+        language: "Spanish" as const,
+        personality: "Steady and evidence-led.",
+        communicationStyle: "Use plain language.",
+        responseBehavior: "Report only verified outcomes.",
+        proactiveResponsibilities: "Work toward approved goals.",
+        reportingBehavior: "Show status and next steps.",
+      },
+      conversationId: "conversation-1",
+      conversationLastMessageAt: null,
+      currentVersion: 1,
+      currentBusinessBrain: null,
+      draftVersion: null,
+      draftBusinessBrain: null,
+      versions: [],
+      createdAt: new Date("2026-11-01T00:00:00Z"),
+      updatedAt: new Date("2026-11-01T00:00:00Z"),
+    };
+    render(<GrowthPartnerControlCenter
+      state={state}
+      capabilityAccess={[]}
+      memories={[]}
+      goals={[]}
+      workSummary={{ active: 0, waiting: 0, needsAttention: 0, completedToday: 0 }}
+      canManageMemory={false}
+      canManageGoals={false}
+      canConfigure={true}
+      canConfigureResearch={false}
+      researchSourcePolicies={{ openstreetmap: null, company_website: null }}
+      legacyKnowledgeReview={{ candidates: [], imports: [] }}
+      canOpenSetup={false}
+      controlPermissions={{ "agents.configure": true }}
+      legacyProfilesPresent={false}
+      hasSubmittedOnboarding={false}
+      submittedAnswerCount={0}
+      timezone="America/New_York"
+      safetyControls={{ messagingPaused: false, outboundPaused: false, agencyPaused: false, canPause: false }}
+    />);
+
+    const section = screen.getByRole("region", { name: "Partner personality and behavior" });
+    expect(within(section).getByText("Saved configuration version 4")).toBeTruthy();
+    expect(within(section).getByText("Profile sync pending")).toBeTruthy();
+    expect(within(section).getByText("premium", { selector: "dd" })).toBeTruthy();
+    expect(within(section).getByText("Steady and evidence-led.")).toBeTruthy();
+    expect(within(section).getByRole("link", { name: /Edit AI preferences/ }).getAttribute("href")).toBe("/settings/ai");
+    expect(within(section).getByText(/has not finished syncing to its Hermes runtime/i)).toBeTruthy();
   });
 });

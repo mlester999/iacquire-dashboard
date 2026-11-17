@@ -9,7 +9,7 @@ import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
 import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
-import { activateGrowthPartnerBusinessBrainVersion, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
+import { activateGrowthPartnerBusinessBrainVersion, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { growthPartnerGoalPromptContext } from "@/server/ai-growth-partner/goals";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
 import { runDueSchedules, setScheduleEnabled } from "@/server/workforce/schedules";
@@ -1856,6 +1856,13 @@ describe("AI Growth Partner chat to native workflow", () => {
        where a.org_id = $1 and a.role_key = 'growth_partner'`, [org.id],
     ))).rows[0].settings;
     expect(partnerSettings).toMatchObject({ tone: "premium", language: "Spanish" });
+    expect(await getGrowthPartnerControlState(ctx)).toMatchObject({
+      behaviorProfile: {
+        tone: "premium",
+        language: "Spanish",
+        runtimeSyncStatus: "pending",
+      },
+    });
     expect((await withSystem((db) => db.query<{ ai_preferences: Record<string, unknown> }>(
       "select ai_preferences from company_profiles where org_id = $1", [org.id],
     ))).rows[0].ai_preferences).toMatchObject({ tone: "premium", language: "Spanish" });

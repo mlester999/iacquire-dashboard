@@ -10,6 +10,7 @@ import {
   preserveClientOverrides,
   type BusinessBrain,
 } from "@/lib/ai-growth-partner";
+import { agentSettingsSchema, type AgentSettings } from "@/lib/agent-settings";
 import { describeBusinessHours, validateBusinessHours, type BusinessHours } from "@/lib/messaging";
 import { recordAudit } from "@/server/audit";
 import { withSystem, withUser, type Queryable } from "@/server/db";
@@ -453,6 +454,10 @@ export interface GrowthPartnerControlState {
   runtimeEnabled: boolean | null;
   runtimeStatus: AgentStatus | null;
   runtimeHealthOk: boolean | null;
+  behaviorProfile: (Pick<AgentSettings, "tone" | "replyLength" | "language" | "personality" | "communicationStyle" | "responseBehavior" | "proactiveResponsibilities" | "reportingBehavior"> & {
+    configVersion: number;
+    runtimeSyncStatus: "synced" | "pending" | "not_configured";
+  }) | null;
   conversationId: string | null;
   conversationLastMessageAt: Date | null;
   currentVersion: number | null;
@@ -481,6 +486,11 @@ export async function getGrowthPartnerControlState(ctx: OrgContext): Promise<Gro
       runtime_enabled: boolean | null;
       runtime_status: AgentStatus | null;
       runtime_health_ok: boolean | null;
+      runtime_profile: string | null;
+      runtime_active_config_version_id: string | null;
+      runtime_profile_config_version_id: string | null;
+      runtime_config_version: number | null;
+      runtime_config_settings: unknown | null;
       conversation_id: string | null;
       conversation_last_message_at: Date | null;
       current_version: number | null;
@@ -492,11 +502,15 @@ export async function getGrowthPartnerControlState(ctx: OrgContext): Promise<Gro
     }>(
       `select p.id, p.status, p.runtime_agent_instance_id, p.current_version,
               runtime.enabled as runtime_enabled, runtime.status as runtime_status, runtime.last_health_ok as runtime_health_ok,
+              runtime.hermes_profile as runtime_profile, runtime.active_config_version_id as runtime_active_config_version_id,
+              runtime.hermes_profile_config_version_id as runtime_profile_config_version_id,
+              runtime_config.version as runtime_config_version, runtime_config.settings as runtime_config_settings,
               conversation.id as conversation_id, conversation.last_message_at as conversation_last_message_at,
               active.business_brain, latest.version as latest_version,
               latest.business_brain as latest_business_brain, p.created_at, p.updated_at
        from ai_growth_partners p
        left join agent_instances runtime on runtime.id = p.runtime_agent_instance_id and runtime.org_id = p.org_id and runtime.role_key = 'growth_partner'
+       left join agent_config_versions runtime_config on runtime_config.id = runtime.active_config_version_id and runtime_config.org_id = p.org_id
        left join ai_growth_partner_versions active
          on active.org_id = p.org_id and active.partner_id = p.id and active.version = p.current_version
        left join lateral (
@@ -518,6 +532,25 @@ export async function getGrowthPartnerControlState(ctx: OrgContext): Promise<Gro
     );
     const row = rows[0];
     if (!row) return null;
+    const parsedRuntimeSettings = agentSettingsSchema.safeParse(row.runtime_config_settings);
+    const behaviorProfile = parsedRuntimeSettings.success && row.runtime_config_version !== null
+      ? {
+          configVersion: Number(row.runtime_config_version),
+          runtimeSyncStatus: !row.runtime_profile
+            ? "not_configured" as const
+            : row.runtime_active_config_version_id === row.runtime_profile_config_version_id
+              ? "synced" as const
+              : "pending" as const,
+          tone: parsedRuntimeSettings.data.tone,
+          replyLength: parsedRuntimeSettings.data.replyLength,
+          language: parsedRuntimeSettings.data.language,
+          personality: parsedRuntimeSettings.data.personality,
+          communicationStyle: parsedRuntimeSettings.data.communicationStyle,
+          responseBehavior: parsedRuntimeSettings.data.responseBehavior,
+          proactiveResponsibilities: parsedRuntimeSettings.data.proactiveResponsibilities,
+          reportingBehavior: parsedRuntimeSettings.data.reportingBehavior,
+        }
+      : null;
     const versions = await db.query<{
       version: number;
       source: string;
@@ -544,6 +577,7 @@ export async function getGrowthPartnerControlState(ctx: OrgContext): Promise<Gro
       runtimeEnabled: row.runtime_enabled,
       runtimeStatus: row.runtime_status,
       runtimeHealthOk: row.runtime_health_ok,
+      behaviorProfile,
       conversationId: row.conversation_id,
       conversationLastMessageAt: row.conversation_last_message_at,
       currentVersion: row.current_version,

@@ -434,6 +434,66 @@ export function GrowthPartnerControlCenter({
         </div>
       </section>
 
+      <section aria-label="Partner personality and behavior">
+        <SectionHeading
+          title="Partner personality & behavior"
+          description="One approved voice and response profile is shared across the Growth Partner’s capabilities. Chat changes and AI preferences update this same saved profile."
+          action={controlPermissions["agents.configure"] ? (
+            <ButtonLink href="/settings/ai" variant="secondary" size="sm">
+              Edit AI preferences <ArrowUpRight className="size-4" aria-hidden />
+            </ButtonLink>
+          ) : undefined}
+        />
+        {state?.behaviorProfile ? (
+          <Card className="border border-line bg-surface shadow-soft">
+            <CardHeader className="items-center">
+              <div className="min-w-0 flex-1">
+                <CardTitle>Shared conversation profile</CardTitle>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">Saved configuration version {state.behaviorProfile.configVersion}</p>
+              </div>
+              <Badge tone={state.behaviorProfile.runtimeSyncStatus === "synced" ? "success" : state.behaviorProfile.runtimeSyncStatus === "pending" ? "warning" : "neutral"}>
+                {state.behaviorProfile.runtimeSyncStatus === "synced" ? "Profile synced" : state.behaviorProfile.runtimeSyncStatus === "pending" ? "Profile sync pending" : "Runtime not configured"}
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <dl className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ["Tone", state.behaviorProfile.tone],
+                  ["Reply length", state.behaviorProfile.replyLength],
+                  ["Language", state.behaviorProfile.language],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-line bg-surface-2/40 px-3 py-2.5">
+                    <dt className="text-[12px] font-medium text-muted">{label}</dt>
+                    <dd className="mt-1 text-[14px] font-semibold capitalize text-ink">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ["Personality", state.behaviorProfile.personality],
+                  ["Communication style", state.behaviorProfile.communicationStyle],
+                  ["Response behavior", state.behaviorProfile.responseBehavior],
+                  ["Proactive work", state.behaviorProfile.proactiveResponsibilities],
+                  ["Reporting", state.behaviorProfile.reportingBehavior],
+                ].filter(([, value]) => Boolean(value)).map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-line bg-surface-2/40 px-3 py-2.5">
+                    <p className="text-[12px] font-medium text-muted">{label}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-ink-2">{value}</p>
+                  </div>
+                ))}
+              </div>
+              {state.behaviorProfile.runtimeSyncStatus === "pending" && (
+                <p className="text-[12px] leading-relaxed text-warning-ink">The saved profile has not finished syncing to its Hermes runtime. The version above is the approved application setting; check the connection status before relying on it at runtime.</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border border-line bg-surface shadow-soft">
+            <CardContent className="p-4 text-[13px] leading-relaxed text-muted">The Growth Partner does not have an approved behavior profile yet. Complete Partner setup to save its shared voice and response behavior.</CardContent>
+          </Card>
+        )}
+      </section>
+
       <section aria-label="Work Board status">
         <SectionHeading
           title="Work Board"
