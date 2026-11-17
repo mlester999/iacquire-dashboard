@@ -113,7 +113,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn('--entrypoint /bin/sh "$probe_image" -c', workflow)
 
-    def test_acceptance_workflow_has_scoped_manual_and_isolated_push_triggers_and_pins_helper_image(self):
+    def test_acceptance_workflow_has_scoped_manual_and_marker_only_push_triggers_and_pins_helper_image(self):
         workflow_path = ROOT.parent.parent / ".github" / "workflows" / "hermes-client-acceptance.yml"
         workflow_text = workflow_path.read_text(encoding="utf-8")
         workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
@@ -123,9 +123,8 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
         self.assertEqual(
             workflow["on"]["push"]["branches"],
-            ["codex/hermes-gha-acceptance"],
+            ["codex/hermes-gha-acceptance", "codex/ai-growth-partner"],
         )
-        self.assertNotIn("codex/ai-growth-partner", workflow["on"]["push"]["branches"])
         self.assertEqual(workflow["on"]["push"]["paths"], [".github/hermes-acceptance.trigger"])
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         dispatch = workflow["on"]["workflow_dispatch"]
@@ -143,6 +142,7 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         )
         self.assertIn("github.event_name == 'push'", job["if"])
         self.assertIn("github.ref_name == 'codex/hermes-gha-acceptance'", job["if"])
+        self.assertEqual(job["if"].count("github.ref_name == 'codex/ai-growth-partner'"), 2)
         self.assertEqual(job["if"].count("github.ref_name == 'codex/hermes-gha-acceptance'"), 1)
         self.assertEqual(job["runs-on"], "ubuntu-24.04")
         self.assertEqual(job["timeout-minutes"], "30")
@@ -152,7 +152,10 @@ class ClientRuntimeDeploymentTests(unittest.TestCase):
         self.assertIn('if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then', runner_check["run"])
         self.assertIn('[[ "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]', runner_check["run"])
         self.assertIn('[[ "$GITHUB_EVENT_NAME" == push ]]', runner_check["run"])
-        self.assertIn('[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance ]]', runner_check["run"])
+        self.assertIn(
+            '[[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance || "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]',
+            runner_check["run"],
+        )
         self.assertIn('[[ "$(uname -m)" == "x86_64" ]]', runner_check["run"])
         self.assertIn(
             '[[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]',
@@ -494,3 +497,4 @@ class ClientRuntimeLimitsAndPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
