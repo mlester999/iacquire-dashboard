@@ -3,8 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ArrowRight, ArrowUpRight, Check, MessageSquare, Search, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
+import { Archive, ArrowRight, ArrowUpRight, Check, MessageSquare, Search, ShieldCheck, SlidersHorizontal, Sparkles } from "lucide-react";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { ReadinessInline } from "@/components/workforce/employee-summary";
@@ -82,9 +81,9 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
             </div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[.045] p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3"><span className="text-[12px] font-medium text-slate-300">Retained record checks</span><span className="rounded-full border border-white/15 px-2 py-1 text-[12px] uppercase tracking-wider text-slate-300">Saved status</span></div>
+            <div className="flex items-center justify-between gap-3"><span className="text-[12px] font-medium text-slate-300">Previous setup checks</span><span className="rounded-full border border-white/15 px-2 py-1 text-[12px] uppercase tracking-wider text-slate-300">Saved status</span></div>
             <div className="mt-3 flex items-baseline gap-2"><strong className="text-[34px] font-semibold leading-none tracking-[-.05em] sm:text-[42px]">{ready.length}</strong><span className="text-[14px] text-slate-300">of {agents.filter((a) => a.enabled).length} retained records passed their saved checks</span></div>
-            <div className="mt-4 grid grid-cols-6 gap-0 sm:flex sm:flex-wrap sm:gap-2">{agents.map((a) => <Link aria-label={`View ${a.display_name}`} key={a.id} href={`/employees/${AGENT_BY_KEY[a.role_key].slug}`} className="flex size-11 items-center justify-center rounded-xl transition hover:-translate-y-1 focus-visible:outline-white"><AgentAvatar role={AGENT_BY_KEY[a.role_key]} size="sm" /></Link>)}</div>
+            <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] px-3 py-2.5"><span className="flex size-9 items-center justify-center rounded-lg bg-white/10 text-blue-100"><Archive className="size-4" aria-hidden /></span><span className="text-[12px] leading-relaxed text-slate-300">Saved settings are kept as records for review. They are not separate AI Growth Partners.</span></div>
             <p className="mt-4 text-[12px] leading-relaxed text-slate-300">{preparing.length ? `${preparing.length} retained records need review or connection verification. Open a record to inspect its saved settings.` : ready.length ? "These saved checks describe the previous records. Use the permanent Growth Partner conversation for new work." : "Saved connection checks describe these retained records; they do not change the Growth Partner’s readiness."}</p>
           </div>
         </div>
@@ -104,15 +103,15 @@ export function WorkforceGallery({ agents, capabilities, companyName, canConfigu
             const cardStatus = employeeCardStatus(readiness, { status: a.status, enabled: a.enabled, paymentCleared });
             return (
               <motion.article key={a.id} data-aqi-target="workforce.employee" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: reduced ? 1 : .97 }} transition={{ duration: reduced ? 0 : .3, delay: reduced ? 0 : index * .035 }} whileHover={reduced ? undefined : { y: -4 }} className={cn("group flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-soft transition hover:border-line-strong", !a.enabled && "opacity-80")}>
-                <div className="relative flex h-32 items-center justify-between overflow-hidden border-b border-line px-5" style={{ background: `radial-gradient(ellipse at 85% 20%,${role.accent}30,transparent 72%),var(--surface-2)` }}>
+                <div className="relative flex h-32 items-center justify-between overflow-hidden border-b border-line bg-surface-2 px-5">
                   <div className="relative z-10">
-                    <span className="block font-mono text-[12px] uppercase tracking-[.14em] text-muted">Legacy capability record {String(AGENT_ROLES.findIndex((r) => r.key === a.role_key) + 1).padStart(2, "0")}</span>
+                    <span className="block font-mono text-[12px] uppercase tracking-[.14em] text-muted">Previous role record {String(AGENT_ROLES.findIndex((r) => r.key === a.role_key) + 1).padStart(2, "0")}</span>
                     <span className="mt-2 block max-w-36 text-[18px] font-semibold leading-tight tracking-tight text-ink">{ROLE_HEADLINE[a.role_key]}</span>
                     <p className="mt-1 text-[12px] text-muted">Saved mode · {MODE_LABEL[a.mode]}</p>
                   </div>
                   <div aria-hidden className="absolute right-4 top-4 size-28 rounded-full border border-line-strong/70" />
                   <div aria-hidden className="absolute right-0 top-0 size-36 rounded-full border border-line/70" />
-                  <AgentAvatar role={role} size="xl" className="relative z-10 drop-shadow-lg" />
+                  <span className="relative z-10 flex size-14 items-center justify-center rounded-2xl border border-line-strong bg-surface text-muted"><Archive className="size-6" aria-hidden /></span>
                 </div>
                 <div className="flex flex-1 flex-col p-5">
                   <div className="flex items-start justify-between gap-2">

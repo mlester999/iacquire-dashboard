@@ -182,7 +182,7 @@ describe("the retained capability records", () => {
       tool_inventory_expires_at: "2026-10-24T00:02:00.000Z",
       tool_inventory_tool_count: 5,
     };
-    render(<WorkforceGallery
+    const { container } = render(<WorkforceGallery
       agents={[profile] as never}
       capabilities={{ lead_hunter: ["Research approved sources", "Check customer fit"] }}
       companyName="Gallery Co"
@@ -193,9 +193,11 @@ describe("the retained capability records", () => {
     />);
 
     expect(screen.getByText("One AI Growth Partner.")).toBeTruthy();
-    expect(screen.getByText("Legacy capability record 02")).toBeTruthy();
+    expect(screen.getByText("Previous role record 02")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Lead research" })).toBeTruthy();
     expect(screen.getByText("Preserved capability details")).toBeTruthy();
+    expect(container.textContent).toContain("They are not separate AI Growth Partners.");
+    expect(container.querySelectorAll("img")).toHaveLength(0);
     const partnerLinks = screen.getAllByRole("link", { name: "Open AI Growth Partner" });
     expect(partnerLinks).toHaveLength(2);
     expect(partnerLinks.every((link) => link.getAttribute("href") === "/growth-partner/conversation")).toBe(true);
