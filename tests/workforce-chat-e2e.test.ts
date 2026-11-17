@@ -6,13 +6,13 @@ import type { AgentRoleKey } from "@/lib/agents";
 import { sendChatMessage } from "@/server/chat/service";
 import { decideApproval } from "@/server/approvals/service";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
-import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
+import { buildRunInstructions, connectHermesProfile, createConfigVersion, ensureGrowthPartnerRuntime, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { activateGrowthPartnerBusinessBrainVersion, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { growthPartnerGoalPromptContext } from "@/server/ai-growth-partner/goals";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
-import { runDueSchedules, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
+import { listSchedules, runDueSchedules, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
 import { getControlState } from "@/server/automation/controls";
 import { memberActor } from "@/server/crm/actor";
 import { createOpportunity } from "@/server/crm/opportunities";
@@ -1156,6 +1156,179 @@ describe("AI Growth Partner chat to native workflow", () => {
       if (scheduleId) await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [scheduleId, org.id]));
       if (previousOperatorSetting === undefined) delete process.env.WORKFORCE_SCHEDULES_ENABLED;
       else process.env.WORKFORCE_SCHEDULES_ENABLED = previousOperatorSetting;
+    }
+  });
+
+  it("reschedules another read-only Growth Partner capability in place with tenant and scheduler gates intact", async () => {
+    const previousOperatorSetting = process.env.WORKFORCE_SCHEDULES_ENABLED;
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "false";
+    const ctx = ctxFor(owner, org, "owner");
+    const otherOrg = await createOrg({ name: "Other Tenant Schedule Isolation" });
+    const otherAgentId = await withSystem((db) => ensureGrowthPartnerRuntime(otherOrg.id, db));
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1 and capability = 'performance_snapshot'",
+      [org.id],
+    ))).rows[0].count;
+    let scheduleId: string | null = null;
+    let otherScheduleId: string | null = null;
+    let legacyScheduleId: string | null = null;
+    await resetAgentMessageRateLimit(owner.id);
+    try {
+      const schedule = await saveSchedule(ctx, {
+        capability: "performance_snapshot",
+        agentRole: "growth_partner",
+        cadence: "weekly",
+        enabled: true,
+        recurrenceRule: { kind: "weekly", localTime: "09:00", weekdays: ["fri"] },
+      });
+      scheduleId = schedule.id;
+      otherScheduleId = (await withSystem((db) => db.query<{ id: string }>(
+        `insert into ai_work_schedules
+           (org_id, agent_instance_id, created_by, capability, cadence, interval_minutes, timezone, business_hours, payload, recurrence_rule, enabled, next_run_at)
+         values ($1, $2, $3, 'performance_snapshot', 'weekly', 10080, 'UTC', '{}'::jsonb, '{}'::jsonb, $4::jsonb, true, now() + interval '1 day')
+         returning id`,
+        [otherOrg.id, otherAgentId, owner.id, JSON.stringify({ kind: "weekly", localTime: "10:00", weekdays: ["mon"] })],
+      ))).rows[0].id;
+
+      const preview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Move my performance snapshot schedule to 2 PM every Monday and Wednesday",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const previewText = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [preview.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(previewText).toContain("Schedule preview for Performance snapshot");
+      expect(previewText).toContain("every Monday and Wednesday");
+      expect(previewText).toContain("remain enabled");
+      expect((await withSystem((db) => db.query<{ recurrence_rule: Record<string, unknown> }>(
+        "select recurrence_rule from ai_work_schedules where id = $1 and org_id = $2", [schedule.id, org.id],
+      ))).rows[0].recurrence_rule).toEqual({ kind: "weekly", localTime: "09:00", weekdays: ["fri"] });
+
+      await resetAgentMessageRateLimit(member.id);
+      const memberAttempt = await sendChatMessage(ctxFor(member, org, "member"), {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Move my performance snapshot schedule to 3 PM",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [memberAttempt.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("can't manage this AI schedule");
+
+      const confirmed = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const saved = (await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown>; timezone: string; next_run_at: Date }>(
+        "select id, enabled, recurrence_rule, timezone, next_run_at from ai_work_schedules where id = $1 and org_id = $2",
+        [schedule.id, org.id],
+      ))).rows[0];
+      expect(saved).toMatchObject({
+        id: schedule.id,
+        enabled: true,
+        timezone: "UTC",
+        recurrence_rule: { kind: "weekly", localTime: "14:00", weekdays: ["mon", "wed"] },
+      });
+      expect(new Date(saved.next_run_at).getTime()).toBeGreaterThan(Date.now());
+      expect(await listSchedules(ctx)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: schedule.id,
+          capability: "performance_snapshot",
+          cadence: "weekly",
+          recurrenceRule: { kind: "weekly", localTime: "14:00", weekdays: ["mon", "wed"] },
+          enabled: true,
+          timezone: "UTC",
+        }),
+      ]));
+      expect((await withSystem((db) => db.query<{ id: string; recurrence_rule: Record<string, unknown> }>(
+        "select id, recurrence_rule from ai_work_schedules where id = $1 and org_id = $2", [otherScheduleId, otherOrg.id],
+      ))).rows[0]).toEqual({ id: otherScheduleId, recurrence_rule: { kind: "weekly", localTime: "10:00", weekdays: ["mon"] } });
+      expect((await withSystem((db) => db.query<{ metadata: Record<string, unknown> }>(
+        "select metadata from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_saved'",
+        [org.id, schedule.id],
+      ))).rows).toHaveLength(2);
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [confirmed.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("Updated Performance snapshot to every Monday and Wednesday at 14:00 in UTC");
+
+      const legacy = await saveSchedule(ctx, {
+        capability: "crm_quality_review",
+        agentRole: "growth_partner",
+        cadence: "daily",
+        enabled: false,
+        recurrenceRule: null,
+      });
+      legacyScheduleId = legacy.id;
+      const legacyPreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Change my CRM quality review schedule to 11 AM",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [legacyPreview.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("The existing schedule will be updated in place");
+      const legacyConfirmed = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ id: string; enabled: boolean; recurrence_rule: Record<string, unknown> }>(
+        "select id, enabled, recurrence_rule from ai_work_schedules where id = $1 and org_id = $2",
+        [legacy.id, org.id],
+      ))).rows[0]).toEqual({ id: legacy.id, enabled: false, recurrence_rule: { kind: "daily", localTime: "11:00" } });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [legacyConfirmed.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("Updated CRM quality review to daily at 11:00 in UTC");
+
+      const stalePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Move my performance snapshot schedule to 3 PM every Tuesday",
+        clientMessageId: crypto.randomUUID(),
+      });
+      await withSystem((db) => db.query(
+        "update ai_work_schedules set recurrence_rule = $3::jsonb where id = $1 and org_id = $2",
+        [schedule.id, org.id, JSON.stringify({ kind: "weekly", localTime: "15:00", weekdays: ["tue"] })],
+      ));
+      const staleConfirm = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2", [staleConfirm.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("schedule changed after this preview");
+      expect((await withSystem((db) => db.query<{ pending_workforce_schedule: Record<string, unknown>; recurrence_rule: Record<string, unknown> }>(
+        `select c.pending_workforce_schedule, s.recurrence_rule
+           from chat_conversations c join ai_work_schedules s on s.org_id = c.org_id
+          where c.id = $1 and s.id = $2`, [stalePreview.conversationId, schedule.id],
+      ))).rows[0]).toMatchObject({
+        pending_workforce_schedule: { status: "expired" },
+        recurrence_rule: { kind: "weekly", localTime: "15:00", weekdays: ["tue"] },
+      });
+      expect((await withSystem((db) => db.query(
+        "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_saved'",
+        [org.id, schedule.id],
+      ))).rows).toHaveLength(2);
+      expect((await runDueSchedules()).created).toBe(0);
+      expect((await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from ai_work_jobs where org_id = $1 and capability = 'performance_snapshot'",
+        [org.id],
+      ))).rows[0].count).toBe(beforeJobs);
+    } finally {
+      if (scheduleId) await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [scheduleId, org.id]));
+      if (otherScheduleId) await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [otherScheduleId, otherOrg.id]));
+      if (legacyScheduleId) await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [legacyScheduleId, org.id]));
+      if (previousOperatorSetting === undefined) delete process.env.WORKFORCE_SCHEDULES_ENABLED;
+      else process.env.WORKFORCE_SCHEDULES_ENABLED = previousOperatorSetting;
+      await resetAgentMessageRateLimit(owner.id);
     }
   });
 

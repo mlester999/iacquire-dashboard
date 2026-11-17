@@ -11,7 +11,7 @@ export type WorkforceChatScheduleIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
   | { kind: "set_existing_enabled"; capability: CapabilityKey; enabled: boolean }
-  | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[]; window?: WorkforceScheduleWindow }
+  | { kind: "update_existing"; capability: CapabilityKey; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[]; window?: WorkforceScheduleWindow }
   | {
       kind: "proposal";
       capability: CapabilityKey;
@@ -40,7 +40,7 @@ const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;
 const SCHEDULE_TOGGLE = /^(?:please\s+)?(pause|disable|stop|resume|enable|restart)\s+(?:(?:my|our|the)\s+)?(.+?)\s+schedule[.!?]*$/i;
-const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?(?:schedule\s+)?(?:(?:from\s+.+?\s+)?(?:to|for|at)\s+)(.+?)[.!?]*$/i;
+const EXISTING_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(.+?)(?:\s+schedule)?\s+(?:(?:from\s+.+?\s+)?(?:to|for|at)\s+)(.+?)[.!?]*$/i;
 const SCHEDULE_WINDOW_TIME = String.raw`(?:\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]\d|2[0-3]):[0-5]\d\b)`;
 const SCHEDULE_WINDOW = new RegExp(`(${SCHEDULE_WINDOW_TIME})\\s*(?:-|–|—|\\bto\\b)\\s*(${SCHEDULE_WINDOW_TIME})`, "i");
 const SCHEDULE_WINDOW_LIKE = /\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:-|–|—|\bto\b)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i;
@@ -66,7 +66,9 @@ function normalizedScheduleName(value: string): string {
 }
 
 function scheduledCapabilityForName(value: string): CapabilityKey | null {
-  const requested = normalizedScheduleName(value).replace(/^(?:hourly|daily|weekly)\s+/, "");
+  const requested = normalizedScheduleName(value)
+    .replace(/^(?:hourly|daily|weekly)\s+/, "")
+    .replace(/\s+schedule$/, "");
   const matches = CAPABILITY_KEYS.filter((key) => {
     const definition = capabilityDefinition(key);
     if (!definition || definition.risk !== "read_only" || !definition.allowedRoles.includes("growth_partner")) return false;
@@ -226,11 +228,15 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
     return { kind: "clarification", message: "Name the saved schedule you want me to pause or resume, such as lead research, CRM quality review or performance snapshot. No schedule was changed." };
   }
 
-  const scheduleChange = role === "growth_partner" ? text.match(LEAD_SCHEDULE_CHANGE) : null;
+  const scheduleChange = role === "growth_partner" ? text.match(EXISTING_SCHEDULE_CHANGE) : null;
   if (scheduleChange) {
-    const requested = scheduleChange[1];
+    const capability = scheduledCapabilityForName(scheduleChange[1]);
+    if (!capability) {
+      return { kind: "clarification", message: "Name one saved read-only schedule, such as lead research, CRM quality review or performance snapshot. No schedule was changed." };
+    }
+    const requested = scheduleChange[2];
     if (/\b(?:starting|beginning|effective)\s+(?:tomorrow|next\s+(?:week|month)|\d{4}-\d{2}-\d{2})\b/i.test(requested)) {
-      return { kind: "clarification", message: "I can update a saved lead research schedule now, but it can't start on a future date yet. No schedule was changed." };
+      return { kind: "clarification", message: "I can update the saved schedule now, but it can't start on a future date yet. No schedule was changed." };
     }
     const parsedWindow = parseScheduleWindow(requested);
     if (parsedWindow.issue === "invalid") {
@@ -249,10 +255,10 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
     const everyWeekday = /\b(?:every|each)\s+weekday\b|\bweekdays\b/i.test(requested);
     const weekdays = weekdaysIn(requested);
     const window = parsedWindow.window;
-    if (everyWeekday) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays: WEEKDAYS, ...(window ? { window } : {}) };
-    if (weekdays.length) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "weekly", weekdays, ...(window ? { window } : {}) };
-    if (/\b(?:daily|every day|each day)\b/i.test(requested)) return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, cadence: "daily", ...(window ? { window } : {}) };
-    return { kind: "update_existing", capability: "lead_research", localTime: parsedTime.time, ...(window ? { window } : {}) };
+    if (everyWeekday) return { kind: "update_existing", capability, localTime: parsedTime.time, cadence: "weekly", weekdays: WEEKDAYS, ...(window ? { window } : {}) };
+    if (weekdays.length) return { kind: "update_existing", capability, localTime: parsedTime.time, cadence: "weekly", weekdays, ...(window ? { window } : {}) };
+    if (/\b(?:daily|every day|each day)\b/i.test(requested)) return { kind: "update_existing", capability, localTime: parsedTime.time, cadence: "daily", ...(window ? { window } : {}) };
+    return { kind: "update_existing", capability, localTime: parsedTime.time, ...(window ? { window } : {}) };
   }
 
   if (!RECURRING_SIGNAL.test(text)) return { kind: "none" };

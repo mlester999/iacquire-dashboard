@@ -17,7 +17,7 @@ The percentage is a planning estimate, not a launch-readiness score. Each area i
 | External integration readiness | 8% | 42% | Provider adapters, configuration and permissions exist. Real external CRM/calendar reads and writes have not passed acceptance. |
 | Client, Super Admin, login, landing and demo transformation | 10% | 50% | Recent routes and retained-role surfaces use the single-Partner model. A full wording and navigation audit across every requested surface is still required. |
 | Safe legacy migration and customer cutover | 5% | 40% | New client provisioning creates one Partner; read-only reconciliation and disposable migration rehearsals exist. No hosted migration, customer backfill, profile deletion or cutover has occurred. |
-| Security, isolated verification and operations | 3% | 70% | Tenant authorization, audit, migration rehearsal, isolated restart, regression and pinned-runtime evidence exist. Current outbound-stop increment still needs its full verification and commit. |
+| Security, isolated verification and operations | 3% | 70% | Tenant authorization, audit, migration rehearsal, isolated restart, regression and pinned-runtime evidence exist. The environment-wide outbound stop is committed and verified in `ec2d94c`; exact-head pinned-runtime reacceptance remains open. |
 | **Weighted estimate** | **100%** | **71%** | **Not a launch-readiness score.** Live discovery, real-model reasoning, external CRM/calendar acceptance and customer cutover remain open. |
 
 ## Acceptance evidence
@@ -47,15 +47,15 @@ The percentage is a planning estimate, not a launch-readiness score. Each area i
 
 ## Current increment
 
-- Branch: `codex/ai-growth-partner-core-next`; starting source commit: `2a0ee57a55f8d32566531d85478166fe4df90dbe`.
-- Change in progress: server-side `OUTBOUND_MESSAGING_ENABLED` defaults off and gates message queueing, dispatch/retry, each transport adapter, and website-chat replies. Provider-specific switches remain additional gates. Authentication/security/account mail through the separate email outbox is outside this switch's scope.
-- Focused safety and messaging tests passed **7 files / 201 tests**; QA environment and operator-document guards passed **3 files / 48 tests**; the tightened isolation plus outbound safety pair passed **29/29**. The full regression then passed **905 files** (2 skipped) and **13,885 tests** (103 skipped) in **2,716.16 seconds**. Application and script typecheck passed. Full lint passed with **0 errors** and **3 existing warnings** in unrelated AQi/setup files.
-- `npm run build:clean -- --webpack` passed on Next.js **16.4.5**: optimized compilation, build TypeScript and **16/16** static pages. A loopback TLS/SNI-aware proxy allowed only `fonts.googleapis.com` and `fonts.gstatic.com`; attempts to reach `registry.npmjs.org` and `dc.services.visualstudio.com` were denied before any tunnel opened. The temporary proxy was stopped after the build.
-- No migration or Hermes runtime code changed. The local machine has no Docker CLI; pinned Hermes-native memory evidence remains hosted run **#102** on source commit `46dbf279`, with two synthetic tenants and the internal mock model. These checks verify synthetic inference/runtime behavior, not real-model reasoning or live integrations.
-- No schema or migration changed. No hosted database, external discovery/model/provider, customer communication, production branch or production deployment was used.
+- Branch: `codex/ai-growth-partner-core-next`; this schedule-control increment is committed locally on top of `ec2d94c7da032ca60c36ef4be8a78eb04764ea8a`.
+- Change: extend the permanent Growth Partner conversation's preview-and-confirm flow to reschedule any named saved read-only Growth Partner capability. It preserves the exact schedule row, enabled state and tenant, checks owner/admin permission and current capability access, rejects stale previews, audits accepted changes, and requires explicit cadence/weekdays when converting legacy intervals. No schedule runs while the global scheduler is disabled.
+- Focused schedule intent and database-backed chat suites passed **2 files / 49 tests**. Application/script typecheck passed. Repository lint passed with **0 errors** and **3 existing warnings** in unrelated AQI/setup files. The preceding full regression on the verified base commit passed **905 files** (2 skipped) and **13,885 tests** (103 skipped); it did not include the current schedule diff.
+- The current change's final `npm run build:clean -- --webpack` passed on Next.js **16.4.5**: optimized compilation in **4.1 minutes**, build TypeScript in **73 seconds**, and **16/16** static pages. Its loopback TLS/SNI-aware proxy allowed only `fonts.googleapis.com` and `fonts.gstatic.com`; `dc.services.visualstudio.com` was denied before a tunnel opened, and the proxy was stopped after the build.
+- No schema or migration changed. The local machine has no Docker CLI; the pinned Hermes-native memory evidence remains hosted run **#102** on source commit `46dbf279`, with two synthetic tenants and the internal mock model. That is not exact-head acceptance and does not verify real-model reasoning or live integrations.
+- No hosted database, external discovery/model/provider, customer communication, production branch or production deployment was used. Discovery evidence remains synthetic fixtures; no live discovery or public website integration passed.
 
 ## Next checkpoint priorities
 
 - Continue with the all-surface product transformation and one-Partner/Business Brain behavior; do not let acquisition work take priority over identity, permanent conversation, authorized tools, Work Board and the UI language audit.
 - Keep public-source discovery, real inference, external CRM/calendar acceptance and existing-tenant cutover as separate gates requiring their own scope. They were not run in this increment.
-- Commit this verified change set on the isolated branch, then fast-forward the approved preview branch only if it remains a non-production target.
+- Continue the all-surface product transformation and one-Partner/Business Brain behavior in the isolated branch; fast-forward a preview only when the target remains non-production and the approved credential flow succeeds.

@@ -497,7 +497,7 @@ async function handleChatScheduleAction(
       const definition = capabilityDefinition(capability);
       const resumeRequested = action.kind === "set_existing_enabled" && action.enabled;
       if (!definition || !schedulePermissionAllowed(ctx, input.agentRole, capability)) {
-        return reply(`Your current workspace role can't ${setEnabledOnly ? "manage" : "create"} this AI schedule. No schedule was changed.`);
+        return reply(`Your current workspace role can't ${updateExisting ? "manage" : "create"} this AI schedule. No schedule was changed.`);
       }
       const switchedOff = !setEnabledOnly || resumeRequested
         ? await chatAbilityRefusal(ctx, { agentId: input.agentId, agentRole: input.agentRole, actionId: `capability:${capability}`, need: capabilityNeed(capability) }, db)
@@ -541,7 +541,7 @@ async function handleChatScheduleAction(
       let proposedBusinessHours: unknown = existingHours ?? {};
       if (action.kind === "set_existing_enabled") {
         if (existing!.enabled === action.enabled) {
-          return reply(`The saved lead research schedule is already ${action.enabled ? "enabled" : "paused"}. No schedule was changed.`);
+          return reply(`The saved ${definition.label.toLocaleLowerCase("en-US")} schedule is already ${action.enabled ? "enabled" : "paused"}. No schedule was changed.`);
         }
         timezone = existing!.timezone;
         cadence = existing!.cadence;
@@ -566,15 +566,22 @@ async function handleChatScheduleAction(
         proposedBusinessHours = {};
       } else if (action.kind === "update_existing") {
         const currentRule = validateWorkforceScheduleRule(existing?.recurrence_rule);
-        if (!currentRule) return reply("The saved lead research schedule doesn't have a valid daily or weekday run time, so I couldn't change it safely. Review it in Work Board → Schedules. No schedule was changed.");
+        const legacyDaily = !currentRule && existing?.cadence === "daily";
+        if (!currentRule && !legacyDaily && action.cadence !== "daily" && !(action.cadence === "weekly" && action.weekdays?.length)) {
+          return reply(`The saved ${definition.label.toLocaleLowerCase("en-US")} schedule doesn't have a valid daily or weekday run time, so I couldn't change it safely. Name the cadence and weekdays to replace an older interval schedule. No schedule was changed.`);
+        }
         if (action.cadence === "daily") {
           recurrenceRule = { kind: "daily", localTime: action.localTime };
         } else if (action.cadence === "weekly") {
-          const weekdays = action.weekdays ?? (currentRule.kind === "weekly" ? currentRule.weekdays : []);
-          if (!weekdays.length) return reply("I couldn't determine which weekdays to use. No schedule was changed.");
+          const weekdays = action.weekdays ?? (currentRule?.kind === "weekly" ? currentRule.weekdays : []);
+          if (!weekdays.length) return reply("I couldn't determine which weekdays to use. Name at least one day, such as every Monday. No schedule was changed.");
           recurrenceRule = { kind: "weekly", localTime: action.localTime, weekdays };
-        } else {
+        } else if (currentRule) {
           recurrenceRule = { ...currentRule, localTime: action.localTime };
+        } else if (legacyDaily) {
+          recurrenceRule = { kind: "daily", localTime: action.localTime };
+        } else {
+          return reply("Name the schedule cadence and weekdays to replace this older interval schedule. No schedule was changed.");
         }
         cadence = recurrenceRule.kind;
         if (action.window) {
@@ -586,11 +593,15 @@ async function handleChatScheduleAction(
         const storedPayload = typeof existing?.payload === "object" && existing.payload !== null && !Array.isArray(existing.payload)
           ? existing.payload as Record<string, unknown>
           : {};
-        const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
-        if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
-          return reply("The saved research assignment couldn't be verified, so I didn't change its schedule. Review its targeting and quantity in Work Board → Schedules.");
+        if (capability === "lead_research") {
+          const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
+          if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
+            return reply("The saved research assignment couldn't be verified, so I didn't change its schedule. Review its targeting and quantity in Work Board → Schedules.");
+          }
+          payload = { prompt: assignment.prompt, target: assignment.target, location: assignment.location, quantity: assignment.quantity };
+        } else {
+          payload = {};
         }
-        payload = { prompt: assignment.prompt, target: assignment.target, location: assignment.location, quantity: assignment.quantity };
         enabledAfterSave = existing?.enabled === true;
       } else {
         cadence = action.cadence;
@@ -642,9 +653,9 @@ async function handleChatScheduleAction(
         JSON.stringify(proposal),
       ]);
       const existingNotice = setEnabledOnlyForPreview
-        ? ` The existing schedule is currently ${existing?.enabled ? "enabled" : "paused"} and its research assignment will be preserved.`
+        ? ` The existing schedule is currently ${existing?.enabled ? "enabled" : "paused"}${capability === "lead_research" ? " and its research assignment will be preserved." : "."}`
         : updateExisting
-        ? ` The existing schedule will be updated in place, with its research assignment preserved. It is currently ${existing?.enabled ? "enabled" : "paused"} and will remain ${enabledAfterSave ? "enabled" : "paused"}.`
+        ? ` The existing schedule will be updated in place${capability === "lead_research" ? ", with its research assignment preserved" : ""}. It is currently ${existing?.enabled ? "enabled" : "paused"} and will remain ${enabledAfterSave ? "enabled" : "paused"}.`
         : existing
           ? ` An existing schedule for this review${existing.enabled ? " is currently enabled" : ""} will be replaced and saved paused if it hasn't changed.`
         : "";
@@ -786,7 +797,7 @@ async function handleChatScheduleAction(
         ? `Resumed ${definition.label} in ${pending.timezone}. The next planned time is ${nextLabel} (${pending.timezone}). Workspace schedule automation, source settings and usage limits must still permit work when the scheduled run starts.`
         : `Paused ${definition.label}. No future scheduled jobs will be created. A job already created remains on the Work Board and is checked under its own controls.`
       : pending.updateExisting
-      ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}.${scheduleWorkWindowNotice(pending.businessHours, pending.recurrenceRule)} The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
+        ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}.${scheduleWorkWindowNotice(pending.businessHours, pending.recurrenceRule)} The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
       : `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
     return reply(content, serverMarker("approved_write", { kind: "schedule", id: saved.id }));
   });

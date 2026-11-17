@@ -80,6 +80,21 @@ describe("AI workforce chat schedule intent", () => {
     });
   });
 
+  it("previews changes to any named existing Growth Partner read-only schedule", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change my performance snapshot schedule to 2 PM")).toEqual({
+      kind: "update_existing", capability: "performance_snapshot", localTime: "14:00",
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our CRM quality review to 2 PM every Monday and Wednesday")).toEqual({
+      kind: "update_existing", capability: "crm_quality_review", localTime: "14:00", cadence: "weekly", weekdays: ["mon", "wed"],
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Change the calendar availability schedule from 9 AM to 11 AM daily")).toEqual({
+      kind: "update_existing", capability: "appointment_availability", localTime: "11:00", cadence: "daily",
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our sales follow-up drafts to 10 AM")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/saved read-only schedule/),
+    });
+  });
+
   it("rejects invalid windows and future start dates without changing a schedule", () => {
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Move our lead hunting to 5 PM–2 PM")).toMatchObject({
       kind: "clarification", message: expect.stringMatching(/end after the start/),
