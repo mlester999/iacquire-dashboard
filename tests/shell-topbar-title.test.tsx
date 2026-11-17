@@ -67,9 +67,10 @@ describe("the top bar breadcrumb", () => {
       org: { ...shell.org, kind: "agency", name: "iAcquire" },
     };
     render(<ShellProvider value={agencyShell}><TooltipProvider><Topbar onOpenMenu={() => {}} /></TooltipProvider></ShellProvider>);
-    const links = screen.getAllByRole("link", { name: "Ask iAcquire Operations Manager" });
+    const links = screen.getAllByRole("link", { name: "Ask iAcquire Operations" });
     expect(links).toHaveLength(2);
     expect(links.every((link) => link.getAttribute("href") === "/chat/operations-manager")).toBe(true);
+    expect(screen.queryByText("Ask iAcquire Operations Manager")).toBeNull();
     expect(screen.queryByText("Ask your AI team")).toBeNull();
   });
 });
