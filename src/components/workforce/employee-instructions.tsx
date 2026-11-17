@@ -151,7 +151,7 @@ export function EmployeeInstructions({
                 <div><dt className="text-[12px] uppercase tracking-wide text-muted">Chat retention</dt><dd className="mt-1">{overview.memory.retentionDays ? `${overview.memory.retentionDays} days` : "Workspace default"}</dd></div>
               </dl>
               <p className="rounded-xl bg-surface-2 p-3 leading-relaxed text-muted">
-                Saved conversations remain linked to this profile. Hermes-native memory has not passed the pinned-runtime acceptance and cannot be inspected or edited here; this page shows recorded tool activity only.
+                Saved conversations remain linked to this profile. Hermes-native memory is profile-scoped; this page can show completed memory-tool activity but cannot inspect or edit the memory contents.
               </p>
               {isClientPreviousProfile && <p className="rounded-xl border border-primary/15 bg-primary-soft/30 p-3 leading-relaxed text-primary-ink">This history belongs to a previous role profile. New client requests belong in the permanent AI Growth Partner conversation. <Link href="/growth-partner/conversation" className="font-semibold underline underline-offset-2">Open the conversation</Link>.</p>}
               <p className="rounded-xl border border-line p-3 leading-relaxed">
@@ -216,3 +216,4 @@ export function EmployeeInstructions({
     </div>
   );
 }
+

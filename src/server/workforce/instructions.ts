@@ -177,7 +177,7 @@ export async function getEmployeeInstructionOverview(input: {
       {
         key: "memory",
         label: "Conversation memory",
-        body: "Saved conversations remain linked to this profile. Hermes-native memory has not passed the pinned-runtime acceptance and cannot be inspected or edited here; this view shows recorded tool activity only.",
+        body: "Saved conversations remain linked to this profile. Hermes-native memory is profile-scoped; this view can show completed memory-tool activity but cannot inspect or edit the memory contents.",
         managedBy: "iAcquire",
         editable: false,
       },
@@ -223,3 +223,4 @@ export async function getEmployeeInstructionOverview(input: {
     };
   });
 }
+

@@ -23,13 +23,15 @@ const overview = {
 } as EmployeeInstructionOverview;
 
 describe("previous role profile instruction history", () => {
-  it("separates retained role history from the permanent Partner conversation and unverified Hermes memory", () => {
+  it("separates retained role history from the permanent Partner conversation and discloses the Hermes memory boundary", () => {
     const html = renderToStaticMarkup(
       <EmployeeInstructions overview={overview} agentName="Lead Hunter" role="lead_hunter" timeZone="UTC" isClientPreviousProfile onOpenKnowledge={() => {}} />,
     );
 
     expect(html).toContain("Saved conversations remain linked to this profile.");
-    expect(html).toContain("has not passed the pinned-runtime acceptance");
+    expect(html).toContain("Hermes-native memory is profile-scoped");
+    expect(html).toContain("cannot inspect or edit the memory contents");
+    expect(html).not.toContain("has not passed the pinned-runtime acceptance");
     expect(html).toContain("This history belongs to a previous role profile.");
     expect(html).toContain("New client requests belong in the permanent AI Growth Partner conversation.");
     expect(html).toContain('href="/growth-partner/conversation"');
@@ -37,3 +39,4 @@ describe("previous role profile instruction history", () => {
     expect(html).not.toContain("AI employee");
   });
 });
+
