@@ -39,4 +39,3 @@ describe("previous role profile instruction history", () => {
     expect(html).not.toContain("AI employee");
   });
 });
-

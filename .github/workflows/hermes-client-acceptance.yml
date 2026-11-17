@@ -974,4 +974,3 @@ jobs:
             fi
             rm -rf -- "$candidate_dir"
           fi
-
