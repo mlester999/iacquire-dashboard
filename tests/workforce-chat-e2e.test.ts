@@ -12,7 +12,7 @@ import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { activateGrowthPartnerBusinessBrainVersion, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { growthPartnerGoalPromptContext } from "@/server/ai-growth-partner/goals";
 import { getTargeting, saveTargeting } from "@/server/leads/service";
-import { runDueSchedules, setScheduleEnabled } from "@/server/workforce/schedules";
+import { runDueSchedules, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
 import { getControlState } from "@/server/automation/controls";
 import { memberActor } from "@/server/crm/actor";
 import { createOpportunity } from "@/server/crm/opportunities";
@@ -1065,6 +1065,100 @@ describe("AI Growth Partner chat to native workflow", () => {
     ))).rows).toHaveLength(0);
   });
 
+  it("pauses and resumes a read-only schedule through the permanent Growth Partner conversation", async () => {
+    const previousOperatorSetting = process.env.WORKFORCE_SCHEDULES_ENABLED;
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "false";
+    const requestStart = mock.requests.length;
+    const ctx = ctxFor(owner, org, "owner");
+    const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
+      "select count(*)::text as count from ai_work_jobs where org_id = $1",
+      [org.id],
+    ))).rows[0].count;
+    let scheduleId: string | null = null;
+    try {
+      const schedule = await saveSchedule(ctx, {
+        capability: "performance_snapshot",
+        agentRole: "growth_partner",
+        cadence: "weekly",
+        enabled: true,
+        recurrenceRule: { kind: "weekly", localTime: "09:00", weekdays: ["fri"] },
+      });
+      scheduleId = schedule.id;
+
+      const pausePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Pause my weekly performance snapshot schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const pauseText = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [pausePreview.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(pauseText).toMatch(/Pause preview.*currently enabled.*paused/i);
+      expect((await withSystem((db) => db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2",
+        [scheduleId, org.id],
+      ))).rows[0].enabled).toBe(true);
+
+      const pauseConfirmed = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2",
+        [scheduleId, org.id],
+      ))).rows[0].enabled).toBe(false);
+      expect((await withSystem((db) => db.query(
+        "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_disabled'",
+        [org.id, scheduleId],
+      ))).rows).toHaveLength(1);
+      expect((await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [pauseConfirmed.assistantMessageId, org.id],
+      ))).rows[0].content).toContain("Paused Performance snapshot");
+
+      const resumePreview = await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "Resume my performance snapshot schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      const resumeText = (await withSystem((db) => db.query<{ content: string }>(
+        "select content from chat_messages where id = $1 and org_id = $2",
+        [resumePreview.assistantMessageId, org.id],
+      ))).rows[0].content;
+      expect(resumeText).toMatch(/Resume preview.*currently paused.*enabled/i);
+      await sendChatMessage(ctx, {
+        agentRole: "growth_partner",
+        conversationId: growthPartnerConversationId,
+        content: "confirm schedule",
+        clientMessageId: crypto.randomUUID(),
+      });
+      expect((await withSystem((db) => db.query<{ enabled: boolean }>(
+        "select enabled from ai_work_schedules where id = $1 and org_id = $2",
+        [scheduleId, org.id],
+      ))).rows[0].enabled).toBe(true);
+      expect((await withSystem((db) => db.query(
+        "select id from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_enabled'",
+        [org.id, scheduleId],
+      ))).rows).toHaveLength(1);
+
+      expect(await runDueSchedules()).toMatchObject({ operatorEnabled: false, created: 0 });
+      expect((await withSystem((db) => db.query<{ count: string }>(
+        "select count(*)::text as count from ai_work_jobs where org_id = $1",
+        [org.id],
+      ))).rows[0].count).toBe(beforeJobs);
+      expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);
+    } finally {
+      if (scheduleId) await withSystem((db) => db.query("delete from ai_work_schedules where id = $1 and org_id = $2", [scheduleId, org.id]));
+      if (previousOperatorSetting === undefined) delete process.env.WORKFORCE_SCHEDULES_ENABLED;
+      else process.env.WORKFORCE_SCHEDULES_ENABLED = previousOperatorSetting;
+    }
+  });
+
   it("does not let a cross-employee handoff bypass a refused CRM write", async () => {
     const beforeJobs = (await withSystem((db) => db.query<{ count: string }>(
       "select count(*)::text as count from ai_work_jobs where org_id = $1",
@@ -1354,7 +1448,7 @@ describe("AI Growth Partner chat to native workflow", () => {
     const ownerReply = (await withSystem((db) => db.query<{ content: string }>("select content from chat_messages where id = $1", [ownerRequest.assistantMessageId]))).rows[0].content;
     expect(ownerReply).toContain("[Open Automation Studio](/automation-studio)");
     expect(ownerReply).toContain("to review access");
-    expect(ownerReply).toContain("doesn't block supported AI Employee work or schedule settings");
+    expect(ownerReply).toContain("doesn't block other supported work or schedule settings");
     expect(ownerReply).toMatch(/no email was sent/i);
 
     const memberRequest = await sendChatMessage(ctxFor(member, org, "member"), {
@@ -1662,6 +1756,8 @@ describe("AI Growth Partner chat to native workflow", () => {
     ))).rows[0];
     expect(approval).toMatchObject({ status: "pending" });
     expect(approval.reason).toContain("explicitly confirmed");
+    expect(approval.reason).toContain("permanent AI Growth Partner conversation");
+    expect(approval.reason).not.toContain("AI Employee Chat");
     expect(approval.expected_effect).toContain("No customer message will be sent");
     expect((await withSystem((db) => db.query<{ status: string }>("select status from appointment_refs where id = $1 and org_id = $2", [appointmentId, org.id]))).rows[0].status).toBe("confirmed");
     expect(mock.requests.slice(requestStart).some((request) => request.method === "POST" && request.path === "/v1/runs")).toBe(false);

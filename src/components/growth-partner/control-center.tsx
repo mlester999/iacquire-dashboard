@@ -109,6 +109,39 @@ const stateLabels: Record<GrowthPartnerControlState["status"], { label: string; 
   migration_required: { label: "Review previous profiles", tone: "warning" },
 };
 
+function growthPartnerStateInfo(state: GrowthPartnerControlState | null, legacyProfilesPresent: boolean) {
+  if (!state) {
+    return legacyProfilesPresent
+      ? { label: "Review previous profiles", tone: "warning" as const }
+      : { label: "Not set up", tone: "neutral" as const };
+  }
+  if (state.status !== "configured") return stateLabels[state.status];
+  if (state.behaviorProfile?.runtimeSyncStatus === "pending") return { label: "Sync pending", tone: "warning" as const };
+  if (state.behaviorProfile?.runtimeSyncStatus === "not_configured") return { label: "Runtime setup needed", tone: "warning" as const };
+  if (!state.behaviorProfile) return { label: "Configuration check needed", tone: "neutral" as const };
+  return stateLabels.configured;
+}
+
+function runtimeConnectionInfo(state: GrowthPartnerControlState | null): { label: string; detail: string; tone: "neutral" | "success" | "warning" } {
+  if (!state) return { label: "Not set up", detail: "Your AI Growth Partner has not been connected yet.", tone: "neutral" };
+  if (state.status === "configured") {
+    return { label: "Online", detail: "The active runtime configuration passed its latest health check.", tone: "success" };
+  }
+  if (state.status === "provisioning") {
+    return { label: "Setting up", detail: "The runtime is being prepared and has not passed its health check yet.", tone: "warning" };
+  }
+  if (state.status === "paused") {
+    return { label: "Paused", detail: "The AI Growth Partner is paused and cannot start new work.", tone: "warning" };
+  }
+  if (state.status === "migration_required") {
+    return { label: "Review migration", detail: "Previous profiles are preserved while the unified Partner migration is reviewed.", tone: "warning" };
+  }
+  if (state.runtimeAgentInstanceId) {
+    return { label: "Health check needed", detail: "A runtime profile is linked, but it has not passed the current health check.", tone: "neutral" };
+  }
+  return { label: "Not connected", detail: "Your AI Growth Partner needs a verified runtime connection before it can work.", tone: "neutral" };
+}
+
 const factStateLabels: Record<BusinessBrainFact["state"], string> = {
   verified: "Verified",
   client_confirmed: "Client confirmed",
@@ -336,19 +369,15 @@ export function GrowthPartnerControlCenter({
   timezone: string;
   safetyControls: { messagingPaused: boolean; outboundPaused: boolean; agencyPaused: boolean; canPause: boolean };
 }) {
-  const stateInfo = state
-    ? stateLabels[state.status]
-    : legacyProfilesPresent
-      ? { label: "Review previous profiles", tone: "warning" as const }
-      : { label: "Not set up", tone: "neutral" as const };
+  const stateInfo = growthPartnerStateInfo(state, legacyProfilesPresent);
   const activeBrain = state?.currentBusinessBrain ?? null;
   const draftBrain = state?.draftBusinessBrain ?? null;
   const hasAnyBrain = Boolean(activeBrain || draftBrain);
-  const runtimeLinked = Boolean(state?.runtimeAgentInstanceId);
   const lastUpdated = formatDate(state?.updatedAt ?? null, timezone);
   const canPrepareBrain = canConfigure && hasSubmittedOnboarding && !hasAnyBrain;
   const latestVersion = state?.draftVersion ?? state?.currentVersion ?? null;
   const capabilityAccessByKey = new Map(capabilityAccess.map((item) => [item.key, item]));
+  const runtimeConnection = runtimeConnectionInfo(state);
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-7 pb-10">
@@ -398,9 +427,9 @@ export function GrowthPartnerControlCenter({
         <MetricCard
           icon={<ShieldCheck className="size-5" aria-hidden />}
           label="Partner connection"
-          value={runtimeLinked ? "Connected" : state?.status === "provisioning" ? "Setting up" : "Not connected"}
-          detail={runtimeLinked ? "Connection and access checks run before the AI Growth Partner can use a tool." : "Your AI Growth Partner needs a connection before it can work."}
-          tone={runtimeLinked ? "success" : state?.status === "provisioning" ? "warning" : "neutral"}
+          value={runtimeConnection.label}
+          detail={runtimeConnection.detail}
+          tone={runtimeConnection.tone}
         />
         <MetricCard
           icon={<MessageSquareText className="size-5" aria-hidden />}

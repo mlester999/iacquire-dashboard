@@ -99,6 +99,10 @@ const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const BOOKING_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const APPOINTMENT_CHANGE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 
+function chatIdentityLabel(role: WorkforceRoleKey): string {
+  return role === "growth_partner" ? "Your AI Growth Partner" : `The ${workforceRoleShortName(role)} profile`;
+}
+
 type PendingChatSchedule = {
   version: 1;
   proposalId: string;
@@ -526,7 +530,7 @@ async function handleChatScheduleAction(
       );
       const existing = scheduleRows[0] ?? null;
       if (updateExisting && !existing) {
-        return reply("I couldn't find a saved lead research schedule to change. No schedule was changed. Ask me to schedule a complete research assignment first.");
+        return reply(`I couldn't find a saved ${definition.label.toLocaleLowerCase("en-US")} schedule to change. No schedule was changed. Ask me to schedule that work first.`);
       }
       const existingHours = existing ? validateBusinessHours(existing.business_hours) : {};
       let cadence: WorkforceScheduleCadence;
@@ -547,11 +551,13 @@ async function handleChatScheduleAction(
           : {};
         if (action.enabled) {
           if (cadence !== "hourly" && !recurrenceRule) {
-            return reply("The saved lead research recurrence needs correction before it can be resumed. No schedule was changed.");
+            return reply(`The saved ${definition.label.toLocaleLowerCase("en-US")} recurrence needs correction before it can be resumed. No schedule was changed.`);
           }
-          const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
-          if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
-            return reply("The saved research assignment couldn't be verified, so I didn't resume it. Review its targeting and quantity in Work Board → Schedules.");
+          if (capability === "lead_research") {
+            const assignment = typeof storedPayload.prompt === "string" ? parseResearchAssignment(storedPayload.prompt) : null;
+            if (!assignment || assignment.missing.length || !assignment.target || !assignment.location || !assignment.quantity) {
+              return reply("The saved research assignment couldn't be verified, so I didn't resume it. Review its targeting and quantity in Work Board → Schedules.");
+            }
           }
         }
         payload = storedPayload;
@@ -1726,7 +1732,7 @@ async function handleChatBookingIntent(
   };
 
   // The parser already limits this to the Appointment Setter; the policy table decides again here, from the employee's own database row, and records a refusal.
-  if (!(await chatActionAllowed(ctx, input.agentId, "chat:booking_request"))) return reply("This employee's role can't prepare appointment requests. No booking was made.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:booking_request"))) return reply(`${chatIdentityLabel(input.agentRole)} can't prepare appointment requests. No booking was made.`);
   if (input.intent.kind === "none") return reply("I couldn't prepare that appointment request. No booking was made.");
   if (input.intent.kind === "clarification") return reply(input.intent.message);
   if (!appointmentBookingPermissionsAllowed(ctx)) {
@@ -2009,7 +2015,7 @@ async function handleChatAppointmentChangeIntent(
     return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
   };
 
-  if (!(await chatActionAllowed(ctx, input.agentId, "chat:appointment_change"))) return reply("This employee's role can't prepare appointment changes. No appointment was changed.");
+  if (!(await chatActionAllowed(ctx, input.agentId, "chat:appointment_change"))) return reply(`${chatIdentityLabel(input.agentRole)} can't prepare appointment changes. No appointment was changed.`);
   if (input.intent.kind === "none") return reply("I couldn't identify one exact appointment change request. No appointment was changed.");
   if (input.intent.kind === "clarification") return reply(input.intent.message);
   if (!appointmentChangePermissionsAllowed(ctx)) {
@@ -2220,7 +2226,10 @@ async function handleChatAppointmentChangeIntent(
       : `Reschedule ${current.contactName}'s appointment to ${formatSlot(current.newStartAt as string, current.timeZone)}`;
     // What the appointment type lets customers do themselves, so the approver sees the policy the request is being made against.
     const policy = await customerChangePolicyNote(db, ctx.org.orgId, current.appointmentId);
-    const reason = `A team member explicitly confirmed this appointment change proposal in AI Employee Chat. The appointment is not changed until an owner or admin approves it. ${policy}`;
+    const confirmedThrough = input.agentRole === "growth_partner"
+      ? "the permanent AI Growth Partner conversation"
+      : `${workforceRoleShortName(input.agentRole)} chat`;
+    const reason = `A team member explicitly confirmed this appointment change proposal in ${confirmedThrough}. The appointment is not changed until an owner or admin approves it. ${policy}`;
     const expectedEffect = current.operation === "cancel"
       ? `Cancel the appointment scheduled for ${formatSlot(current.expected.startAt, current.timeZone)} on its connected calendar. No customer message will be sent by iAcquire.`
       : `Move the appointment from ${formatSlot(current.expected.startAt, current.timeZone)} to ${formatSlot(current.newStartAt as string, current.timeZone)} on its connected calendar. The replacement time is checked again when approved. No customer message will be sent by iAcquire.`;
@@ -2571,7 +2580,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
 }
 
 export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promise<SendResult> {
-  if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't chat with AI employees.");
+  if (!ctx.can("agents.use")) throw new AppError("forbidden", "Your role can't use AI conversations in this workspace.");
   if (ctx.org.kind === "client" && input.agentRole !== "growth_partner") {
     // Once a tenant has its provisioned Partner identity, compatibility calls from retained-role
     // controls must use that one runtime and its permanent conversation. Tenants that have not
@@ -2831,7 +2840,8 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     } else if (!ctx.can("workflows.manage")) {
       content = "You can view Automation Studio, but your workspace role can't create or change workflows. Ask an owner or admin to prepare this automation. [Open Automation Studio](/automation-studio) to view workflows available to you. No workflow was created or activated, and no email was sent.";
     } else {
-      content = "Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from this employee chat. [Open Automation Studio](/automation-studio) to review access, build a draft and test it, then follow the normal approval process before activation. This doesn't block supported AI Employee work or schedule settings. No workflow was created or activated, and no email was sent.";
+      const conversationLabel = input.agentRole === "growth_partner" ? "the AI Growth Partner conversation" : "this role profile chat";
+      content = `Building automations belongs in the AI Automation Builder in Automation Studio. I won't create or activate a workflow from ${conversationLabel}. [Open Automation Studio](/automation-studio) to review access, build a draft and test it, then follow the normal approval process before activation. This doesn't block other supported work or schedule settings. No workflow was created or activated, and no email was sent.`;
     }
     const assistantMessageId = await persistChatAssistantMessage({
       orgId: ctx.org.orgId,

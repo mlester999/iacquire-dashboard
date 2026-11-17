@@ -60,9 +60,24 @@ describe("AI workforce chat schedule intent", () => {
       kind: "set_existing_enabled", capability: "lead_research", enabled: true,
     });
     expect(parseWorkforceChatScheduleIntent("growth_partner", "Pause my schedule")).toMatchObject({
-      kind: "clarification", message: expect.stringMatching(/Name the saved lead research schedule/),
+      kind: "clarification", message: expect.stringMatching(/Name the saved schedule/),
     });
     expect(parseWorkforceChatScheduleIntent("operations_manager", "Pause my lead research schedule")).toEqual({ kind: "none" });
+  });
+
+  it("lets the Growth Partner manage named read-only schedules by chat", () => {
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Pause my weekly performance snapshot schedule")).toEqual({
+      kind: "set_existing_enabled", capability: "performance_snapshot", enabled: false,
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Resume the CRM quality review schedule")).toEqual({
+      kind: "set_existing_enabled", capability: "crm_quality_review", enabled: true,
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Enable our calendar availability schedule")).toEqual({
+      kind: "set_existing_enabled", capability: "appointment_availability", enabled: true,
+    });
+    expect(parseWorkforceChatScheduleIntent("growth_partner", "Enable my sales follow-up drafts schedule")).toMatchObject({
+      kind: "clarification", message: expect.stringMatching(/Name the saved schedule/),
+    });
   });
 
   it("rejects invalid windows and future start dates without changing a schedule", () => {

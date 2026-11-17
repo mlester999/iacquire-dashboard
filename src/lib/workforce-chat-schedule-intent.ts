@@ -1,5 +1,5 @@
 import type { WorkforceRoleKey } from "@/lib/agents";
-import { capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
+import { CAPABILITY_KEYS, capabilityDefinition, type CapabilityKey } from "@/lib/workforce-capabilities";
 import type { Weekday } from "@/lib/messaging";
 import { parseResearchAssignment } from "@/lib/research-intent";
 import type { WorkforceScheduleRule } from "@/lib/workforce-schedule-recurrence";
@@ -10,7 +10,7 @@ export type WorkforceScheduleWindow = { startTime: string; endTime: string };
 export type WorkforceChatScheduleIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
-  | { kind: "set_existing_enabled"; capability: "lead_research"; enabled: boolean }
+  | { kind: "set_existing_enabled"; capability: CapabilityKey; enabled: boolean }
   | { kind: "update_existing"; capability: "lead_research"; localTime: string; cadence?: "daily" | "weekly"; weekdays?: Weekday[]; window?: WorkforceScheduleWindow }
   | {
       kind: "proposal";
@@ -39,11 +39,42 @@ const RECURRING_SIGNAL = new RegExp(`\\b(?:every|each)\\s+(?:\\d+\\s+)?${PERIOD}
 const TIME_12_HOUR = /\b(?:at\s+)?(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)(?![a-z])/i;
 const TIME_24_HOUR = /\bat\s+(\d{2}):([0-5]\d)\b/;
 const SCHEDULED_WRITE = /\b(?:send|email|text|call|message|book|confirm|reschedule|cancel|merge|delete|import|export|update|assign|reassign|follow[ -]?up)\b/i;
-const LEAD_SCHEDULE_TOGGLE = /^(?:please\s+)?(pause|disable|stop|resume|enable|restart)\s+(?:(?:my|our|the)\s+)?(?:lead[ -](?:research|hunting)|prospecting)\s+schedule[.!?]*$/i;
+const SCHEDULE_TOGGLE = /^(?:please\s+)?(pause|disable|stop|resume|enable|restart)\s+(?:(?:my|our|the)\s+)?(.+?)\s+schedule[.!?]*$/i;
 const LEAD_SCHEDULE_CHANGE = /^(?:please\s+)?(?:change|update|move|reschedule)\s+(?:(?:my|our|the)\s+)?(?:lead[\s-]*(?:hunting|research)|prospecting)\s+(?:(?:lead\s+)?research\s+)?(?:schedule\s+)?(?:(?:from\s+.+?\s+)?(?:to|for|at)\s+)(.+?)[.!?]*$/i;
 const SCHEDULE_WINDOW_TIME = String.raw`(?:\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)(?![a-z])|\b(?:[01]\d|2[0-3]):[0-5]\d\b)`;
 const SCHEDULE_WINDOW = new RegExp(`(${SCHEDULE_WINDOW_TIME})\\s*(?:-|–|—|\\bto\\b)\\s*(${SCHEDULE_WINDOW_TIME})`, "i");
 const SCHEDULE_WINDOW_LIKE = /\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\s*(?:-|–|—|\bto\b)\s*(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)/i;
+
+const SCHEDULE_NAME_ALIASES: Partial<Record<CapabilityKey, readonly string[]>> = {
+  lead_research: ["lead hunting", "prospecting"],
+  lead_generation_review: ["lead generation", "research queue"],
+  proactive_review: ["operations", "operational review"],
+  crm_quality_review: ["crm review", "crm"],
+  pipeline_review: ["sales pipeline", "pipeline"],
+  appointment_review: ["appointments"],
+  appointment_availability: ["calendar availability"],
+  missed_call_review: ["missed calls"],
+  lead_priority_review: ["lead priorities"],
+  social_performance_review: ["social media review", "social review"],
+  receivables_review: ["receivables"],
+  reputation_review: ["reputation"],
+  performance_snapshot: ["performance report", "performance"],
+};
+
+function normalizedScheduleName(value: string): string {
+  return value.toLocaleLowerCase("en-US").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function scheduledCapabilityForName(value: string): CapabilityKey | null {
+  const requested = normalizedScheduleName(value).replace(/^(?:hourly|daily|weekly)\s+/, "");
+  const matches = CAPABILITY_KEYS.filter((key) => {
+    const definition = capabilityDefinition(key);
+    if (!definition || definition.risk !== "read_only" || !definition.allowedRoles.includes("growth_partner")) return false;
+    const names = [definition.label, key.replaceAll("_", " "), ...(SCHEDULE_NAME_ALIASES[key] ?? [])];
+    return names.some((name) => normalizedScheduleName(name) === requested);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
 
 function weekdaysIn(text: string): Weekday[] {
   return WEEKDAY_ORDER.filter((day) => DAYS.find((entry) => entry.key === day)?.pattern.test(text));
@@ -185,13 +216,14 @@ export function parseWorkforceChatScheduleIntent(role: WorkforceRoleKey, content
   const researchOwner = role === "growth_partner" ? "AI Growth Partner" : "Lead Hunter";
   if (!text) return { kind: "none" };
 
-  const scheduleToggle = role === "growth_partner" ? text.match(LEAD_SCHEDULE_TOGGLE) : null;
+  const scheduleToggle = role === "growth_partner" ? text.match(SCHEDULE_TOGGLE) : null;
   if (scheduleToggle) {
     const enabled = /^(?:resume|enable|restart)$/i.test(scheduleToggle[1]);
-    return { kind: "set_existing_enabled", capability: "lead_research", enabled };
+    const capability = scheduledCapabilityForName(scheduleToggle[2]);
+    if (capability) return { kind: "set_existing_enabled", capability, enabled };
   }
   if (role === "growth_partner" && /^(?:please\s+)?(?:pause|disable|stop|resume|enable|restart)\b.*\b(?:schedule|scheduled work)\b/i.test(text)) {
-    return { kind: "clarification", message: "Name the saved lead research schedule you want me to pause or resume. No schedule was changed." };
+    return { kind: "clarification", message: "Name the saved schedule you want me to pause or resume, such as lead research, CRM quality review or performance snapshot. No schedule was changed." };
   }
 
   const scheduleChange = role === "growth_partner" ? text.match(LEAD_SCHEDULE_CHANGE) : null;

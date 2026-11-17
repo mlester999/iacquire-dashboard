@@ -60,7 +60,7 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(workBoard).getByText("Needs attention")).toBeTruthy();
     expect(within(workBoard).getByText("Completed today")).toBeTruthy();
     expect(within(workBoard).getByRole("link", { name: /Open Work Board/ }).getAttribute("href")).toBe("/work");
-    expect(screen.getByText("Your AI Growth Partner needs a connection before it can work.")).toBeTruthy();
+    expect(screen.getByText("Your AI Growth Partner has not been connected yet.")).toBeTruthy();
   });
 
   it("shows the single approved conversation profile and accurately labels runtime synchronization", () => {
@@ -94,26 +94,26 @@ describe("Growth Partner capability readiness UI", () => {
       createdAt: new Date("2026-11-01T00:00:00Z"),
       updatedAt: new Date("2026-11-01T00:00:00Z"),
     };
-    render(<GrowthPartnerControlCenter
-      state={state}
-      capabilityAccess={[]}
-      memories={[]}
-      goals={[]}
-      workSummary={{ active: 0, waiting: 0, needsAttention: 0, completedToday: 0 }}
-      canManageMemory={false}
-      canManageGoals={false}
-      canConfigure={true}
-      canConfigureResearch={false}
-      researchSourcePolicies={{ openstreetmap: null, company_website: null }}
-      legacyKnowledgeReview={{ candidates: [], imports: [] }}
-      canOpenSetup={false}
-      controlPermissions={{ "agents.configure": true }}
-      legacyProfilesPresent={false}
-      hasSubmittedOnboarding={false}
-      submittedAnswerCount={0}
-      timezone="America/New_York"
-      safetyControls={{ messagingPaused: false, outboundPaused: false, agencyPaused: false, canPause: false }}
-    />);
+    const props = {
+      capabilityAccess: [],
+      memories: [],
+      goals: [],
+      workSummary: { active: 0, waiting: 0, needsAttention: 0, completedToday: 0 },
+      canManageMemory: false,
+      canManageGoals: false,
+      canConfigure: true,
+      canConfigureResearch: false,
+      researchSourcePolicies: { openstreetmap: null, company_website: null },
+      legacyKnowledgeReview: { candidates: [], imports: [] },
+      canOpenSetup: false,
+      controlPermissions: { "agents.configure": true },
+      legacyProfilesPresent: false,
+      hasSubmittedOnboarding: false,
+      submittedAnswerCount: 0,
+      timezone: "America/New_York",
+      safetyControls: { messagingPaused: false, outboundPaused: false, agencyPaused: false, canPause: false },
+    };
+    const view = render(<GrowthPartnerControlCenter {...props} state={state} />);
 
     const section = screen.getByRole("region", { name: "Partner personality and behavior" });
     expect(within(section).getByText("Saved configuration version 4")).toBeTruthy();
@@ -122,5 +122,28 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(section).getByText("Steady and evidence-led.")).toBeTruthy();
     expect(within(section).getByRole("link", { name: /Edit AI preferences/ }).getAttribute("href")).toBe("/settings/ai");
     expect(within(section).getByText(/has not finished syncing to its Hermes runtime/i)).toBeTruthy();
+    expect(screen.getByText("Sync pending")).toBeTruthy();
+    expect(screen.getByText("Online")).toBeTruthy();
+    expect(screen.getByText("The active runtime configuration passed its latest health check.")).toBeTruthy();
+
+    view.rerender(<GrowthPartnerControlCenter {...props} state={{
+      ...state,
+      behaviorProfile: { ...state.behaviorProfile!, runtimeSyncStatus: "not_configured" },
+    }} />);
+    expect(screen.getByText("Runtime setup needed")).toBeTruthy();
+    view.rerender(<GrowthPartnerControlCenter {...props} state={{
+      ...state,
+      behaviorProfile: { ...state.behaviorProfile!, runtimeSyncStatus: "synced" },
+    }} />);
+    expect(screen.getByText("Configured")).toBeTruthy();
+
+    view.rerender(<GrowthPartnerControlCenter {...props} state={{ ...state, status: "setup_required" }} />);
+    expect(screen.getByText("Health check needed")).toBeTruthy();
+    expect(screen.queryByText("Online")).toBeNull();
+    expect(screen.getByText("Partner connection").parentElement?.textContent).not.toContain("Connected");
+
+    view.rerender(<GrowthPartnerControlCenter {...props} state={{ ...state, status: "paused" }} />);
+    expect(screen.getByText("Partner connection").parentElement?.textContent).toContain("Paused");
+    expect(screen.queryByText("Online")).toBeNull();
   });
 });
