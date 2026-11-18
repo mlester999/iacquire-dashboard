@@ -14,12 +14,13 @@ import { createCompanyWebsiteFetchPolicy } from "@/server/leads/company-website-
 import { analyzeWebsite, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
 import { searchOpenStreetMap, type OpenStreetMapSourceConfig } from "@/server/leads/openstreetmap-source";
 import { runLeadResearchJob } from "@/server/leads/research-job";
+import * as workKick from "@/server/workforce/work-kick";
 import { cancelWorkJob, getWorkJobView } from "@/server/workforce/jobs";
 import { listWorkBoardJobs } from "@/server/workforce/work-board";
 import { registerWorkHandler } from "@/server/workforce/work-runner";
 import { connectHermesProfile, createConfigVersion, ensureGrowthPartnerRuntime, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { createResearchRequest, listLeads, requestCrmImport, reviewLeads, saveTargeting } from "@/server/leads/service";
+import { createResearchRequest, listLeads, requestCrmImport, retryResearchRequest, reviewLeads, saveTargeting } from "@/server/leads/service";
 import { saveResearchSourcePolicy } from "@/server/leads/research-source-policy";
 import { sendChatMessage } from "@/server/chat/service";
 import { startMockHermes, type MockHermes, type MockScript } from "./support/mock-hermes";
@@ -768,6 +769,28 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     expect(rows).toEqual([{ role_key: "growth_partner", conversation_id: org.conversationId, request_role: "growth_partner" }]);
     const job = await getWorkJobView(context, created.jobId!);
     expect(job).toMatchObject({ capability: "lead_research", conversationId: org.conversationId, status: "queued" });
+    await expect(cancelWorkJob(context, created.jobId!)).resolves.toBe("cancelled");
+
+    const kick = vi.spyOn(workKick, "kickWorkJob").mockImplementation(() => undefined);
+    try {
+      await retryResearchRequest(context, created.requestId);
+      expect(kick).toHaveBeenCalledWith(created.jobId);
+      const { rows: retried } = await withSystem((db) => db.query<{
+        request_status: string; job_status: string; role_key: string; conversation_id: string | null;
+      }>(
+        `select r.status as request_status, j.status as job_status, a.role_key, j.conversation_id
+           from lead_research_requests r
+           join ai_work_jobs j on j.id = r.work_job_id and j.org_id = r.org_id
+           join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+          where r.id = $1 and r.org_id = $2`,
+        [created.requestId, org.id],
+      ));
+      expect(retried).toEqual([{
+        request_status: "queued", job_status: "queued", role_key: "growth_partner", conversation_id: org.conversationId,
+      }]);
+    } finally {
+      kick.mockRestore();
+    }
     await expect(cancelWorkJob(context, created.jobId!)).resolves.toBe("cancelled");
   }, 30_000);
 });
