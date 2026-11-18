@@ -13,7 +13,7 @@ import { capabilityDefinition } from "@/lib/workforce-capabilities";
 const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
- * Starts one reviewed, read-only capability from the AI Work Board. Lead research is deliberately
+ * Starts one reviewed, read-only capability from the Work Board. Lead research is deliberately
  * not startable here because it needs a target, location and quantity from the person first.
  */
 export async function startReviewAction(capability: string) {

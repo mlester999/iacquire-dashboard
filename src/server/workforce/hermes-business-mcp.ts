@@ -348,7 +348,7 @@ function makeServer(profile: InternalProfile) {
   // a client runtime and must never be served through the agency tool tier.
   if (profile.roleKey === AI_GROWTH_PARTNER_ROLE_KEY) throw new AppError("forbidden", "Growth Partner access is not available through the internal business tools.");
   const descriptions: Record<AgentRoleKey, string> = {
-    operations_manager: "Read the current operational state your iAcquire user is allowed to see: the AI work board, scheduled work, handoffs and setup status.",
+    operations_manager: "Read the current operational state your iAcquire user is allowed to see: the Work Board, scheduled work, handoffs and setup status.",
     lead_hunter: "Read the saved targeting rules and researched leads your iAcquire user is allowed to see. Research never means consent to contact.",
     appointment_setter: "Read the calendar setup, this week's appointments and booking requests your iAcquire user is allowed to see. This does not create or confirm bookings.",
     sales_assistant: "Read the sales pipelines, stages and opportunities your iAcquire user is allowed to see.",

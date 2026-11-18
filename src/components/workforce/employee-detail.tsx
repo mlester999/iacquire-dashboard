@@ -1195,9 +1195,9 @@ function EmployeeProactiveActivity({ meta, reports, monitoring, timeZone }: { me
         <p className="text-[12px] leading-relaxed text-muted">
           {watching
             ? "An authorized schedule or trigger is enabled for this profile. Reports appear only after a real job completes."
-            : "No recurring job is authorized for this profile here. You can inspect or authorize monitoring on the AI Work Board."}
+            : "No recurring job is authorized for this profile here. You can inspect or authorize monitoring on the Work Board."}
         </p>
-        <ButtonLink href="/work" variant="secondary">Open the AI Work Board</ButtonLink>
+        <ButtonLink href="/work" variant="secondary">Open the Work Board</ButtonLink>
       </CardContent>
     </Card>
   );

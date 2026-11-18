@@ -16,7 +16,7 @@ import { isWorkforceRoleKey } from "@/lib/agents";
  * This is intentionally native and read-only: it reads persisted workspace records, produces
  * evidence-backed findings and recommended actions, and finishes the durable job. It never sends
  * messages, changes a record, creates an approval on the employee's behalf or starts an autonomous
- * schedule. A person can request it from the AI Work Board.
+ * schedule. A person can request it from the Work Board.
  */
 
 type Severity = "critical" | "warning" | "info";

@@ -964,7 +964,7 @@ describe("AI Growth Partner chat to native workflow", () => {
       work_job_id: sent.jobId,
       agent_instance_id: growthPartnerAgentId,
     });
-    expect(partnerMessage.content).toContain("AI Work Board");
+    expect(partnerMessage.content).toContain("Work Board");
     expect((await withSystem((db) => db.query(
       "select id from chat_conversations where org_id = $1 and growth_partner_id is null and agent_instance_id = $2 and created_at > now() - interval '2 minutes'",
       [org.id, agents.crm_manager],

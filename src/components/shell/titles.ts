@@ -41,7 +41,7 @@ export const TITLES: Array<[RegExp, string]> = [
   [/^\/automation-studio/, "Automation Studio"],
   [/^\/website/, "Website"],
   [/^\/social/, "Social Media"],
-  [/^\/work/, "AI Work Board"],
+  [/^\/work/, "Work Board"],
 ];
 
 export function titleFor(pathname: string): string {

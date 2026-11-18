@@ -737,15 +737,15 @@ async function leadSections(b: Build): Promise<EvidenceSection[]> {
 async function operationsSections(b: Build): Promise<EvidenceSection[]> {
   const { ctx } = b;
   const out: EvidenceSection[] = [];
-  out.push(...await guard(b, "work_board", "AI work board", async () => {
-    if (!ctx.can("agents.use") && !ctx.can("activity.view")) return noPermissionSection("work_board", "AI work board");
+  out.push(...await guard(b, "work_board", "Work Board", async () => {
+    if (!ctx.can("agents.use") && !ctx.can("activity.view")) return noPermissionSection("work_board", "Work Board");
     const [summary, attention] = await Promise.all([workBoardSummary(ctx), listWorkBoardJobs(ctx, "attention")]);
     const total = summary.active + summary.waiting + summary.needsAttention + summary.completedToday;
     return section(
       "work_board",
-      "AI work board",
+      "Work Board",
       total === 0 && attention.length === 0 ? "empty" : "ready",
-      total === 0 && attention.length === 0 ? "The AI work board is clear: nothing is running, waiting or needs attention." : `${summary.needsAttention} piece${summary.needsAttention === 1 ? "" : "s"} of AI work need attention.`,
+      total === 0 && attention.length === 0 ? "The Work Board is clear: nothing is running, waiting or needs attention." : `${summary.needsAttention} piece${summary.needsAttention === 1 ? "" : "s"} of AI work need attention.`,
       {
         facts: { running: summary.active, waitingForApproval: summary.waiting, needAttention: summary.needsAttention, completedToday: summary.completedToday },
         records: attention.slice(0, 6).map((j) => ({

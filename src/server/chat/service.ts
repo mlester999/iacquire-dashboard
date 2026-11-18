@@ -3084,7 +3084,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
           userId: ctx.user.id,
           agentId: routed.agentId,
           conversationId: prepared.conversationId,
-          content: `I’ve queued ${definition.label.toLocaleLowerCase("en-US")} in our permanent conversation. [Track it on the AI Work Board](/work?job=${encodeURIComponent(routed.jobId)}). The usual permissions and approval steps still apply.`,
+          content: `I’ve queued ${definition.label.toLocaleLowerCase("en-US")} in our permanent conversation. [Track it on the Work Board](/work?job=${encodeURIComponent(routed.jobId)}). The usual permissions and approval steps still apply.`,
           workJobId: routed.jobId,
         });
         kickWorkJob(routed.jobId);
@@ -3132,7 +3132,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
         userId: ctx.user.id,
         agentId: agent.id,
         conversationId: prepared.conversationId,
-        content: `I've queued this supported work with ${target.shortName}. [Open ${target.shortName}'s chat](/chat/${target.slug}?c=${encodeURIComponent(created.targetConversationId)}) · [Track it on the AI Work Board](/work?job=${encodeURIComponent(created.jobId)}). ${target.shortName}'s own permissions and availability still apply.`,
+        content: `I've queued this supported work with ${target.shortName}. [Open ${target.shortName}'s chat](/chat/${target.slug}?c=${encodeURIComponent(created.targetConversationId)}) · [Track it on the Work Board](/work?job=${encodeURIComponent(created.jobId)}). ${target.shortName}'s own permissions and availability still apply.`,
         workJobId: created.jobId,
       });
       kickWorkJob(created.jobId);

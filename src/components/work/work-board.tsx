@@ -244,7 +244,7 @@ export function WorkBoard({
     const res = await startReviewAction(selected.capability);
     setStarting(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success(`${selected.label} started`, { description: "The selected AI identity reads only persisted records and records its findings. No record is changed." });
+    toast.success(`${selected.label} started`, { description: "The selected review reads only persisted records and records its findings. No record is changed." });
     router.refresh();
   };
 
@@ -252,7 +252,7 @@ export function WorkBoard({
     <div className="module-stack space-y-6">
       <PageHero
         tone="dark"
-        eyebrow="AI Work Board"
+        eyebrow="Work Board"
         title="See the work, not a spinner."
         description="Persisted jobs keep their recorded status, stage and activity. Future schedule occurrences stay separate as plans, never jobs; nothing is marked completed without execution evidence."
         icon={<ListChecks />}

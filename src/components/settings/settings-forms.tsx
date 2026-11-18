@@ -768,7 +768,7 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
             onChange={(v) => saveProactive({ minimumSeverity: v as ProactivePrefs["minimumSeverity"] })}
           />
         </SettingRow>
-        <SettingRow title="Delivery" description="A digest still shows the report in the AI Work Board; it only changes when the notification arrives.">
+        <SettingRow title="Delivery" description="A digest still shows the report in the Work Board; it only changes when the notification arrives.">
           <Segmented
             id="proactive-delivery"
             ariaLabel="Proactive delivery"
@@ -830,7 +830,7 @@ export function NotificationPrefsForm({ groups, prefs, emailAvailable = false }:
         </SettingRow>
         <Notice tone="neutral" icon={<Clock />}>
           Briefings run only when the workspace has authorized a monitoring schedule, the scheduler is active and the deployment&apos;s
-          proactive briefing switch is on. If no monitoring is running, the AI Work Board says so instead of implying continuous coverage.
+          proactive briefing switch is on. If no monitoring is running, the Work Board says so instead of implying continuous coverage.
         </Notice>
       </Panel>
       <Panel

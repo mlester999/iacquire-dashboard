@@ -70,7 +70,7 @@ function schedule(): ScheduleView {
   };
 }
 
-describe("AI Work Board Kanban", () => {
+describe("Work Board Kanban", () => {
   it("shows the single partner identity and marks retained role work as a previous profile", () => {
     render(<WorkBoardKanban
       jobs={[

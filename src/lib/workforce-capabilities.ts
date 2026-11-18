@@ -21,7 +21,7 @@ export interface CapabilityDefinition {
   /** read_only means the capability cannot change a business record; approval_required means it must not execute without a human decision. */
   risk: "read_only" | "approval_required" | "sensitive";
   produces: string;
-  /** True when a person can start it from the AI Work Board without an additional input form. */
+  /** True when a person can start it from the Work Board without an additional input form. */
   workBoardAction: boolean;
 }
 

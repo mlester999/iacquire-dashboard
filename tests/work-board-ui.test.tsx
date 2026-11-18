@@ -122,7 +122,7 @@ const activeMonitoring: MonitoringStatus = {
   byRole: [{ role: "operations_manager", schedules: 1, triggers: 0, enabled: 1 }],
 };
 
-describe("AI Work Board proactive reports", () => {
+describe("Work Board proactive reports", () => {
   it("shows an honest monitoring state and a real acknowledgement action", async () => {
     render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="UTC" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" reports={[proactiveReport]} monitoring={activeMonitoring} focusReportId="r1" />);
     expect(screen.getByText("Proactive watch")).toBeTruthy();
@@ -158,9 +158,11 @@ describe("AI Work Board proactive reports", () => {
   });
 });
 
-describe("AI Work Board", () => {
+describe("Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
     render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
+    expect(screen.getByText("Work Board", { exact: true })).toBeTruthy();
+    expect(screen.queryByText("AI Work Board", { exact: true })).toBeNull();
     expect(screen.getByText("See the work, not a spinner.")).toBeTruthy();
     expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
     expect(screen.getByText("Reviewing discovered company websites")).toBeTruthy();
@@ -182,7 +184,7 @@ describe("AI Work Board", () => {
     render(<WorkBoard jobs={[]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
     await userEvent.click(screen.getByRole("button", { name: /Start review/ }));
     await waitFor(() => expect(startReview).toHaveBeenCalledTimes(1));
-    expect(toast.success).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("On-demand operations review started", expect.objectContaining({ description: expect.stringContaining("The selected review reads only persisted records") }));
   });
 
   it("expands the real work panel and links filters correctly", () => {

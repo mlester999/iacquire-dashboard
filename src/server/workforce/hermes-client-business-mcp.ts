@@ -264,7 +264,7 @@ async function readClientContext(profile: InternalProfile) {
 }
 
 const CONTEXT_DESCRIPTIONS: Record<WorkforceRoleKey, string> = {
-  operations_manager: "Read the current state of your workspace that the person you are talking with is allowed to see: the AI work board, handoffs and setup status.",
+  operations_manager: "Read the current state of your workspace that the person you are talking with is allowed to see: the Work Board, handoffs and setup status.",
   lead_hunter: "Read the saved targeting rules and researched leads that the person you are talking with is allowed to see. Research never means consent to contact.",
   appointment_setter: "Read the calendar setup, this week's appointments and booking requests that the person you are talking with is allowed to see. This does not create or confirm bookings.",
   sales_assistant: "Read the sales pipelines, stages and deals that the person you are talking with is allowed to see.",

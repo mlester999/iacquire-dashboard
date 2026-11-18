@@ -36,7 +36,7 @@ export async function createFindingTask(ctx: OrgContext, input: { jobId: string;
       finding.detail ?? null,
       finding.recommendedAction ? `Recommended action: ${finding.recommendedAction}` : null,
       finding.evidenceHref ? `Evidence: ${finding.evidenceHref}` : null,
-      `From AI Work Board job ${job.id}.`,
+      `From Work Board job ${job.id}.`,
     ].filter(Boolean).join("\n\n").slice(0, 2000);
 
     const task = await createTaskInTx(
