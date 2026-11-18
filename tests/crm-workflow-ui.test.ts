@@ -215,6 +215,8 @@ describe("summaries", () => {
   const step = (kind: string, config: Record<string, unknown>) => ({ kind, config }) as unknown as WorkflowStep;
 
   it("says what each kind of step will do, by name, and what's missing", () => {
+    expect(names.agent("growth_partner")).toBe("AI Growth Partner");
+    expect(names.agent("sales_assistant")).toBe("Previous profile · Sales Assistant");
     expect(stepSummary(step("wait", { mode: "duration", amount: 2, unit: "days" }), names)).toBe("Wait 2 days");
     expect(stepSummary(step("wait", { mode: "until_time", time: "09:30", weekdays: [1, 2, 3, 4, 5] }), names)).toBe("Wait until 9:30 AM on weekdays");
     expect(stepSummary(step("wait", { mode: "until_date", source: "contact_field", fieldId: "f1", offset: { amount: 1, unit: "days", direction: "before" }, ifMissing: "end" }), names)).toBe("Wait until 1 day before Renewal date (ends the run if there's no date)");
@@ -224,7 +226,7 @@ describe("summaries", () => {
     expect(stepSummary(step("create_task", { title: "Call {{contact.first_name}}", priority: "high", assignee: "user", userId: "u1", dueIn: { amount: 4, unit: "hours" } }), names)).toBe("Task “Call {{contact.first_name}}” for Ana Reyes, due in 4 hours (high priority)");
     expect(stepSummary(step("update_field", { subject: "contact", field: "lead_status", value: "qualified" }), names)).toBe("Set the contact's lead status to Qualified");
     expect(stepSummary(step("move_stage", { pipelineId: "p1", stageId: "s2" }), names)).toBe("Move the deal to Sales › Won");
-    expect(stepSummary(step("send_message", { templateId: "m1", contentHash: "x", channel: "sms", sendAs: "sales_assistant", businessHoursOnly: true }), names)).toBe("Send SMS “Quote follow-up” as Sales Assistant, in business hours");
+    expect(stepSummary(step("send_message", { templateId: "m1", contentHash: "x", channel: "sms", sendAs: "sales_assistant", businessHoursOnly: true }), names)).toBe("Send SMS “Quote follow-up” as Previous profile · Sales Assistant, in business hours");
     expect(stepSummary(step("send_message", { templateId: "gone", contentHash: "x", channel: "email", sendAs: "sales_assistant", businessHoursOnly: false }), names)).toContain("no longer approved");
     expect(stepSummary(step("n8n", { mappingId: "n1", includeContact: false }), names)).toBe("Start n8n automation “Sync to Sheets”");
     expect(stepSummary(step("webhook", { subscriptionId: "w1", includeContact: true }), names)).toBe("Send a signed request to “Billing system” with the contact's details");

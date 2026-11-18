@@ -158,7 +158,7 @@ export const ACTION_KIND_LABELS: Record<ActionKind, string> = {
   assign: "Owner assigned",
   message: "Text or email to the caller",
   ai_callback: "AI call-back",
-  appointment_setter: "Handed to the Appointment Setter",
+  appointment_setter: "Assigned to AI Growth Partner",
   opportunity: "Deal timeline note",
   follow_up: "Follow-up reminder",
 };

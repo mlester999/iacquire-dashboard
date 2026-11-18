@@ -15,7 +15,7 @@ import { ACTIVE_STATES, isFinishedState, pathTo, type CaseActor, type CaseState 
 import { policyWording, renderWording, type MissedCallPolicy, type RecoveryChannel } from "@/lib/missed-calls/policy";
 import { syncCaseForCall, addCaseEvent, emitCaseEvent, emitRecovered, ensureConversation, loadCase, transitionCase, type CasePatch, type CaseRow } from "@/server/missed-calls/cases";
 import { loadEligibilityFacts } from "@/server/missed-calls/facts";
-import { routeToAppointmentSetter } from "@/server/missed-calls/routing";
+import { routeToGrowthPartner } from "@/server/missed-calls/routing";
 import { getPolicy } from "@/server/missed-calls/policy";
 
 // The recovery engine: works missed-call cases that are due. One pass over one case is one transaction under a row lock:
@@ -160,7 +160,7 @@ async function runTeamActions(db: Queryable, input: CaseRow, policy: MissedCallP
   if (policy.routeAppointmentSetter && c.conversation_id) {
     const id = await claimAction(db, c, "appointment_setter", `mcc:${c.id}:appointment_setter`);
     if (id) {
-      const r = await routeToAppointmentSetter(db, c);
+      const r = await routeToGrowthPartner(db, c);
       await finishAction(db, id, r.status === "done" ? "done" : r.status === "skipped" ? "skipped" : "blocked", { reason: r.reason, detail: r.agentId ? { agentId: r.agentId } : {} });
       await addCaseEvent(db, { orgId: c.org_id, caseId: c.id, kind: r.status === "done" ? "routed_to_ai" : "routing_not_done", actor: SYSTEM_ACTOR, detail: { reason: r.reason } });
     }

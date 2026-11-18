@@ -42,7 +42,8 @@ const one = async <T>(sql: string, params: unknown[]): Promise<T> => (await with
 const count = async (sql: string, params: unknown[]) => Number((await one<{ n: string }>(sql, params)).n);
 const rid = (p: string) => `${p}_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
 let n = 0;
-const number = () => `+1555${String(2000000 + ++n * 37 + Math.floor(Math.random() * 1000)).padStart(7, "0")}`;
+// A deterministic sequence keeps contacts created by this file distinct even when the whole suite runs in a different order or environment.
+const number = () => `+1555${String(2_000_000 + ++n).padStart(7, "0")}`;
 
 // ---------------------------------------------------------------------------
 // Payloads shaped like the providers' own (see the field notes in src/server/integrations/voice/*.ts)

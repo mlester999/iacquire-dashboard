@@ -66,6 +66,68 @@ describe("team-only mode", () => {
     expect((await eventsOf(c.id)).some((e) => e.kind === "ai_callback_blocked")).toBe(true);
   });
 
+  it("routes missed-call conversations to the tenant's linked AI Growth Partner, never a retained Appointment Setter profile", async () => {
+    const r = await recoveryWorkspace({ policy: { routeAppointmentSetter: true } });
+    const { caller, caseRow } = await missedCallFrom(r);
+    const { growthPartnerId, legacySetterId } = await withSystem(async (db) => {
+      const legacy = (await db.query<{ id: string }>(
+        "select id from agent_instances where org_id = $1 and role_key = 'appointment_setter'",
+        [r.w.org.id],
+      )).rows[0];
+      await db.query("update agent_instances set enabled = true, status = 'online', last_health_ok = true where id = $1", [legacy.id]);
+      const runtime = (await db.query<{ id: string }>(
+        "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner') returning id",
+        [r.w.org.id],
+      )).rows[0];
+      await db.query("update agent_instances set enabled = true, status = 'online', last_health_ok = true, mode = 'autonomous' where id = $1", [runtime.id]);
+      await db.query("insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2)", [r.w.org.id, runtime.id]);
+      return { growthPartnerId: runtime.id, legacySetterId: legacy.id };
+    });
+
+    await run(r.w.org.id, NOW);
+    const conversation = (await rows<{ ai_agent_id: string; owner_kind: string }>(
+      "select ai_agent_id, owner_kind from conversations where id = $1 and org_id = $2",
+      [caseRow.conversation_id, r.w.org.id],
+    ))[0];
+    expect(conversation).toEqual({ ai_agent_id: growthPartnerId, owner_kind: "ai" });
+    expect(conversation.ai_agent_id).not.toBe(legacySetterId);
+    expect((await actionsOf(caseRow.id)).find((a) => a.kind === "appointment_setter")).toMatchObject({ status: "done", reason: "assigned" });
+    expect((await eventsOf(caseRow.id)).some((event) => event.kind === "routed_to_ai")).toBe(true);
+    expect(await rows<{ detail: Record<string, unknown> }>(
+      "select detail from conversation_events where conversation_id = $1 and kind = 'ai_assigned' order by created_at desc limit 1",
+      [caseRow.conversation_id],
+    )).toMatchObject([{ detail: { agentId: growthPartnerId, roleKey: "growth_partner", by: "missed_call" } }]);
+    expect(await messagesFor((await caseOf(r.w.org.id, caller)).contact_id!)).toEqual([]);
+    expect(r.transport.calls).toEqual([]);
+  });
+
+  it("never assigns a tenant's missed call to another tenant's AI Growth Partner", async () => {
+    const r = await recoveryWorkspace({ policy: { routeAppointmentSetter: true } });
+    const other = await recoveryWorkspace();
+    const { caller, caseRow } = await missedCallFrom(r);
+    const foreignGrowthPartnerId = await withSystem(async (db) => {
+      const runtime = (await db.query<{ id: string }>(
+        "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'Other Tenant Growth Partner') returning id",
+        [other.w.org.id],
+      )).rows[0];
+      await db.query("update agent_instances set enabled = true, status = 'online', last_health_ok = true where id = $1", [runtime.id]);
+      await db.query("insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2)", [other.w.org.id, runtime.id]);
+      return runtime.id;
+    });
+
+    await run(r.w.org.id, NOW);
+    const action = (await actionsOf(caseRow.id)).find((a) => a.kind === "appointment_setter");
+    const conversation = (await rows<{ ai_agent_id: string; owner_kind: string }>(
+      "select ai_agent_id, owner_kind from conversations where id = $1 and org_id = $2",
+      [caseRow.conversation_id, r.w.org.id],
+    ))[0];
+    expect(action).toMatchObject({ status: "blocked", reason: "no_growth_partner" });
+    expect(conversation.ai_agent_id).not.toBe(foreignGrowthPartnerId);
+    expect(conversation.owner_kind).toBe("ai");
+    expect(await messagesFor((await caseOf(r.w.org.id, caller)).contact_id!)).toEqual([]);
+    expect(r.transport.calls).toEqual([]);
+  });
+
   it("makes a call that came in after hours due when the business opens", async () => {
     const r = await recoveryWorkspace({ mode: "manual", policy: { taskDueMinutes: 30 } });
     await withSystem((db) => db.query("update messaging_settings set business_hours = $2::jsonb where org_id = $1", [r.w.org.id, JSON.stringify({ mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] })]));

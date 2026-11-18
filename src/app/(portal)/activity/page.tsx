@@ -3,7 +3,7 @@ import { withUser } from "@/server/db";
 import { EmptyState } from "@/components/ui/primitives";
 import { AgentAvatar } from "@/components/brand";
 import { describeAction } from "@/lib/activity";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import { formatDateTime, sentenceCase } from "@/lib/utils";
 import { PageHero, MetricCard } from "@/components/ui/workspace";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
@@ -126,11 +126,11 @@ export default async function ActivityPage() {
             <ul className="scrollbar-thin max-h-[46rem] divide-y divide-line overflow-y-auto border-t border-line" tabIndex={0} aria-label="AI runs">
               {runs.map((r) => {
                 const role = isAgentRoleKey(r.role_key) ? AGENT_BY_KEY[r.role_key] : null;
-                const roleName = r.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner" : role?.shortName ?? sentenceCase(r.role_key);
+                const roleName = isWorkforceRoleKey(r.role_key) ? workforceIdentityLabel(r.role_key) : sentenceCase(r.role_key);
                 return (
                   <li key={r.id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-2/50">
                     {role ? (
-                      <AgentAvatar role={role} size="sm" />
+                      <AgentAvatar role={role} size="sm" decorative />
                     ) : (
                       <IconTile tone="violet" size="sm">
                         <Bot />

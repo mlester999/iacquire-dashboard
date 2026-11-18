@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/overlays";
 import { FilterBuilder, type FilterOptions } from "@/components/crm/filter-builder";
 import { cn } from "@/lib/utils";
 import { CHANNEL_LABELS } from "@/lib/messaging";
+import { isWorkforceRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import { LEAD_STATUS_LABELS, PREFERRED_CHANNEL_LABELS, type FieldType } from "@/lib/crm/types";
 import { EMPTY_FILTER, type FilterGroup } from "@/lib/crm/filters";
 import { CONVERSATION_OUTCOMES, OUTCOME_LABELS, type ConversationOutcome } from "@/lib/inbox";
@@ -675,7 +676,7 @@ function SendMessageFields({ step, options, errorAt, config, replace, base }: Ki
       )}
       <Field label="Send as" htmlFor="wf-msg-as" error={errorAt("config.sendAs")} hint="The AI identity the message goes out under. If it's paused, or set to ask first without this workflow's approval, nothing is sent.">
         <Select id="wf-msg-as" value={s.sendAs} aria-describedby={sendAs && sendAs.state !== "ok" ? "wf-msg-as-state" : undefined} onChange={(e) => config({ sendAs: e.target.value })}>
-          {employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{e.name}{!e.enabled ? " (off)" : e.mode === "paused" ? " (paused)" : !e.ready ? " (not ready)" : ""}</option>)}
+          {employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{isWorkforceRoleKey(e.roleKey) ? workforceIdentityLabel(e.roleKey, e.name) : e.name}{!e.enabled ? " (off)" : e.mode === "paused" ? " (paused)" : !e.ready ? " (not ready)" : ""}</option>)}
           {!employees.some((e) => e.roleKey === s.sendAs) && <option value={s.sendAs}>{s.sendAs.replace(/_/g, " ")} (not in this workspace)</option>}
         </Select>
         {sendAs && sendAs.state !== "ok" && <StateNote id="wf-msg-as-state" state={sendAs} />}
@@ -868,7 +869,7 @@ function AiTaskFields({ step, options, errorAt, config }: KindProps) {
     <>
       <Field label="AI profile" htmlFor="wf-ai-role" error={errorAt("config.roleKey")}>
         <Select id="wf-ai-role" value={a.roleKey} aria-describedby={state ? "wf-ai-role-state" : undefined} onChange={(e) => config({ roleKey: e.target.value })}>
-          {options.employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{e.name}</option>)}
+          {options.employees.map((e) => <option key={e.roleKey} value={e.roleKey}>{isWorkforceRoleKey(e.roleKey) ? workforceIdentityLabel(e.roleKey, e.name) : e.name}</option>)}
           {!chosen && <option value={a.roleKey}>{a.roleKey.replace(/_/g, " ")} (not in this workspace)</option>}
         </Select>
         {state && <StateNote id="wf-ai-role-state" state={state} />}

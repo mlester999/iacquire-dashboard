@@ -4,7 +4,7 @@
 import type { RunStatus } from "@/components/crm/workflows/parts";
 import { CALL_CLASS_LABELS } from "@/lib/missed-calls/state";
 import { LEAD_LABEL_TEXT } from "@/lib/lead-scoring/types";
-import { AGENT_ROLES, isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
+import { AGENT_ROLES, isWorkforceRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import { CHANNEL_LABELS } from "@/lib/messaging";
 import { idleLabel, OUTCOME_LABELS } from "@/lib/inbox";
 import { CONTACT_FILTER_FIELDS, isGroup, OP_LABELS, type FilterCondition, type FilterGroup } from "@/lib/crm/filters";
@@ -169,7 +169,12 @@ export function namesFrom(src: NameSource): Names {
     n8n: (id) => n8n.get(id),
     webhook: (id) => webhooks.get(id),
     connection: (id) => connections.get(id),
-    agent: (k) => agents.get(k) ?? (isWorkforceRoleKey(k) ? workforceRoleShortName(k) : AGENT_ROLES.find((r) => r.key === k)?.shortName ?? k.replace(/_/g, " ")),
+    agent: (k) => {
+      const storedName = agents.get(k);
+      if (isWorkforceRoleKey(k)) return workforceIdentityLabel(k, storedName);
+      const legacyRole = AGENT_ROLES.find((role) => role.key === k);
+      return legacyRole ? workforceIdentityLabel(legacyRole.key, storedName) : storedName ?? k.replace(/_/g, " ");
+    },
     calendar: (id) => calendars.get(id),
     appointmentType: (id) => types.get(id),
     form: (id) => forms.get(id),

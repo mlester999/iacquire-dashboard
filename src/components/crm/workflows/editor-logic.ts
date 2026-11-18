@@ -3,6 +3,7 @@
 // will send or call (the approval preview), and a template's missing choices. Pure, so server views, client components and the tests share
 // them (no "use client" here: a server component can't call functions from a client module).
 import { CHANNEL_LABELS } from "@/lib/messaging";
+import { isWorkforceRoleKey, workforceIdentityLabel } from "@/lib/agents";
 import {
   STEP_KINDS, STEP_KIND_LIST, validationContextFrom, type AiTaskConfig, type HttpRequestConfig, type N8nConfig, type SlackMessageConfig, type SendMessageConfig, type StepKind, type ValidationIssue, type WebhookConfig,
   type WorkflowDefinition, type WorkflowStep,
@@ -273,8 +274,9 @@ export const AI_PAUSED = "Paused: this step is skipped while it's paused (nothin
 export function aiTaskState(e: Employee | undefined): ReadyState {
   if (!e || !e.enabled) return { state: "blocked", text: "That AI profile isn't included in your workspace, so this step is skipped." };
   if (e.mode === "paused") return { state: "paused", text: `${AI_PAUSED}.` };
-  if (!e.ready) return { state: "blocked", text: `${e.name} hasn't passed its connection check, so this step is skipped (nothing is asked) and the run carries on.` };
-  if (!e.connected) return { state: "blocked", text: `${e.name} isn't connected to its AI service yet, so this step is skipped (nothing is asked) and the run carries on.` };
+  const identity = isWorkforceRoleKey(e.roleKey) ? workforceIdentityLabel(e.roleKey, e.name) : e.name;
+  if (!e.ready) return { state: "blocked", text: `${identity} hasn't passed its connection check, so this step is skipped (nothing is asked) and the run carries on.` };
+  if (!e.connected) return { state: "blocked", text: `${identity} isn't connected to its AI service yet, so this step is skipped (nothing is asked) and the run carries on.` };
   if (!e.liveRuns) return { state: "blocked", text: "AI runs are switched off for now, so this step is skipped (nothing is asked) and the run carries on." };
   return { state: "ok", text: e.mode === "autonomous" ? "Acts on its own within its tools." : "Asks you before it changes anything." };
 }
@@ -282,8 +284,9 @@ export function aiTaskState(e: Employee | undefined): ReadyState {
 /** Whether a message can go out under this employee, as the send path's gate decides: included, not paused, passed its connection check. */
 export function sendAsState(e: Employee | undefined): ReadyState {
   if (!e || !e.enabled) return { state: "blocked", text: "That AI profile isn't included in your workspace, so nothing is sent." };
-  if (e.mode === "paused") return { state: "paused", text: `${e.name} is paused: while it is, this step sends nothing (it's skipped) and the run carries on.` };
-  if (!e.ready) return { state: "blocked", text: `${e.name} hasn't passed its connection check, so this step sends nothing (it's skipped) and the run carries on.` };
+  const identity = isWorkforceRoleKey(e.roleKey) ? workforceIdentityLabel(e.roleKey, e.name) : e.name;
+  if (e.mode === "paused") return { state: "paused", text: `${identity} is paused: while it is, this step sends nothing (it's skipped) and the run carries on.` };
+  if (!e.ready) return { state: "blocked", text: `${identity} hasn't passed its connection check, so this step sends nothing (it's skipped) and the run carries on.` };
   return { state: "ok", text: "" };
 }
 
