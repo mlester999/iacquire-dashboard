@@ -1,5 +1,5 @@
 // Missed-call recovery and lead scoring inside the rest of the platform: the new Automation Studio triggers and steps (and that they respect the
-// same validation, permissions and plan rules as every other step), that automation cannot loop through them, the Appointment Setter routing, and
+// same validation, permissions and plan rules as every other step), that automation cannot loop through them, canonical Growth Partner routing, and
 // the two read-only AI workforce reviews. Synthetic workspaces; nothing leaves the machine.
 import { beforeAll, describe, expect, it } from "vitest";
 import { resetEnvCache } from "@/server/env";
@@ -220,7 +220,7 @@ describe("workflows on lead priority", () => {
   });
 });
 
-describe("handing a missed caller to the Appointment Setter", () => {
+describe("handing a missed caller to the AI Growth Partner", () => {
   async function readySetter(w: MessagingOrg) {
     const id = await agentId(w.org.id, "appointment_setter");
     await withSystem(async (db) => {
@@ -229,11 +229,24 @@ describe("handing a missed caller to the Appointment Setter", () => {
     });
     return id;
   }
+  async function readyGrowthPartner(w: MessagingOrg) {
+    return withSystem(async (db) => {
+      const { rows } = await db.query<{ id: string }>(
+        "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'AI Growth Partner') returning id",
+        [w.org.id],
+      );
+      const id = rows[0].id;
+      await db.query("update agent_instances set status = 'online', last_health_ok = true, enabled = true, mode = 'autonomous' where id = $1", [id]);
+      await db.query("insert into ai_growth_partners (org_id, runtime_agent_instance_id) values ($1, $2)", [w.org.id, id]);
+      return id;
+    });
+  }
   const convOf = async (id: string) => (await rows<{ owner_kind: string; ai_agent_id: string | null; ownership_version: number }>("select owner_kind, ai_agent_id, ownership_version from conversations where id = $1", [id]))[0];
 
-  it("assigns the conversation to a ready Appointment Setter, once, and records who did it", async () => {
+  it("assigns the conversation to the linked Growth Partner, never a ready legacy Setter, once, and records who did it", async () => {
     const r = await recoveryWorkspace({ mode: "manual", policy: { routeAppointmentSetter: true } });
     const setter = await readySetter(r.w);
+    const growthPartner = await readyGrowthPartner(r.w);
     const caller = callerNumber();
     const contact = await createContact(r.owner, { displayName: "Booking Bea", phone: caller });
     await recordCall(r.w.org.id, voice({ customerNumber: caller }));
@@ -242,11 +255,12 @@ describe("handing a missed caller to the Appointment Setter", () => {
     await processMissedCalls({ now: minutesAfter(5), orgId: r.w.org.id });
     await processMissedCalls({ now: minutesAfter(40), orgId: r.w.org.id });
     const after = await convOf(c.conversation_id!);
-    expect(after).toMatchObject({ owner_kind: "ai", ai_agent_id: setter });
+    expect(after).toMatchObject({ owner_kind: "ai", ai_agent_id: growthPartner });
+    expect(after.ai_agent_id).not.toBe(setter);
     expect(after.ownership_version).toBeGreaterThan(before.ownership_version);
     expect((await actionsOf(c.id)).filter((a) => a.kind === "appointment_setter")).toEqual([expect.objectContaining({ status: "done" })]);
     const ev = await rows<{ kind: string; actor_kind: string; detail: Record<string, unknown> }>("select kind, actor_kind, detail from conversation_events where conversation_id = $1 and kind = 'ai_assigned'", [c.conversation_id]);
-    expect(ev).toEqual([expect.objectContaining({ actor_kind: "system", detail: expect.objectContaining({ roleKey: "appointment_setter", by: "missed_call" }) })]);
+    expect(ev).toEqual([expect.objectContaining({ actor_kind: "system", detail: expect.objectContaining({ agentId: growthPartner, roleKey: "growth_partner", by: "missed_call" }) })]);
     void contact;
   });
 
