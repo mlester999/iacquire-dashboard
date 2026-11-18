@@ -591,6 +591,14 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     expect(plumbing).toMatchObject({ qualification_state: "disqualified", score: 0, duplicate_status: "no_match" });
     expect(plumbing?.qualification_reasons[0]).toMatch(/does not provide roofing services/i);
 
+    // Simulate a corrupted/legacy row that bypassed parser-level citation checks. The CRM import
+    // executor must independently verify the contact source against the persisted evidence.
+    await withSystem((db) => db.query(
+      "update leads set public_contact = $3::jsonb where id = $1 and org_id = $2",
+      [alpha!.id, org.id, JSON.stringify({ name: "Synthetic Uncited Contact", email: "uncited@orlando-roofing-alpha.test", source_url: "https://orlando-roofing-alpha.test/unreviewed-contact" })],
+    ));
+    expect((await listLeads(context, "all")).find((lead) => lead.id === alpha!.id)?.public_contact).toBeNull();
+
     await expect(reviewLeads(context, [plumbing!.id], "approve")).rejects.toThrow(/disqualified/);
     expect(await reviewLeads(context, [alpha!.id], "approve")).toBe(1);
     const approvalId = await requestCrmImport(context, [alpha!.id]);
@@ -656,6 +664,11 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
       [org.id],
     ));
     expect(nativeCompanyCount.rows[0]?.count).toBe(1);
+    const uncitedContactCount = await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from contacts where org_id = $1 and email::text = 'uncited@orlando-roofing-alpha.test' and deleted_at is null",
+      [org.id],
+    ));
+    expect(uncitedContactCount.rows[0]?.count).toBe(0);
 
     const completedJob = await getWorkJobView(context, importJobId!);
     expect(completedJob).toMatchObject({

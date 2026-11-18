@@ -144,15 +144,15 @@ export function parseResearchOutput(output: string) {
       rejected++;
       continue;
     }
-    // Public contact information is accepted only with a source URL that states it. Anything else
-    // is discarded rather than guessed or inferred.
-    const contact = result.data.public_contact;
-    if (contact && !contact.source_url) result.data.public_contact = null;
     // The model cannot reliably attest when it observed an individual page. Persisted research
     // timestamps come from the server; don't display a model-supplied timestamp as fact.
     result.data.evidence = result.data.evidence.map((item) => ({ ...item, observed_at: null }));
     result.data.qualification_summary = sanitizeQualificationSummary(result.data.qualification_summary);
     const evidenceUrls = new Set(result.data.evidence.map((item) => item.url));
+    // Public contact information is accepted only when its exact source URL is among the source
+    // records saved for this candidate. A plausible URL supplied only by the model is not evidence.
+    const contact = result.data.public_contact;
+    if (contact && (!contact.source_url || !evidenceUrls.has(contact.source_url))) result.data.public_contact = null;
     const disqualificationEvidenceUrl = result.data.disqualification_evidence_url
       && evidenceUrls.has(result.data.disqualification_evidence_url)
       ? result.data.disqualification_evidence_url

@@ -169,7 +169,8 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
     );
     if (!updated.length) throw new AppError("conflict", "This request is already running or finished.");
     if (request.work_job_id) {
-      await retryWorkJob(db, { jobId: request.work_job_id, orgId: ctx.org.orgId });
+      const retried = await retryWorkJob(db, { jobId: request.work_job_id, orgId: ctx.org.orgId });
+      if (!retried) throw new AppError("conflict", "The associated work job is no longer eligible to retry.");
       return request.work_job_id;
     }
     const job = await createWorkJob(db, {
@@ -238,7 +239,7 @@ export interface LeadRow {
   evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null; source?: "openstreetmap" | "company_website" | null }>;
   duplicate_status: string;
   duplicate_matches: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
-  public_contact: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null };
+  public_contact: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null } | null;
   review_status: "pending" | "approved" | "rejected";
   crm_sync_status: string;
   created_at: Date;
@@ -301,6 +302,11 @@ export async function listLeads(ctx: OrgContext, status: "pending" | "approved" 
           : null;
         return { ...item, source, observed_at: observedAt };
       }) : [];
+      const evidenceUrls = new Set(evidence.map((item) => item.url));
+      const publicContact = row.public_contact && typeof row.public_contact.source_url === "string"
+        && evidenceUrls.has(row.public_contact.source_url)
+        ? row.public_contact
+        : null;
       const legacy = legacyQualification(row, evidence.length, summary);
       return {
         ...row,
@@ -310,6 +316,7 @@ export async function listLeads(ctx: OrgContext, status: "pending" | "approved" 
         recommended_next_action: row.recommended_next_action ?? legacy.nextAction,
         signal_records: Array.isArray(row.signal_records) ? row.signal_records.slice(0, 10) : [],
         evidence,
+        public_contact: publicContact,
       };
     });
   });
@@ -448,7 +455,7 @@ export async function requestCrmImport(ctx: OrgContext, leadIds: string[]) {
       targetType: "leads",
       targetLabel: rows.slice(0, 3).map((r) => r.business_name).join(", ") + (rows.length > 3 ? ` +${rows.length - 3} more` : ""),
       reason: "These businesses were reviewed and approved as good fits.",
-      expectedEffect: "Creates or reuses native CRM company records and only creates contacts when public contact details were supplied. No customer message is sent and no marketing consent is inferred.",
+      expectedEffect: "Creates or reuses native CRM company records and creates contacts only when their public contact source URL appears in the saved lead evidence. No customer message is sent and no marketing consent is inferred.",
       risk: "medium",
       idempotencyKey: requestKey,
     });

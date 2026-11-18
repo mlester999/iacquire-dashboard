@@ -22,7 +22,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: "ai-growth-partner",
     title: "Your AI Growth Partner",
     keywords: ["employee", "employees", "workforce", "agent", "agents", "team", "operations", "lead hunter", "appointment setter", "sales assistant", "crm manager", "analyst", "roles"],
-    body: "New workspaces get one AI Growth Partner: one identity, one private runtime, one permanent conversation and one Business Brain, with capabilities for operations, lead research, appointments, sales, CRM and performance. Your partner shares the business context across those capabilities. Workspaces created with earlier role profiles keep their history and can still open those profiles under Previous role profiles.",
+    body: "New workspaces get one AI Growth Partner: one identity, one private runtime, one permanent conversation and one Business Brain, with capabilities for operations, lead research, appointments, sales, CRM and performance. Your partner shares the business context across those capabilities. Workspaces created with earlier role profiles keep their saved records and history; the permanent conversation can search that history, while Previous role profiles remains available for authorized review.",
     links: [{ label: "AI Growth Partner", href: "/growth-partner" }, { label: "Previous role profiles", href: "/employees" }],
   },
   {
@@ -36,7 +36,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     id: "chatting",
     title: "Chatting with your AI Growth Partner",
     keywords: ["chat", "message", "conversation", "ask", "talk", "history", "new chat", "regenerate", "stop", "copy", "search conversations"],
-    body: "Open AI Growth Partner and type your question in the permanent conversation. Your partner uses the shared Business Brain and can help across its capabilities. Review requests for important changes appear in Approvals. Previous role profiles retain their original separate conversation histories.",
+    body: "Open AI Growth Partner and type your question in the permanent conversation. Your partner uses the shared Business Brain and can help across its capabilities. Review requests for important changes appear in Approvals. Older conversation history remains preserved and can be searched from the permanent conversation; it does not create another Growth Partner chat.",
     links: [{ label: "AI Growth Partner", href: "/growth-partner" }],
   },
   {

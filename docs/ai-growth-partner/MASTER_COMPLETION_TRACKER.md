@@ -1,6 +1,6 @@
 # AI Growth Partner completion tracker
 
-Last updated: 2026-11-17. This is the single progress ledger for the product transformation. It separates implemented application behavior, synthetic acceptance and live-provider acceptance. A green synthetic test never counts as proof of a public-source, paid-model or external-integration run.
+Last updated: 2026-11-18. This is the single progress ledger for the product transformation. It separates implemented application behavior, synthetic acceptance and live-provider acceptance. A green synthetic test never counts as proof of a public-source, paid-model or external-integration run.
 
 ## Weighted progress
 
@@ -53,6 +53,14 @@ The percentage is a planning estimate, not a launch-readiness score. Each area i
 - The current change's final `npm run build:clean -- --webpack` passed on Next.js **16.4.5**: optimized compilation in **4.1 minutes**, build TypeScript in **73 seconds**, and **16/16** static pages. Its loopback TLS/SNI-aware proxy allowed only `fonts.googleapis.com` and `fonts.gstatic.com`; `dc.services.visualstudio.com` was denied before a tunnel opened, and the proxy was stopped after the build.
 - No schema or migration changed. The local machine has no Docker CLI; the pinned Hermes-native memory evidence remains hosted run **#102** on source commit `46dbf279`, with two synthetic tenants and the internal mock model. That is not exact-head acceptance and does not verify real-model reasoning or live integrations.
 - No hosted database, external discovery/model/provider, customer communication, production branch or production deployment was used. Discovery evidence remains synthetic fixtures; no live discovery or public website integration passed.
+
+## Acquisition evidence and unified reporting hardening (2026-11-18)
+
+- A researched contact is retained and shown only when its exact `source_url` appears in that candidate's saved evidence. The CRM import executor rechecks the persisted evidence immediately before creating a contact; the company can still be imported when contact evidence is absent. A stale research request now rolls back its status update if its linked Work Board job is no longer retryable.
+- Client Analytics groups current Growth Partner runs separately from retained previous-profile activity, without presenting the retired role names. Help copy now explains that earlier conversation history is searchable from the permanent conversation.
+- Focused acquisition/UI tests passed **4 files / 30 tests**; application and script typecheck passed; repository lint passed with **0 errors** and the same **3 existing warnings** in unrelated AQI/setup files. Full regression and production build remain in hosted run **#115** on base commit `9db2cca`; exact-head verification for this uncommitted follow-up is pending.
+- Pinned Hermes two-tenant acceptance run **#103** passed on base commit `9db2cca`. It verifies the pinned runtime, synthetic tenant provisioning, network-disabled runtime containers, tool/audit/tenant boundaries, and native Hermes memory after restart. It does not verify real-model reasoning or live integrations, and it does not cover the follow-up source changes.
+- No schema or migration changed. No live source request, public-site crawl, paid provider, outbound communication, hosted database, production branch or production deployment was used.
 
 ## Next checkpoint priorities
 

@@ -223,4 +223,25 @@ describe("Lead Hunter business context", () => {
       },
     ]);
   });
+
+  it("keeps public contact details only when their exact source URL is in the candidate evidence", () => {
+    const parsed = parseResearchOutput(JSON.stringify({
+      leads: [
+        {
+          business_name: "Evidence Cited Clinic",
+          evidence: [{ url: "https://clinic.example/contact", summary: "The site lists the practice manager and public email." }],
+          public_contact: { name: "Jordan Lee", email: "hello@clinic.example", source_url: "https://clinic.example/contact" },
+        },
+        {
+          business_name: "Uncited Contact Clinic",
+          evidence: [{ url: "https://clinic.example/about", summary: "The site describes the clinic." }],
+          public_contact: { name: "Casey Lee", email: "casey@clinic.example", source_url: "https://clinic.example/contact" },
+        },
+      ],
+    }));
+
+    expect(parsed.error).toBeNull();
+    expect(parsed.leads[0]?.public_contact).toMatchObject({ name: "Jordan Lee", source_url: "https://clinic.example/contact" });
+    expect(parsed.leads[1]?.public_contact).toBeNull();
+  });
 });

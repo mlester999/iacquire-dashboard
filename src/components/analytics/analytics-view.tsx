@@ -4,13 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Ban, BarChart3, CheckCircle2, Download, Info, Sparkles, XCircle } from "lucide-react";
-import { AgentAvatar } from "@/components/brand";
 import { AreaChart, Columns, HBarList, StatusSplit } from "@/components/charts";
 import { ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, Input } from "@/components/ui/primitives";
 import { Segmented, Tooltip } from "@/components/ui/overlays";
 import { PageHero, CoverageBar } from "@/components/ui/workspace";
-import { AGENT_BY_KEY, AGENT_ROLES } from "@/lib/agents";
+import { growthPartnerWorkRows } from "@/lib/analytics-view";
 import { formatCurrency, formatNumber, formatPercent, timeZoneLabel } from "@/lib/utils";
 
 interface Data {
@@ -97,6 +96,7 @@ export function AnalyticsView({
   const runsTotal = data.workforce.byAgent.reduce((s, a) => s + a.total, 0);
   const completed = data.workforce.byAgent.reduce((s, a) => s + a.completed, 0);
   const failed = data.workforce.byAgent.reduce((s, a) => s + a.failed, 0);
+  const partnerActivity = growthPartnerWorkRows(data.workforce.byAgent);
   const query = range.key === "custom" ? `range=custom&from=${from}&to=${to}` : `range=${range.key}`;
   const nativeDeals = Boolean(data.sources.native?.opportunities);
   const nativeCalendar = Boolean(data.sources.native?.appointments);
@@ -259,25 +259,14 @@ export function AnalyticsView({
           <CardHeader>
             <div>
               <CardTitle>AI work activity</CardTitle>
-              <CardDescription>Recorded conversations and research runs in this period.</CardDescription>
+              <CardDescription>Current Partner work and retained previous-profile activity in this period.</CardDescription>
             </div>
             <AskAnalyst canChat={canChat} prompt={`The AI work completed ${completed} of ${runsTotal} runs in the last ${range.days} days with ${failed} failures. What does that tell you?`} />
           </CardHeader>
           <CardContent className="space-y-5">
             <HBarList
               unit="runs"
-              rows={AGENT_ROLES.map((r) => {
-                const row = data.workforce.byAgent.find((a) => a.role_key === r.key);
-                return {
-                  key: r.key,
-                  label: (
-                    <span className="flex items-center gap-2">
-                      <AgentAvatar role={r} size="xs" /> {r.shortName}
-                    </span>
-                  ),
-                  value: row?.total ?? 0,
-                };
-              })}
+              rows={partnerActivity}
               emptyLabel="No AI runs in this period."
             />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -361,7 +350,7 @@ export function AnalyticsView({
           </CardContent>
         </Card>
       </div>
-      <p className="text-center text-[12px] text-faint">“Ask {AGENT_BY_KEY.performance_analyst.shortName}” pre-fills a question with the numbers from that section — only what you send is shared.</p>
+      <p className="text-center text-[12px] text-faint">“Ask AI Growth Partner” pre-fills a question with the numbers from that section — only what you send is shared.</p>
     </div>
   );
 }

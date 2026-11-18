@@ -14,7 +14,7 @@ vi.mock("next/server", async (importOriginal) => ({
 import { withSystem } from "@/server/db";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { recommendedSettings } from "@/lib/role-playbooks";
-import { createResearchRequest, listLeads } from "@/server/leads/service";
+import { createResearchRequest, listLeads, retryResearchRequest } from "@/server/leads/service";
 import { appendWorkEvent, cancelWorkJob, claimWorkJob, createWorkJob, finishWorkJob, getWorkJobView, heartbeatWorkJob, recordWorkStage, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
@@ -32,7 +32,10 @@ const researchPayload = {
       website: "https://alpha-dental.example",
       industry: "Dental",
       location: "Miami, FL",
-      evidence: [{ url: "https://alpha-dental.example/about", observed_at: "2026-10-21T00:00:00Z", summary: "The practice lists two locations and an online booking page." }],
+      evidence: [
+        { url: "https://alpha-dental.example/about", observed_at: "2026-10-21T00:00:00Z", summary: "The practice lists two locations and an online booking page." },
+        { url: "https://alpha-dental.example/contact", observed_at: "2026-10-21T00:00:00Z", summary: "The practice lists its manager and public email." },
+      ],
       buying_signals: [{
         signal: "Online booking page",
         evidence_url: "https://alpha-dental.example/about",
@@ -191,7 +194,7 @@ describe("Lead Hunter durable research", () => {
     const existing = leads.find((lead) => lead.business_name === "Existing Dental Group");
     const gamma = leads.find((lead) => lead.business_name === "Gamma Smiles");
     expect(alpha).toBeTruthy();
-    expect(alpha!.evidence).toHaveLength(1);
+    expect(alpha!.evidence).toHaveLength(2);
     expect(alpha!.qualification_state).toBe("evidence_backed");
     expect(alpha!.recommended_next_action).toMatch(/review the cited evidence/i);
     expect(alpha!.signal_records).toMatchObject([{
@@ -202,7 +205,7 @@ describe("Lead Hunter durable research", () => {
       client_fit: "An online booking workflow may fit the stated appointment automation service.",
     }]);
     expect(Date.parse(alpha!.signal_records[0].recorded_at ?? "")).not.toBeNaN();
-    expect(alpha!.public_contact.email).toBe("hello@alpha-dental.example");
+    expect(alpha!.public_contact?.email).toBe("hello@alpha-dental.example");
     expect(existing!.duplicate_status).toBe("duplicate");
     expect(existing!.qualification_state).toBe("duplicate");
     expect(existing!.duplicate_matches?.[0]?.kind).toBe("crm_company");
@@ -284,6 +287,33 @@ describe("Lead Hunter durable research", () => {
     expect(completed.status).toBe("completed");
     expect(completed.attempts).toBe(2);
   }, 30000);
+
+  it("does not leave a research request queued when its linked job is already queued", async () => {
+    await withSystem((db) => db.query("update usage_limits set daily_lead_research = 1000 where org_id = $1", [org.id]));
+    try {
+      const created = await createResearchRequest(ctxFor(owner, org, "owner"), {
+        prompt: "Find 3 dental practices in Miami.",
+        campaignType: "business",
+      }, { deferKick: true });
+      expect(created.jobId).toBeTruthy();
+
+      await withSystem((db) => db.query(
+        "update lead_research_requests set status = 'failed' where id = $1 and org_id = $2",
+        [created.requestId, org.id],
+      ));
+
+      await expect(retryResearchRequest(ctxFor(owner, org, "owner"), created.requestId)).rejects.toThrow(/no longer eligible to retry/);
+      const { rows } = await withSystem((db) => db.query<{ request_status: string; job_status: string }>(
+        `select r.status as request_status, j.status as job_status
+           from lead_research_requests r join ai_work_jobs j on j.id = r.work_job_id
+          where r.id = $1 and r.org_id = $2`,
+        [created.requestId, org.id],
+      ));
+      expect(rows[0]).toEqual({ request_status: "failed", job_status: "queued" });
+    } finally {
+      await withSystem((db) => db.query("update usage_limits set daily_lead_research = 5 where org_id = $1", [org.id]));
+    }
+  });
 
   it("keeps jobs tenant-scoped and never exposes another workspace's work", async () => {
     const otherOrg = await createOrg({ name: "Other Co" });

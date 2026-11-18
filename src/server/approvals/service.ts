@@ -180,10 +180,10 @@ async function executeApprovedLeadImport(input: {
     const { rows: leads } = await db.query<{
       id: string; business_name: string; website: string | null; domain: string | null; industry: string | null; location: string | null;
       qualification_summary: string | null; qualification_state: string; duplicate_status: string; review_status: string; crm_sync_status: string;
-      public_contact: unknown; score: number | null; crm_company_id: string | null; crm_contact_id: string | null; org_name: string; timezone: string;
+      evidence: unknown; public_contact: unknown; score: number | null; crm_company_id: string | null; crm_contact_id: string | null; org_name: string; timezone: string;
     }>(
       `select l.id, l.business_name, l.website, l.domain, l.industry, l.location, l.qualification_summary,
-              l.qualification_state, l.duplicate_status, l.review_status, l.crm_sync_status, l.public_contact, l.score,
+              l.qualification_state, l.duplicate_status, l.review_status, l.crm_sync_status, l.evidence, l.public_contact, l.score,
               l.crm_company_id, l.crm_contact_id, o.name as org_name, o.timezone
          from leads l join organizations o on o.id = l.org_id
         where l.org_id = $1 and l.id = any($2::uuid[])
@@ -213,12 +213,17 @@ async function executeApprovedLeadImport(input: {
       if (!company.created) reusedCompanies += 1;
 
       const publicContact = recordValue(lead.public_contact);
+      const savedEvidenceUrls = new Set(Array.isArray(lead.evidence)
+        ? lead.evidence.map((item) => recordValue(item).url).filter((url): url is string => typeof url === "string")
+        : []);
+      const contactSourceUrl = textValue(publicContact.source_url, 2000);
+      const hasSavedContactEvidence = Boolean(contactSourceUrl && savedEvidenceUrls.has(contactSourceUrl));
       const name = textValue(publicContact.name, 200);
       const email = textValue(publicContact.email, 320);
       const phone = textValue(publicContact.phone, 40);
       const role = textValue(publicContact.role, 120);
       let contactId = lead.crm_contact_id;
-      if (!contactId && (name || email || phone)) {
+      if (!contactId && hasSavedContactEvidence && (name || email || phone)) {
         const contact = await createContactInTx(db, actor, {
           displayName: name ?? email ?? phone,
           email,
