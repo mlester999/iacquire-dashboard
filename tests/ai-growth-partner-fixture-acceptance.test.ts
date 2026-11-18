@@ -14,12 +14,12 @@ import { createCompanyWebsiteFetchPolicy } from "@/server/leads/company-website-
 import { analyzeWebsite, type PageFetcher, type WebsiteAnalysis } from "@/server/onboarding/website";
 import { searchOpenStreetMap, type OpenStreetMapSourceConfig } from "@/server/leads/openstreetmap-source";
 import { runLeadResearchJob } from "@/server/leads/research-job";
-import { getWorkJobView } from "@/server/workforce/jobs";
+import { cancelWorkJob, getWorkJobView } from "@/server/workforce/jobs";
 import { listWorkBoardJobs } from "@/server/workforce/work-board";
 import { registerWorkHandler } from "@/server/workforce/work-runner";
 import { connectHermesProfile, createConfigVersion, ensureGrowthPartnerRuntime, runHealthCheck } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { listLeads, requestCrmImport, reviewLeads, saveTargeting } from "@/server/leads/service";
+import { createResearchRequest, listLeads, requestCrmImport, reviewLeads, saveTargeting } from "@/server/leads/service";
 import { saveResearchSourcePolicy } from "@/server/leads/research-source-policy";
 import { sendChatMessage } from "@/server/chat/service";
 import { startMockHermes, type MockHermes, type MockScript } from "./support/mock-hermes";
@@ -742,4 +742,32 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     })))).toEqual({ status: "no_match", matches: [] });
     expect((globalThis as { __noNetworkBlocked?: string[] }).__noNetworkBlocked).toEqual([]);
   }, 120_000);
+
+  it("routes a Leads workspace request through the one Partner runtime and permanent thread", async () => {
+    await expect(createResearchRequest(context, {
+      prompt: "Find 1 roofing company in Orlando for routing validation.",
+      campaignType: "business",
+    }, { agentRole: "growth_partner", conversationId: crypto.randomUUID(), deferKick: true }))
+      .rejects.toMatchObject({ code: "forbidden" });
+
+    const created = await createResearchRequest(context, {
+      prompt: "Find 1 roofing company in Orlando for routing validation.",
+      campaignType: "business",
+    }, { agentRole: "growth_partner", deferKick: true });
+    expect(created).toMatchObject({ status: "queued", jobId: expect.any(String) });
+    const { rows } = await withSystem((db) => db.query<{
+      role_key: string; conversation_id: string | null; request_role: string;
+    }>(
+      `select a.role_key, j.conversation_id, r.agent_role as request_role
+         from lead_research_requests r
+         join ai_work_jobs j on j.id = r.work_job_id and j.org_id = r.org_id
+         join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+        where r.id = $1 and r.org_id = $2`,
+      [created.requestId, org.id],
+    ));
+    expect(rows).toEqual([{ role_key: "growth_partner", conversation_id: org.conversationId, request_role: "growth_partner" }]);
+    const job = await getWorkJobView(context, created.jobId!);
+    expect(job).toMatchObject({ capability: "lead_research", conversationId: org.conversationId, status: "queued" });
+    await expect(cancelWorkJob(context, created.jobId!)).resolves.toBe("cancelled");
+  }, 30_000);
 });

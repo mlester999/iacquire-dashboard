@@ -73,6 +73,20 @@ async function researchAgent(db: Queryable, orgId: string, role: WorkforceRoleKe
   return rows[0] ?? null;
 }
 
+async function growthPartnerConversationId(db: Queryable, orgId: string, agentId: string): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(
+    `select c.id
+       from ai_growth_partners p
+       join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
+       join chat_conversations c on c.growth_partner_id = p.id and c.agent_instance_id = a.id and c.org_id = p.org_id and c.deleted_at is null
+      where p.org_id = $1 and p.runtime_agent_instance_id = $2
+      limit 2`,
+    [orgId, agentId],
+  );
+  if (rows.length > 1) throw new AppError("conflict", "This workspace has more than one active Growth Partner conversation. Research was not started.");
+  return rows[0]?.id ?? null;
+}
+
 /**
  * Creates the research request and its durable work job. The job is the unit of execution and
  * evidence; the request keeps the existing review-queue contract. If the selected runtime is not ready,
@@ -95,13 +109,22 @@ export async function createResearchRequest(
   if (!limit.allowed) throw new AppError("rate_limited", "Too many research requests this hour.");
   const targeting = await getTargeting(ctx);
   const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
-  const connected = Boolean(agent?.enabled && canChat(agent.status));
+  const partnerConversationId = agent && agentRole === "growth_partner"
+    ? await withSystem((db) => growthPartnerConversationId(db, ctx.org.orgId, agent.id))
+    : null;
+  if (agentRole === "growth_partner" && options.conversationId && options.conversationId !== partnerConversationId) {
+    throw new AppError("forbidden", "Research must stay in this workspace's permanent AI Growth Partner conversation.");
+  }
+  const hasRequiredConversation = agentRole !== "growth_partner" || Boolean(partnerConversationId);
+  const connected = Boolean(agent?.enabled && canChat(agent.status) && hasRequiredConversation);
   // Pauses and unavailable employees keep the request honestly waiting; nothing starts in that state.
   const gate = connected && agent
     ? await withSystem((db) => jobGate(db, { orgId: ctx.org.orgId, agentId: agent.id }))
     : null;
   const ready = connected && gate?.allowed === true;
-  const waitingReason = gate && !gate.allowed
+  const waitingReason = agentRole === "growth_partner" && !partnerConversationId
+    ? "The permanent AI Growth Partner conversation is not available yet, so no research has run."
+    : gate && !gate.allowed
     ? gate.detail
     : workforceRoleShortName(agentRole) + " isn't connected yet, so no research has run.";
   if (ready) await assertWithinLimits(ctx.org.orgId, "lead_research");
@@ -128,7 +151,7 @@ export async function createResearchRequest(
         title: prompt.replace(/\s+/g, " ").slice(0, 200),
         idempotencyKey: `lead-research:${requestId}`,
         input: { requestId, prompt, campaignType: input.campaignType, criteria: targeting, origin: options.conversationId ? "chat" : "leads" },
-        conversationId: options.conversationId ?? null,
+        conversationId: agentRole === "growth_partner" ? partnerConversationId : options.conversationId ?? null,
       });
       jobId = job.id;
       await db.query("update lead_research_requests set work_job_id = $3 where id = $1 and org_id = $2", [requestId, ctx.org.orgId, job.id]);
@@ -140,7 +163,7 @@ export async function createResearchRequest(
   return { requestId: created.requestId, jobId: created.jobId, status: ready ? "queued" : "waiting_for_agent" };
 }
 
-/** Re-runs a request that was saved while the Lead Hunter was unavailable. Never automatic. */
+/** Re-runs a saved research request after its assigned runtime becomes available. Never automatic. */
 export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can run lead research.");
   const roleRow = await withSystem(async (db) => (await db.query<{ agent_role: string }>(
@@ -153,6 +176,12 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
   const agentRole = roleRow.agent_role;
   const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
   if (!agent?.enabled || !canChat(agent.status)) throw new AppError("agent_unavailable", workforceRoleShortName(agentRole) + " isn't connected yet.");
+  const partnerConversationId = agentRole === "growth_partner"
+    ? await withSystem((db) => growthPartnerConversationId(db, ctx.org.orgId, agent.id))
+    : null;
+  if (agentRole === "growth_partner" && !partnerConversationId) {
+    throw new AppError("conflict", "Set up the permanent AI Growth Partner conversation before retrying this research.");
+  }
   await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
   await assertWithinLimits(ctx.org.orgId, "lead_research");
   const jobId = await withSystem(async (db) => {
@@ -171,6 +200,15 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
     if (request.work_job_id) {
       const retried = await retryWorkJob(db, { jobId: request.work_job_id, orgId: ctx.org.orgId });
       if (!retried) throw new AppError("conflict", "The associated work job is no longer eligible to retry.");
+      if (agentRole === "growth_partner") {
+        const bound = await db.query(
+          `update ai_work_jobs set conversation_id = $3
+            where id = $1 and org_id = $2 and agent_instance_id = $4 and capability = 'lead_research'
+            returning id`,
+          [request.work_job_id, ctx.org.orgId, partnerConversationId, agent.id],
+        );
+        if (!bound.rows.length) throw new AppError("conflict", "The associated research job no longer belongs to this Growth Partner.");
+      }
       return request.work_job_id;
     }
     const job = await createWorkJob(db, {
@@ -181,6 +219,7 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
       title: request.prompt.replace(/\s+/g, " ").slice(0, 200),
       idempotencyKey: `lead-research:${requestId}`,
       input: { requestId, prompt: request.prompt, campaignType: request.campaign_type, criteria: request.criteria },
+      conversationId: agentRole === "growth_partner" ? partnerConversationId : null,
     });
     await db.query("update lead_research_requests set work_job_id = $3 where id = $1 and org_id = $2", [requestId, ctx.org.orgId, job.id]);
     return job.id;

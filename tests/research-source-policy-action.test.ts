@@ -26,7 +26,7 @@ vi.mock("@/server/leads/service", () => ({
 }));
 vi.mock("@/server/leads/research-source-policy", () => ({ saveResearchSourcePolicy: mocks.saveResearchSourcePolicy }));
 
-import { saveResearchSourcePolicyAction } from "@/app/actions/leads";
+import { createResearchAction, saveResearchSourcePolicyAction } from "@/app/actions/leads";
 
 function field(form: FormData, key: string, value: string) {
   form.set(key, value);
@@ -48,6 +48,17 @@ describe("Growth Partner research-source settings action", () => {
     mocks.saveResearchSourcePolicy.mockReset().mockResolvedValue(undefined);
     mocks.revalidatePath.mockReset();
     mocks.createResearchRequest.mockReset();
+  });
+
+  it("routes new Leads workspace research through the unified Growth Partner identity", async () => {
+    await createResearchAction("Find roofing companies in Orlando", "business");
+
+    expect(mocks.requireOrgContextOrThrow).toHaveBeenCalledWith("leads.research");
+    expect(mocks.createResearchRequest).toHaveBeenCalledWith(
+      mocks.context,
+      { prompt: "Find roofing companies in Orlando", campaignType: "business" },
+      { agentRole: "growth_partner" },
+    );
   });
 
   it("requires the lead-research permission and saves bounded OpenStreetMap settings without starting research", async () => {

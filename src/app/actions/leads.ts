@@ -42,7 +42,9 @@ export async function createResearchAction(prompt: string, campaignType: "busine
   try {
     const ctx = await requireOrgContextOrThrow("leads.research");
     if (campaignType !== "business" && campaignType !== "influencer") throw new AppError("invalid_input", "Unknown campaign type.");
-    const res = await createResearchRequest(ctx, { prompt, campaignType });
+    // The Leads workspace is a capability surface of the single client-facing Partner.
+    // It must not route new work through the archived Lead Hunter profile.
+    const res = await createResearchRequest(ctx, { prompt, campaignType }, { agentRole: "growth_partner" });
     revalidatePath("/leads");
     return { ok: true as const, data: res };
   } catch (err) {
