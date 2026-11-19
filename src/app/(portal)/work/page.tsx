@@ -6,7 +6,7 @@ import { listTriggers, triggersOperatorEnabled } from "@/server/workforce/trigge
 import { getProactiveMonitoringStatus, listProactiveReports } from "@/server/workforce/reports";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { WorkBoard } from "@/components/work/work-board";
-import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, workforceIdentityLabel, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, workforceIdentityLabel, workforceRoleShortName } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, type WorkBoardCapabilityAction } from "@/lib/workforce-capabilities";
 
 export const metadata = { title: "Work Board" };
@@ -37,8 +37,6 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       config_version: partner.currentVersion,
     }] : []),
   ];
-  const employeeNames = Object.fromEntries(agents.map((agent) => [agent.role_key, agent.display_name])) as Partial<Record<WorkforceRoleKey, string>>;
-
   const capabilityActions: WorkBoardCapabilityAction[] = CAPABILITY_KEYS
     .map((key) => WORKFORCE_CAPABILITIES[key])
     .map((definition) => {
@@ -92,7 +90,6 @@ export default async function WorkPage({ searchParams }: { searchParams: Promise
       reports={reports}
       monitoring={monitoring}
       focusReportId={typeof report === "string" && UUID.test(report) ? report : null}
-      employeeNames={employeeNames}
       referenceTime={referenceTime}
       focusScheduleId={typeof schedule === "string" && UUID.test(schedule) ? schedule : null}
     />

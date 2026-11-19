@@ -86,7 +86,7 @@ describe("Work Board Kanban", () => {
     />);
 
     expect(screen.getAllByText("AI Growth Partner").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("Previous profile · Sales Assistant").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Previous profile · Sales Assistant")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Partner Control Center" }).getAttribute("href")).toBe("/growth-partner");
     expect(screen.getByRole("link", { name: "Previous profile settings" }).getAttribute("href")).toBe("/employees/sales-assistant");
   });
@@ -150,9 +150,13 @@ describe("Work Board Kanban", () => {
     expect(draftCard.innerHTML).not.toMatch(/success/);
   });
 
-  it("filters jobs and projected occurrences together by AI identity", () => {
+  it("filters Partner work separately and keeps previous-profile activity in one group", () => {
     render(<WorkBoardKanban
-      jobs={[job(), job({ id: "job-2", title: "Sales follow-up review", status: "blocked", statusLabel: "Blocked", employeeName: "Sales Assistant", employeeRole: "sales_assistant" })]}
+      jobs={[
+        job(),
+        job({ id: "job-2", title: "Sales follow-up review", status: "blocked", statusLabel: "Blocked", employeeName: "Sales Assistant", employeeRole: "sales_assistant" }),
+        job({ id: "partner-job", title: "Partner review", employeeName: "AI Growth Partner", employeeRole: "growth_partner" }),
+      ]}
       schedules={[schedule()]}
       filter="all"
       scheduleOperatorEnabled={false}
@@ -161,13 +165,20 @@ describe("Work Board Kanban", () => {
       referenceTime="2026-10-24T08:00:00.000Z"
     />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous profile · CRM Manager" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile activity" }));
     expect(screen.getAllByText("CRM quality review").length).toBeGreaterThan(0);
+    expect(screen.getByText("Operations review job")).toBeTruthy();
+    expect(screen.getByText("Sales follow-up review")).toBeTruthy();
+    expect(screen.queryByText("Partner review")).toBeNull();
+
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter work source" })).getByRole("button", { name: /AI Growth Partner/ }));
+    expect(screen.getByText("Partner review")).toBeTruthy();
     expect(screen.queryByText("Operations review job")).toBeNull();
-    expect(screen.queryByText("Sales follow-up review")).toBeNull();
+    expect(screen.queryByText("CRM quality review")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "All work" }));
     expect(screen.getByText("Operations review job")).toBeTruthy();
     expect(screen.getByText("Sales follow-up review")).toBeTruthy();
+    expect(screen.getByText("Partner review")).toBeTruthy();
   });
 });

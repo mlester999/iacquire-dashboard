@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceIdentityLabel, workforceRoleShortName, type AgentRoleKey, type WorkforceRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceActivityMatchesFilter, workforceIdentityLabel, type AgentRoleKey, type WorkforceActivityFilter } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -226,7 +226,6 @@ export function WorkBoardKanban({
   scheduleOperatorEnabled,
   timeZone,
   focusJobId,
-  employeeNames,
   referenceTime,
 }: {
   jobs: WorkBoardJob[];
@@ -235,38 +234,39 @@ export function WorkBoardKanban({
   scheduleOperatorEnabled: boolean;
   timeZone: string;
   focusJobId: string | null;
-  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   referenceTime: string;
 }) {
   const router = useRouter();
   const [view, setView] = React.useState<BoardView>("kanban");
   const [query, setQuery] = React.useState("");
-  const [employeeFilter, setEmployeeFilter] = React.useState<"all" | WorkforceRoleKey>("all");
+  const [workSourceFilter, setWorkSourceFilter] = React.useState<WorkforceActivityFilter>("all");
   const [dateScope, setDateScope] = React.useState<DateScope>("any");
   const [expanded, setExpanded] = React.useState<string | null>(focusJobId);
   const today = calendarDateKeyAt(new Date(referenceTime), timeZone);
   const planned = React.useMemo(() => buildPlannedWork(schedules, referenceTime), [schedules, referenceTime]);
-  const roleFilters = React.useMemo(() => [...new Set([
+  const representedRoles = React.useMemo(() => [...new Set([
     ...jobs.map((job) => job.employeeRole).filter(isWorkforceRoleKey),
     ...schedules.map((schedule) => schedule.employeeRole),
   ])], [jobs, schedules]);
+  const hasPartnerWork = representedRoles.includes(AI_GROWTH_PARTNER_ROLE_KEY);
+  const hasPreviousProfileWork = representedRoles.some((role) => role !== AI_GROWTH_PARTNER_ROLE_KEY);
   const cleanQuery = query.trim().toLocaleLowerCase();
 
   const filteredJobs = React.useMemo(() => jobs.filter((job) => {
-    if (employeeFilter !== "all" && job.employeeRole !== employeeFilter) return false;
+    if (!workforceActivityMatchesFilter(job.employeeRole, workSourceFilter)) return false;
     if (!matchesDateScope(dateScope, "job", job.createdAt, today, timeZone)) return false;
     if (!cleanQuery) return true;
     return [job.title, job.employeeName, job.statusLabel, job.stageLabel, job.resultSummary, job.latestEvent?.message]
       .some((value) => value?.toLocaleLowerCase().includes(cleanQuery));
-  }), [jobs, employeeFilter, dateScope, today, timeZone, cleanQuery]);
+  }), [jobs, workSourceFilter, dateScope, today, timeZone, cleanQuery]);
 
   const filteredPlanned = React.useMemo(() => planned.filter((item) => {
-    if (employeeFilter !== "all" && item.schedule.employeeRole !== employeeFilter) return false;
+    if (!workforceActivityMatchesFilter(item.schedule.employeeRole, workSourceFilter)) return false;
     if (!matchesDateScope(dateScope, "planned", item.startsAt, today, timeZone)) return false;
     if (!cleanQuery) return true;
     return [item.schedule.capabilityLabel, item.schedule.employeeName, "scheduled occurrence", "not a job"]
       .some((value) => value.toLocaleLowerCase().includes(cleanQuery));
-  }), [planned, employeeFilter, dateScope, today, timeZone, cleanQuery]);
+  }), [planned, workSourceFilter, dateScope, today, timeZone, cleanQuery]);
 
   const jobsByLane = React.useMemo(() => {
     const grouped = new Map<Exclude<LaneKey, "planned">, WorkBoardJob[]>();
@@ -322,12 +322,10 @@ export function WorkBoardKanban({
           </select>
           <Button variant="secondary" size="sm" onClick={() => router.refresh()} className="h-10">Refresh</Button>
         </div>
-        <div className="relative mt-3 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter by AI runtime">
-          <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All work</button>
-          {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>
-            {role === AI_GROWTH_PARTNER_ROLE_KEY ? <span className="flex size-5 items-center justify-center rounded-md bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span> : <AgentAvatar role={AGENT_BY_KEY[role]} size="xs" />}
-            {workforceIdentityLabel(role, employeeNames?.[role] ?? workforceRoleShortName(role))}
-          </button>)}
+        <div className="relative mt-3 flex gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter work source">
+          <button type="button" aria-pressed={workSourceFilter === "all"} onClick={() => setWorkSourceFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", workSourceFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>All work</button>
+          {hasPartnerWork && <button type="button" aria-pressed={workSourceFilter === "growth_partner"} onClick={() => setWorkSourceFilter("growth_partner")} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", workSourceFilter === "growth_partner" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}><span className="flex size-5 items-center justify-center rounded-md bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span>AI Growth Partner</button>}
+          {hasPreviousProfileWork && <button type="button" aria-pressed={workSourceFilter === "previous_profiles"} onClick={() => setWorkSourceFilter("previous_profiles")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-medium", workSourceFilter === "previous_profiles" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-muted hover:bg-surface-2")}>Previous profile activity</button>}
         </div>
       </div>
 
@@ -337,7 +335,7 @@ export function WorkBoardKanban({
         </div>
       ) : filteredJobs.length === 0 && filteredPlanned.length === 0 ? (
         <div className="rounded-2xl border border-line bg-surface">
-          <EmptyState icon={<Search className="size-5" />} title="No work matches these filters" description="Clear the search or choose another AI identity, date or status." compact />
+          <EmptyState icon={<Search className="size-5" />} title="No work matches these filters" description="Clear the search or choose another source, date or status." compact />
         </div>
       ) : view === "kanban" ? (
         <div className="scrollbar-thin -mx-1 overflow-x-auto px-1 pb-2" role="region" tabIndex={0} aria-label="Work status columns; scroll horizontally to see every status">

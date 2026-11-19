@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
 import { StatusPill } from "@/components/ui/status";
 import { setScheduleEnabledAction } from "@/app/actions/work";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceRoleKey, workforceIdentityLabel, workforceRoleShortName } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, type WorkforceActivityFilter, type WorkforceRoleKey, workforceActivityMatchesFilter, workforceIdentityLabel } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -257,17 +257,15 @@ export function WorkforceCalendar({
   initialDateKey,
   referenceTime,
   canManageSchedules,
-  employeeNames,
 }: {
   initialData: WorkforceCalendarData;
   initialDateKey: string;
   referenceTime: string;
   canManageSchedules: boolean;
-  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
 }) {
   const [view, setView] = React.useState<WorkforceCalendarView>("month");
   const [dateKey, setDateKey] = React.useState(initialDateKey);
-  const [employeeFilter, setEmployeeFilter] = React.useState<"all" | WorkforceRoleKey>("all");
+  const [workSourceFilter, setWorkSourceFilter] = React.useState<WorkforceActivityFilter>("all");
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
   const initialRange = React.useMemo(() => getWorkforceCalendarRange(initialDateKey, "month"), [initialDateKey]);
   const initialRangeKey = `${initialRange.from.toISOString()}|${initialRange.to.toISOString()}`;
@@ -302,8 +300,10 @@ export function WorkforceCalendar({
 
   const visibleDays = React.useMemo(() => calendarDateKeys(range.visibleFrom, range.visibleTo), [range.visibleFrom, range.visibleTo]);
   const allItems = React.useMemo(() => makeItems(data, range.visibleFrom, range.visibleTo), [data, range.visibleFrom, range.visibleTo]);
-  const roleFilters = React.useMemo(() => [...new Set([...data.jobs.map((job) => job.employeeRole), ...data.schedules.map((schedule) => schedule.employeeRole)])], [data]);
-  const items = React.useMemo(() => employeeFilter === "all" ? allItems : allItems.filter((item) => roleOf(item) === employeeFilter), [allItems, employeeFilter]);
+  const representedRoles = React.useMemo(() => [...new Set([...data.jobs.map((job) => job.employeeRole), ...data.schedules.map((schedule) => schedule.employeeRole)])], [data]);
+  const hasPartnerWork = representedRoles.includes(AI_GROWTH_PARTNER_ROLE_KEY);
+  const hasPreviousProfileWork = representedRoles.some((role) => role !== AI_GROWTH_PARTNER_ROLE_KEY);
+  const items = React.useMemo(() => allItems.filter((item) => workforceActivityMatchesFilter(roleOf(item), workSourceFilter)), [allItems, workSourceFilter]);
   const byDay = React.useMemo(() => {
     const grouped = new Map<string, CalendarItem[]>();
     for (const day of visibleDays) grouped.set(day, []);
@@ -405,9 +405,10 @@ export function WorkforceCalendar({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative flex max-w-full gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter work by AI partner or existing role">
-            <button type="button" aria-pressed={employeeFilter === "all"} onClick={() => setEmployeeFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", employeeFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All work</button>
-            {roleFilters.map((role) => <button key={role} type="button" aria-pressed={employeeFilter === role} onClick={() => setEmployeeFilter(role)} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", employeeFilter === role ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}><WorkforceAvatar role={role} size="xs" />{workforceIdentityLabel(role, employeeNames?.[role] ?? workforceRoleShortName(role))}</button>)}
+          <div className="relative flex max-w-full gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Filter work source">
+            <button type="button" aria-pressed={workSourceFilter === "all"} onClick={() => setWorkSourceFilter("all")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-semibold", workSourceFilter === "all" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>All work</button>
+            {hasPartnerWork && <button type="button" aria-pressed={workSourceFilter === "growth_partner"} onClick={() => setWorkSourceFilter("growth_partner")} className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium", workSourceFilter === "growth_partner" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}><span className="flex size-5 items-center justify-center rounded-md bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span>AI Growth Partner</button>}
+            {hasPreviousProfileWork && <button type="button" aria-pressed={workSourceFilter === "previous_profiles"} onClick={() => setWorkSourceFilter("previous_profiles")} className={cn("h-8 shrink-0 rounded-full border px-3 text-[12px] font-medium", workSourceFilter === "previous_profiles" ? "border-primary/20 bg-primary-soft text-primary-ink" : "border-line bg-surface text-ink-2 hover:bg-surface-2")}>Previous profile activity</button>}
           </div>
           <span className="text-[12px] text-ink-2">{items.length} item{items.length === 1 ? "" : "s"} · times use {data.timezone}</span>
         </div>

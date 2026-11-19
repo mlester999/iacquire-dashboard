@@ -18,6 +18,16 @@ export const AI_GROWTH_PARTNER_ROLE_KEY = "growth_partner" as const;
 export type WorkforceRoleKey = AgentRoleKey | typeof AI_GROWTH_PARTNER_ROLE_KEY;
 export const WORKFORCE_ROLE_KEYS = [...AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY] as const;
 
+/** Work Board source filters keep one current Partner identity and group preserved history. */
+export type WorkforceActivityFilter = "all" | "growth_partner" | "previous_profiles";
+
+export function workforceActivityMatchesFilter(role: string, filter: WorkforceActivityFilter): boolean {
+  if (filter === "all") return true;
+  return filter === "growth_partner"
+    ? role === AI_GROWTH_PARTNER_ROLE_KEY
+    : role !== AI_GROWTH_PARTNER_ROLE_KEY;
+}
+
 export function isWorkforceRoleKey(value: string): value is WorkforceRoleKey {
   return value === AI_GROWTH_PARTNER_ROLE_KEY || (AGENT_ROLE_KEYS as readonly string[]).includes(value);
 }

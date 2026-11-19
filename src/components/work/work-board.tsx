@@ -16,7 +16,7 @@ import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTrig
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
 import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
-import { workforceIdentityLabel, type WorkforceRoleKey } from "@/lib/agents";
+import { workforceIdentityLabel } from "@/lib/agents";
 import { nextWorkforceScheduleAt } from "@/lib/workforce-calendar-view";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
@@ -71,7 +71,6 @@ export function WorkBoard({
   monitoring = null,
   focusReportId = null,
   scheduleActions,
-  employeeNames,
   referenceTime,
   focusScheduleId = null,
 }: {
@@ -92,7 +91,6 @@ export function WorkBoard({
   reports?: ProactiveReportView[];
   monitoring?: MonitoringStatus | null;
   focusReportId?: string | null;
-  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   referenceTime: string;
   focusScheduleId?: string | null;
 }) {
@@ -305,7 +303,6 @@ export function WorkBoard({
         scheduleOperatorEnabled={scheduleOperatorEnabled}
         timeZone={timeZone}
         focusJobId={focusJobId}
-        employeeNames={employeeNames}
         referenceTime={referenceTime}
       />
 

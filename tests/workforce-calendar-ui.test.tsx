@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { WorkforceCalendar } from "@/components/work/workforce-calendar";
 import { getWorkforceCalendarRange } from "@/lib/workforce-calendar-view";
 import type { WorkforceRoleKey } from "@/lib/agents";
@@ -102,17 +102,26 @@ describe("workforce calendar UI", () => {
     expect(screen.getByRole("link", { name: /Open work details/ }).getAttribute("href")).toBe("/work?job=job-calendar-1");
   });
 
-  it("filters schedule projections and persisted jobs by AI identity", () => {
+  it("filters Growth Partner and previous-profile activity as unified sources", () => {
     vi.stubGlobal("fetch", vi.fn());
-    render(<WorkforceCalendar initialData={data()} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules={false} />);
+    const calendar = data();
+    calendar.jobs.push({ ...calendar.jobs[0], id: "partner-calendar-job", title: "Partner performance review", employeeName: "AI Growth Partner", employeeRole: "growth_partner" });
+    render(<WorkforceCalendar initialData={calendar} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules={false} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Previous profile · CRM Manager" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous profile activity" }));
     expect(screen.getAllByText("CRM quality review").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Monthly performance review")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Previous profile · Performance Analyst" }));
-    expect(screen.queryByText("CRM quality review")).toBeNull();
     expect(screen.getAllByText("Monthly performance review").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Partner performance review")).toBeNull();
+
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter work source" })).getByRole("button", { name: /AI Growth Partner/ }));
+    expect(screen.queryByText("CRM quality review")).toBeNull();
+    expect(screen.queryByText("Monthly performance review")).toBeNull();
+    expect(screen.getAllByText("Partner performance review").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "All work" }));
+    expect(screen.getAllByText("CRM quality review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Monthly performance review").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Partner performance review").length).toBeGreaterThan(0);
   });
 
   it("uses the single canonical partner name for its saved work", () => {
