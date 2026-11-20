@@ -1,8 +1,21 @@
 "use client";
-import { Moon,Sun } from "lucide-react";
+
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/providers";
+import styles from "./auth-shell.module.css";
 
 export function AuthAppearance() {
-  const {resolved,setTheme}=useTheme();
-  return <button type="button" onClick={()=>setTheme(resolved==="light"?"dark":"light")} aria-label={`Switch to ${resolved==="light"?"dark":"light"} theme`} className="flex size-11 items-center justify-center rounded-xl border border-line bg-surface/80 text-ink-2 transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{resolved==="light"?<Moon className="size-4" aria-hidden/>:<Sun className="size-4" aria-hidden/>}</button>;
+  const { resolved, setTheme } = useTheme();
+  const dark = resolved === "dark";
+
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(dark ? "light" : "dark")}
+      aria-label={`Switch to ${dark ? "light" : "dark"} theme`}
+      className={styles.appearance}
+    >
+      {dark ? <Sun size={17} aria-hidden /> : <Moon size={17} aria-hidden />}
+    </button>
+  );
 }

@@ -15,13 +15,15 @@ const axeSource = process.env.AXE_SOURCE ?? path.join(root, "node_modules/axe-co
 const credentials = JSON.parse(await readFile(path.join(root, CRM_QA_DATA_DIR, "credentials.local.json"), "utf8"));
 assert.ok(["127.0.0.1", "localhost"].includes(new URL(credentials.baseUrl).hostname));
 const { email, password } = credentials.users.owner;
-const output = path.join(root, ".data/login-qa/redesign");
+const output = path.join(root, ".data/login-qa/second-design");
 await mkdir(output, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
 const matrix = [];
 const blockedOrigins = new Set();
-const requiredScreenshots = new Set([320, 375, 430, 768, 1280, 1440, 1920]);
+const widths = [320, 360, 375, 390, 430, 768, 1024, 1280, 1440, 1920];
+const auditedWidths = new Set([320, 768, 1440]);
+const capabilityNames = ["Business Brain", "Lead Discovery", "CRM", "Appointments", "AI Work Board"];
 
 async function localContext(options) {
   const context = await browser.newContext(options);
@@ -41,7 +43,7 @@ async function open(page, pathname) {
 
 try {
   for (const theme of ["light", "dark"]) {
-    for (const width of [320, 360, 375, 390, 430, 768, 1024, 1280, 1440, 1920]) {
+    for (const width of widths) {
       const height = width < 600 ? 680 : width < 1024 ? 1024 : width < 1440 ? 800 : width < 1920 ? 900 : 1080;
       const context = await localContext({ viewport: { width, height }, reducedMotion: "reduce", hasTouch: width < 600 });
       try {
@@ -52,20 +54,33 @@ try {
         await page.evaluate(() => document.fonts.ready);
         assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
         assert.ok(await page.getByText("Open your workspace and AI Growth Partner.").isVisible());
-        const capabilities = page.getByRole("list", { name: "Growth Partner capabilities" });
-        assert.equal(await capabilities.isVisible(), width >= 1024);
-        if (width >= 1024) assert.equal(await capabilities.getByRole("listitem").count(), 6);
+        const showcase = page.getByRole("complementary", { name: "Your AI Growth Partner." });
+        assert.equal(await showcase.isVisible(), width >= 1024);
+        if (width >= 1024) {
+          const capabilities = showcase.getByRole("list", { name: "Growth Partner capabilities" });
+          assert.deepEqual(await capabilities.getByRole("listitem").allTextContents(), capabilityNames);
+          const conversation = showcase.getByRole("figure");
+          assert.ok(await conversation.getByText("Illustrative conversation", { exact: true }).isVisible());
+          assert.ok(await conversation.getByText(/prepare a follow-up plan for your approval/).isVisible());
+          const artwork = showcase.locator("[data-partner-artwork]");
+          assert.equal(await artwork.getAttribute("aria-hidden"), "true");
+          assert.ok(await artwork.evaluate((element) => element.getAnimations({ subtree: true }).every(
+            (animation) => animation.playState !== "running",
+          )), "Reduced motion should stop artwork animation");
+        }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Horizontal overflow at " + width);
         const button = await page.getByRole("button", { name: "Sign in", exact: true }).boundingBox();
         assert.ok(button && button.height >= 44 && button.x >= 0 && button.x + button.width <= width && button.y + button.height <= height, "Sign-in control must fit the first viewport");
         const toggle = await page.getByRole("button", { name: "Show password" }).boundingBox();
         assert.ok(toggle && toggle.width >= 44 && toggle.height >= 44, "Password toggle should have a 44px touch target");
-        assert.equal(await page.locator('[data-partner-artwork] circle').evaluateAll((signals) =>
-          signals.every((signal) => getComputedStyle(signal).animationName === "none")), true, "Reduced motion should disable diagram motion");
-        if (requiredScreenshots.has(width)) {
-          await page.screenshot({ path: path.join(output, "login-" + theme + "-" + width + ".png"), fullPage: true, animations: "disabled", style: "nextjs-portal { display: none }" });
+        await page.screenshot({ path: path.join(output, "login-" + theme + "-" + width + ".png"), fullPage: true, animations: "disabled", caret: "initial", style: "nextjs-portal { display: none }" });
+        if (width === 1440) {
+          await page.emulateMedia({ reducedMotion: "no-preference" });
+          const signal = page.locator("[data-partner-artwork] svg");
+          assert.notEqual(await signal.evaluate((element) => getComputedStyle(element).animationName), "none", "Artwork should animate when motion is enabled");
+          await page.emulateMedia({ reducedMotion: "reduce" });
         }
-        if ([320, 1440].includes(width)) {
+        if (auditedWidths.has(width)) {
           await page.addScriptTag({ path: axeSource });
           const violations = await page.evaluate(async () => (await window.axe.run({
             runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
@@ -158,7 +173,7 @@ try {
   }
   await writeFile(path.join(output, "report.json"), JSON.stringify({
     matrix,
-    accessibility: "WCAG 2.1 A/AA via axe at 320px and 1440px in light and dark",
+    accessibility: "WCAG 2.1 A/AA via axe at 320px, 768px and 1440px in light and dark",
     functional: "Native validation, password visibility, keyboard navigation and activation, pending state, invalid credentials, reset and access routes, theme persistence, local sign-in, session, logout, protected-route redirect, external-redirect rejection and invalid invitation recovery",
     blockedOrigins: [...blockedOrigins],
   }, null, 2));

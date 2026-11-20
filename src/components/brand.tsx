@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { StatusPill, type StatusTone } from "@/components/ui/status";
 import { AGENT_STATUS_LABEL, type AgentRoleMeta, type AgentStatus } from "@/lib/agents";
 
-export function LogoMark({ className, title = "iAcquire" }: { className?: string; title?: string }) {
+export function LogoMark({ className, title = "iAcquire", eager }: { className?: string; title?: string; eager?: boolean }) {
   return (
     <Image
       src="/brand/iacquire-mark.png"
@@ -15,6 +15,7 @@ export function LogoMark({ className, title = "iAcquire" }: { className?: string
       width={1280}
       height={1280}
       sizes="48px"
+      loading={eager ? "eager" : undefined}
       draggable={false}
       className={cn("size-8 shrink-0 object-contain drop-shadow-[0_3px_10px_rgba(91,77,255,0.2)]", className)}
     />
