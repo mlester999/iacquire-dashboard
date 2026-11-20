@@ -5,10 +5,12 @@ import { getClientSetupSnapshot } from "@/server/setup/snapshots";
 import { SetupCenter } from "@/components/setup/setup-center";
 import { OnboardedBanner, type EmployeeProvisioningState } from "@/components/setup/onboarded-banner";
 import { SetupPaymentLine } from "@/components/setup/setup-payment-line";
+import { GrowthPartnerNextSteps } from "@/components/setup/growth-partner-next-steps";
 import { LaunchReadinessPanel } from "@/components/setup/launch-readiness-panel";
 import { getLaunchReadiness } from "@/server/setup/launch-readiness";
 import { withSystem, withUser } from "@/server/db";
 import { listAgents } from "@/server/workforce/service";
+import { schedulesOperatorEnabled } from "@/server/workforce/schedules";
 import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { isSetupPaymentClearedFor } from "@/server/billing/clearance";
 import { crmOwners } from "@/server/setup/native-evidence";
@@ -79,7 +81,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   // Who runs the CRM decides what the team does next: a Blueprint for iAcquire's own CRM (native or hybrid), the sub-account for GoHighLevel.
   // A trusted read of this workspace's own provider mode, only when the banner shows.
   const nativeCrm = onboarded === "1" ? (await withSystem((db) => crmOwners(db, ctx.org.orgId))).mode !== "ghl" : false;
-  const [agents, provisioning, growthPartner] = onboarded === "1" ? await Promise.all([
+  const [agents, provisioning] = onboarded === "1" ? await Promise.all([
     listAgents(ctx.user.id, ctx.org.orgId),
     withUser(ctx.user.id, async (db) => {
       const { rows } = await db.query<EmployeeProvisioningState>(
@@ -90,19 +92,21 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       );
       return rows;
     }),
-    getGrowthPartnerControlState(ctx).catch(() => null),
-  ]) : [[], [], null];
+  ]) : [[], []];
   // The database's yes or no (app.setup_payment_cleared), asked as this member. A sample workspace has no setup fee, so it says nothing about one.
   const paymentCleared = ctx.org.isDemo ? undefined : await isSetupPaymentClearedFor(ctx.user.id, ctx.org.orgId);
   // The one honest launch state, from the workspace's own records. If it cannot be read the panel says so and offers to try again; nothing is claimed, and the checklist below still works.
-  const { launch, launchFailed } = await getLaunchReadiness(ctx).then(
-    (readiness) => ({ launch: readiness, launchFailed: false }),
-    (error: unknown) => {
-      // The kind of failure only: no record, name or answer goes into a log line.
-      console.warn(`Launch readiness could not be read for the Setup page (${error instanceof Error ? error.name : "unknown error"}).`);
-      return { launch: null, launchFailed: true };
-    },
-  );
+  const [{ launch, launchFailed }, growthPartner] = await Promise.all([
+    getLaunchReadiness(ctx).then(
+      (readiness) => ({ launch: readiness, launchFailed: false }),
+      (error: unknown) => {
+        // The kind of failure only: no record, name or answer goes into a log line.
+        console.warn(`Launch readiness could not be read for the Setup page (${error instanceof Error ? error.name : "unknown error"}).`);
+        return { launch: null, launchFailed: true };
+      },
+    ),
+    ctx.can("agents.use") ? getGrowthPartnerControlState(ctx).catch(() => null) : Promise.resolve(null),
+  ]);
   // What the submission just kept, held or skipped, shown once the person lands here after submitting. A failed read shows nothing.
   const outcomeNotes = onboarded === "1" ? await latestOnboardingNotes(ctx).catch(() => []) : [];
   // A Google or Microsoft sign-in that started from this page comes back here with one short message in a cookie that names this page. The panel shows it once and clears the cookie; a message left for a CRM page is not shown here.
@@ -122,6 +126,9 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       )}
       <SetupPaymentLine cleared={paymentCleared} billingHref={ctx.can("billing.view") ? "/settings/billing" : null} />
       {(launch || launchFailed) && <LaunchReadinessPanel readiness={launch} calendarNotice={calendarNotice ? { ok: calendarNotice.kind === "success", text: calendarNotice.message } : null} />}
+      {growthPartner && growthPartner.status !== "migration_required" && (
+        <GrowthPartnerNextSteps partner={growthPartner} readiness={launch} can={(permission) => ctx.can(permission)} scheduledWorkEnabled={schedulesOperatorEnabled()} paymentCleared={paymentCleared} />
+      )}
       <SetupCenter key={ctx.org.orgId} initial={snapshot} firstName={firstName(ctx.user.fullName) ?? "there"} timeZone={ctx.org.timezone} />
     </>
   );

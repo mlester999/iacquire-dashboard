@@ -52,6 +52,7 @@ export interface WorkJob {
   resultCount: number;
   failureCode: string | null;
   failureMessage: string | null;
+  failureHref?: string | null;
   attempts: number;
   cancelRequested: boolean;
   canCancel: boolean;
@@ -515,10 +516,10 @@ export function WorkJobPanel({ jobId, className, compact = false, onDone }: { jo
         )}
 
         {job.failureMessage && (job.status === "failed" || job.status === "blocked") && (
-          <p className="flex items-start gap-2 rounded-xl bg-danger-soft/40 px-3 py-2 text-[12.5px] leading-relaxed text-danger-ink">
+          <div className={cn("flex items-start gap-2 rounded-xl px-3 py-2 text-[12.5px] leading-relaxed", job.failureCode === "awaiting_connection" ? "bg-warning-soft/40 text-warning-ink" : "bg-danger-soft/40 text-danger-ink")}>
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-            {job.failureMessage}
-          </p>
+            <span>{job.failureMessage}{job.failureCode === "awaiting_connection" && job.failureHref && <> <Link href={job.failureHref} className="font-semibold underline">Fix connection</Link></>}</span>
+          </div>
         )}
 
         {events.length > 0 && (

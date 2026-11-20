@@ -545,7 +545,7 @@ async function execSendMessage(sc: StepContext, c: SendMessageConfig): Promise<S
     if (consent !== "granted") return wouldSkip(`There is no consent on record to send ${contact.display_name} ${template.purpose === "marketing" ? "promotional " : ""}messages on ${channelLabel}, so it would be blocked.`, { reason: "no_consent" });
     // The send path's gate checks the employee it goes out under: included, not paused, passed its connection check.
     const as = (await db.query<{ display_name: string; enabled: boolean; mode: string; status: string }>("select display_name, enabled, mode, status from agent_instances where org_id = $1 and role_key = $2", [orgId, c.sendAs])).rows[0];
-    if (!as?.enabled) return wouldSkip("The AI employee this step sends as isn't included in this workspace, so it would be blocked.", { reason: "agent_not_ready" });
+    if (!as?.enabled) return wouldSkip("This step's AI profile is unavailable, so sending would be blocked.", { reason: "agent_not_ready" });
     if (as.mode === "paused") return wouldSkip(`${as.display_name} is paused, so nothing would be sent.`, { reason: "automation_paused" });
     if (!AGENT_READY.has(as.status)) return wouldSkip(`${as.display_name} hasn't passed its connection check, so it would be blocked.`, { reason: "agent_not_ready" });
     if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it sends anything.", { reason: "authorization_needed" });
@@ -752,8 +752,8 @@ async function execAiTask(sc: StepContext, c: AiTaskConfig, stepKey: string): Pr
     if (a.mode === "paused") return wouldSkip(`${name} is paused, so nothing would be asked.`);
     if (!AGENT_READY.has(a.status)) return wouldSkip(`${name} hasn't passed its connection check, so nothing would be asked.`, { reason: "agent_unavailable" });
     if (!a.hermes_base_url || !a.credential_id) return wouldSkip(`${name} isn't connected to its AI service yet, so nothing would be asked.`, { reason: "agent_unavailable" });
-    if (!agentLiveRunsVerified(a)) return wouldSkip(`Live AI employee runs are switched off for now, so nothing would be asked of ${name}.`, { reason: "agent_unavailable" });
-    if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it asks an AI employee anything.", { reason: "authorization_needed" });
+    if (!agentLiveRunsVerified(a)) return wouldSkip(`Live AI runs are paused, so nothing would be asked of ${name}.`, { reason: "agent_unavailable" });
+    if (!sc.version.authorized) return wouldSkip("An owner must approve this version before it can request AI work.", { reason: "authorization_needed" });
     return would(`Would ask ${name}${contact ? ` about ${contact.display_name}` : ""}: "${c.instruction.slice(0, 160)}". Its mode (${agent.rows[0].mode.replace("_", " ")}) applies to what it does.`);
   }
   assertAuthorized(sc);

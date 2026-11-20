@@ -319,7 +319,7 @@ export const SETUP_REQUIRED_LABEL = "Setup required";
 /** Why an employee that is switched on is not working yet, in the words a client reads after the label. */
 export const SETUP_REASON_TEXT = {
   setup_payment: "waiting for setup payment",
-  profile_not_connected: "Hermes profile not connected",
+  profile_not_connected: "AI runtime not connected",
 } as const;
 export type SetupReason = keyof typeof SETUP_REASON_TEXT;
 

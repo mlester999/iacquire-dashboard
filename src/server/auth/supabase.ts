@@ -124,7 +124,7 @@ export function configErrorMessage(err: unknown): string | null {
  * banned, instead of trusting a token that may be up to an hour old. Use for high-risk actions
  * (saving credentials, approving activation).
  */
-export async function supabaseSessionUserStrict(): Promise<SessionUser | null> {
+export async function supabaseSessionUserStrict({ requireSessionId = false } = {}): Promise<SessionUser | null> {
   try {
     const sb = await createSupabaseServerClient();
     const { data, error } = await sb.auth.getUser();
@@ -132,7 +132,9 @@ export async function supabaseSessionUserStrict(): Promise<SessionUser | null> {
     const profile = await profileByAuthId(data.user.id);
     if (!profile || profile.status !== "active") return null;
     const claims = (await sb.auth.getClaims()).data?.claims;
-    return toSessionUser(profile, typeof claims?.session_id === "string" ? claims.session_id : data.user.id);
+    const sessionId = typeof claims?.session_id === "string" ? claims.session_id : null;
+    if (requireSessionId && (!sessionId || claims?.sub !== data.user.id)) return null;
+    return toSessionUser(profile, sessionId ?? data.user.id);
   } catch (err) {
     if (err instanceof SupabaseConfigError) return null;
     throw err;

@@ -79,7 +79,7 @@ describe("the views of the conversation list", () => {
     const c = await inbound(org.org.id, { name: "Not Yet" });
     await setTimes(c.conversationId, { lastInbound: ago(5), unread: 1 });
     const d = await inbound(org.org.id, { name: "Send Failed" });
-    const sent = await sendHumanReply(org.ctx("manager"), d.conversationId, "On our way");
+    const sent = await sendHumanReply(org.ctx("manager"), d.conversationId, "On our way", { purpose: "service" });
     const rec = recordingProvider(() => ({ ok: false, retryable: false, error: "The provider rejected the message." }));
     await dispatchMessage(sent.messageId, { provider: rec.provider });
 
@@ -213,7 +213,7 @@ describe("keeping tabs and teammates in step", () => {
   it("notices a delivery status moving, not only new messages", async () => {
     const org = await messagingOrg({ name: "Delivery Sync Co" });
     const c = await inbound(org.org.id);
-    const sent = await sendHumanReply(org.ctx("manager"), c.conversationId, "On our way");
+    const sent = await sendHumanReply(org.ctx("manager"), c.conversationId, "On our way", { purpose: "service" });
     const before = await inboxSync(org.ctx("manager"), null);
     await new Promise((r) => setTimeout(r, 20));
     const rec = recordingProvider();

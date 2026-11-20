@@ -73,20 +73,36 @@ describe("employee operating modes", () => {
     await makeReady(org.id, agent);
     expect(await gate(org.id, agent, "reply")).toMatchObject({ decision: "needs_approval" });
 
-    const make = (orgId: string, status: string, expires: string | null) =>
+    const make = (orgId: string, status: string, expires: string | null, kind = "follow_up_message", approvalAgent: string | null = agent) =>
       withSystem(async (db) => {
         const { rows } = await db.query<{ id: string }>(
-          `insert into approval_requests (org_id, kind, title, status, decided_at, expires_at) values ($1, 'follow_up_message', 'x', $2, now(), ${expires ? `now() + interval '${expires}'` : "null"}) returning id`,
-          [orgId, status],
+          `insert into approval_requests (org_id, agent_instance_id, kind, title, status, decided_at, expires_at) values ($1, $2, $3, 'x', $4, now(), ${expires ? `now() + interval '${expires}'` : "null"}) returning id`,
+          [orgId, approvalAgent, kind, status],
         );
         return rows[0].id;
       });
     expect((await gate(org.id, agent, "reply", await make(org.id, "approved", "1 hour"))).decision).toBe("allow");
+    const messageApproval = await make(org.id, "approved", "1 hour");
+    expect((await gate(org.id, agent, "followup", messageApproval)).decision).toBe("allow");
+    expect((await gate(org.id, agent, "outbound", messageApproval)).decision).toBe("needs_approval");
     expect((await gate(org.id, agent, "reply", await make(org.id, "pending", null))).decision).toBe("needs_approval");
     expect((await gate(org.id, agent, "reply", await make(org.id, "rejected", null))).decision).toBe("needs_approval");
     expect((await gate(org.id, agent, "reply", await make(org.id, "approved", "-1 hour"))).decision).toBe("needs_approval");
+    const appointmentApproval = await make(org.id, "approved", "1 hour", "appointment_booking");
+    expect((await gate(org.id, agent, "reply", appointmentApproval)).decision).toBe("allow");
+    expect((await gate(org.id, agent, "job", appointmentApproval)).decision).toBe("needs_approval");
+    const crmUpdateApproval = await make(org.id, "approved", "1 hour", "crm_update");
+    expect((await gate(org.id, agent, "job", crmUpdateApproval)).decision).toBe("allow");
+    expect((await gate(org.id, agent, "reply", crmUpdateApproval)).decision).toBe("needs_approval");
+    const outreachApproval = await make(org.id, "approved", "1 hour", "outreach");
+    expect((await gate(org.id, agent, "outbound", outreachApproval)).decision).toBe("allow");
+    expect((await gate(org.id, agent, "followup", outreachApproval)).decision).toBe("needs_approval");
+    const otherAgent = await agentId(org.id, "lead_hunter");
+    const anotherEmployeesApproval = await make(org.id, "approved", "1 hour", "follow_up_message", otherAgent);
+    expect((await gate(org.id, agent, "reply", anotherEmployeesApproval)).decision).toBe("needs_approval");
     // An approval granted to another tenant is worthless here.
-    expect((await gate(org.id, agent, "reply", await make(other.id, "approved", null))).decision).toBe("needs_approval");
+    const foreignAgent = await agentId(other.id, "sales_assistant");
+    expect((await gate(org.id, agent, "reply", await make(other.id, "approved", null, "follow_up_message", foreignAgent))).decision).toBe("needs_approval");
   });
 
   it("only the owner can enable autonomous mode, with confirmation, health and activation", async () => {

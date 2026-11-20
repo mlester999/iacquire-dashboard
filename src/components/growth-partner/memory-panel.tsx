@@ -126,7 +126,7 @@ export function GrowthPartnerMemoryPanel({
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
         <p className="rounded-xl border border-line bg-surface-2/55 px-3.5 py-3 text-[13px] leading-relaxed text-muted">
-          This memory is saved in the workspace database, is separate from Hermes runtime memory, and cannot change permissions or approval rules.
+          This memory is saved in the workspace database, is separate from the AI runtime&apos;s own memory, and cannot change permissions or approval rules.
           {canManage ? " Owners and admins can add, correct or remove notes here or in the permanent conversation." : " Only workspace owners and admins can change shared memory."}
         </p>
         {!hasPartner && <p className="text-[13px] text-muted">Set up the AI Growth Partner identity before saving workspace memory.</p>}
@@ -176,7 +176,7 @@ export function GrowthPartnerMemoryPanel({
           </Button>
         )}
         <p className="border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
-          In the permanent conversation, use <span className="font-medium text-ink-2">Remember: [one note]</span> or <span className="font-medium text-ink-2">Forget: [the full saved note]</span>. Chat history and Hermes memory have separate retention.
+          In the permanent conversation, use <span className="font-medium text-ink-2">Remember: [one note]</span> or <span className="font-medium text-ink-2">Forget: [the full saved note]</span>. Chat history and AI runtime memory have separate retention.
         </p>
       </CardContent>
     </Card>

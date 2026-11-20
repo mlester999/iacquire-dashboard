@@ -16,8 +16,9 @@ import { deleteScheduleAction, deleteTriggerAction, saveScheduleAction, saveTrig
 import { TRIGGER_EVENT_LABELS, TRIGGER_EVENT_TYPES } from "@/lib/workforce-triggers";
 import type { BusinessHours, Weekday } from "@/lib/messaging";
 import { formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
-import { workforceIdentityLabel } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, workforceIdentityLabel, workforceRoleShortName, type WorkforceRoleKey } from "@/lib/agents";
 import { nextWorkforceScheduleAt } from "@/lib/workforce-calendar-view";
+import { workforceScheduleSkipReasonLabel } from "@/lib/workforce-schedule-copy";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { TriggerView } from "@/server/workforce/triggers";
 import type { MonitoringStatus, ProactiveReportView } from "@/server/workforce/reports";
@@ -56,6 +57,7 @@ function simpleBusinessHours(hours: BusinessHours): {
 
 export function WorkBoard({
   jobs,
+  employeeNames,
   summary,
   filter,
   reviewActions,
@@ -75,6 +77,7 @@ export function WorkBoard({
   focusScheduleId = null,
 }: {
   jobs: WorkBoardJob[];
+  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   summary: WorkBoardSummary;
   filter: WorkBoardFilter;
   reviewActions: WorkBoardCapabilityAction[];
@@ -250,30 +253,30 @@ export function WorkBoard({
     <div className="module-stack space-y-6">
       <PageHero
         tone="dark"
-        eyebrow="Work Board"
-        title="See the work, not a spinner."
-        description="Persisted jobs keep their recorded status, stage and activity. Future schedule occurrences stay separate as plans, never jobs; nothing is marked completed without execution evidence."
+        eyebrow="Growth Partner workspace"
+        title="AI Work Board"
+        description="Track running jobs, approval requests and completed work. Open the calendar for upcoming schedule occurrences."
         icon={<ListChecks />}
         aside={
           <div className="space-y-2">
             {reviewActions.length > 0 ? (
               <>
-                <label htmlFor="work-review" className="block text-[12px] font-semibold uppercase tracking-[.08em] text-muted">Review to run</label>
-                <Select id="work-review" value={selected?.capability ?? ""} onChange={(event) => setSelectedCapability(event.target.value)} className="min-w-[16rem]">
+                <label htmlFor="work-review" className="block text-[12px] font-semibold tracking-wide text-slate-200">Review to run</label>
+                <Select id="work-review" value={selected?.capability ?? ""} onChange={(event) => setSelectedCapability(event.target.value)} className="min-w-0 w-full">
                   {reviewActions.map((action) => (
-                    <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
+                    <option key={action.capability} value={action.capability}>{action.label}{action.employeeName === workforceRoleShortName(AI_GROWTH_PARTNER_ROLE_KEY) ? "" : ` · ${action.employeeName}`}</option>
                   ))}
                 </Select>
                 <Button variant="brand" onClick={startReview} loading={starting} disabled={!selected?.available || starting}>
                   {starting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />}
                   Start review
                 </Button>
-                <p className="max-w-[28rem] text-[12px] leading-relaxed text-muted">
+                <p className="max-w-[28rem] text-[12px] leading-relaxed text-slate-200">
                   {selected?.reason ?? selected?.description ?? "Choose a read-only review to run."} It does not change records, contact a provider or create a schedule.
                 </p>
               </>
             ) : (
-              <p className="max-w-[28rem] text-[12px] leading-relaxed text-muted">No reviewed review capability is available for your role in this workspace.</p>
+              <p className="max-w-[28rem] text-[12px] leading-relaxed text-slate-200">No review capability is available for your role in this workspace.</p>
             )}
           </div>
         }
@@ -282,7 +285,7 @@ export function WorkBoard({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard label="Running now" value={summary.active} detail="Jobs with an active worker lease" icon={<Activity />} tone="violet" />
         <MetricCard label="Waiting for approval" value={summary.waiting} detail="A person must decide" icon={<ShieldCheck />} tone="amber" />
-        <MetricCard label="Needs attention" value={summary.needsAttention} detail="Failed, blocked or awaiting recovery" icon={<AlertTriangle />} tone="amber" />
+        <MetricCard label="Needs attention" value={summary.needsAttention} detail="Failed, blocked, awaiting approval or recovery" icon={<AlertTriangle />} tone="amber" />
         <MetricCard label="Completed today" value={summary.completedToday} detail="In this workspace's time zone" icon={<CheckCircle2 />} tone="green" />
       </div>
 
@@ -298,6 +301,7 @@ export function WorkBoard({
 
       <WorkBoardKanban
         jobs={jobs}
+        employeeNames={employeeNames}
         schedules={schedules}
         filter={filter}
         scheduleOperatorEnabled={scheduleOperatorEnabled}
@@ -325,7 +329,7 @@ export function WorkBoard({
                 Work
                 <Select className="mt-1" value={scheduleCapability} onChange={(event) => setScheduleCapability(event.target.value)} disabled={!scheduleOptions.length || editingSchedule !== null}>
                   {scheduleOptions.map((action) => (
-                    <option key={action.capability} value={action.capability}>{action.label} · {action.employeeName}</option>
+                    <option key={action.capability} value={action.capability}>{action.label}{action.employeeName === workforceRoleShortName(AI_GROWTH_PARTNER_ROLE_KEY) ? "" : ` · ${action.employeeName}`}</option>
                   ))}
                 </Select>
               </label>
@@ -446,7 +450,7 @@ export function WorkBoard({
                         {` · ${scheduleNextOccurrenceLabel(schedule, referenceTime, timeZone)}`}
                         {schedule.lastRunAt ? ` · last ran ${relativeTime(schedule.lastRunAt)}` : " · not run yet"}
                         {Object.keys(schedule.businessHours).length ? " · business hours only" : " · any time"}
-                        {schedule.lastSkippedReason === "outside_business_hours" ? " · waiting for opening" : ""}
+                        {schedule.lastSkippedReason ? ` · Last schedule check: ${workforceScheduleSkipReasonLabel(schedule.lastSkippedReason)}` : ""}
                         {schedule.enabled && !scheduleOperatorEnabled ? " · paused by operator" : ""}
                       </p>
                     </div>

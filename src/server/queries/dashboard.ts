@@ -1,6 +1,7 @@
 import "server-only";
 import { withUser, type Queryable } from "@/server/db";
 import type { OrgContext } from "@/server/tenancy/context";
+import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { AI_GROWTH_PARTNER_ROLE_KEY, isWorkforceRoleKey, workforceRoleShortName, workforceRoleSlug } from "@/lib/agents";
 import { resolveCapabilities } from "@/server/crm/workspace";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
@@ -100,6 +101,12 @@ export interface DashboardData {
     | "pendingApprovals",
     Metric
   >;
+  work: {
+    enabledSchedules: number | null;
+    failedJobs: number | null;
+    leadReviews: number | null;
+    integrationErrors: number | null;
+  };
   activity: Array<{ day: string; messages: number }>;
   funnel: Array<{ label: string; value: number | null; source: "portal" | "crm" }>;
   tasks: Array<{ id: string; title: string; due_at: string | null; category: string; overdue: boolean }>;
@@ -128,6 +135,8 @@ interface DashboardRow {
   expiring_approvals: number;
   held_knowledge: number;
   pending_leads: number;
+  failed_work_jobs: number | null;
+  enabled_work_schedules: number | null;
   members: number;
   knowledge_sections: number;
   conversations: number;
@@ -147,6 +156,11 @@ interface DashboardRow {
  * shared with the reports and scheduling surfaces through `sourceAvailability`, but are folded into
  * this statement too: a second sequential round trip cost another ~150 ms for no extra data.
  */
+export async function getOverviewGrowthPartnerState(ctx: OrgContext) {
+  if (!ctx.can("agents.use")) return null;
+  return getGrowthPartnerControlState(ctx).catch(() => null);
+}
+
 export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
   const orgId = ctx.org.orgId;
   const includeRetention = ctx.can("retention.view");
@@ -173,6 +187,13 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
          (select count(*)::int from approval_requests where org_id = $1 and status = 'pending' and expires_at between now() and now() + interval '24 hours') as expiring_approvals,
          (select count(*)::int from company_knowledge where org_id = $1 and (pending_content is not null or review_status = 'pending_agency_review')) as held_knowledge,
          (select count(*)::int from leads where org_id = $1 and review_status = 'pending') as pending_leads,
+         (select case when $5::boolean then
+            (select count(*)::int from ai_work_jobs
+              where org_id = $1 and status = 'failed' and ($4::boolean or requested_by = $6))
+          end) as failed_work_jobs,
+         (select case when $7::boolean then
+            (select count(*)::int from ai_work_schedules where org_id = $1 and enabled)
+          end) as enabled_work_schedules,
          (select count(*)::int from organization_memberships where org_id = $1 and status = 'active') as members,
          (select count(*)::int from company_knowledge where org_id = $1 and content <> '') as knowledge_sections,
          (select count(*)::int from agent_runs where org_id = $1 and purpose = 'chat') as conversations,
@@ -202,7 +223,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
                  order by a.created_at desc limit 8
                ) r)
           else '[]'::json end) as recent`,
-      [orgId, includeRetention, includeIntegrations, includeActivity],
+      [orgId, includeRetention, includeIntegrations, includeActivity, ctx.can("agents.use") || includeActivity, ctx.user.id, ctx.can("agents.configure")],
     );
     const data = rows[0];
     const sources = interpretSourceAvailability(data, ctx.org.isDemo);
@@ -210,8 +231,8 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     const growthPartner = agents.find((agent) => agent.role_key === "growth_partner");
     const growthPartnerOnline = Boolean(growthPartner?.enabled && (growthPartner.status === "online" || growthPartner.status === "busy"));
     const primaryProfileOnline = growthPartner ? growthPartnerOnline : agents.some((agent) => agent.enabled && (agent.status === "online" || agent.status === "busy"));
-    const primaryProfileHref = growthPartner ? "/growth-partner" : "/employees";
-    const primaryConversationReady = growthPartner ? data.growth_partner_conversation : data.conversations > 0;
+    const primaryProfileHref = growthPartner || !agents.some((agent) => agent.enabled) ? "/growth-partner" : "/employees";
+    const primaryConversationReady = primaryProfileHref === "/growth-partner" ? data.growth_partner_conversation : data.conversations > 0;
 
     let appointmentsBooked: Metric = unavailable("Calendar not connected");
     let upcoming: Metric = unavailable("Calendar not connected");
@@ -239,7 +260,7 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
     for (const a of agents) {
       if (!a.enabled || !isWorkforceRoleKey(a.role_key)) continue;
       if (a.status === "offline" || a.status === "error") {
-        alerts.push({ tone: "critical", title: `${workforceRoleShortName(a.role_key)} is unavailable`, body: "The last connection check failed. iAcquire has been notified.", href: a.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "/growth-partner" : `/employees/${workforceRoleSlug(a.role_key)}` });
+        alerts.push({ tone: "critical", title: a.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "AI Growth Partner is unavailable" : `Previous profile unavailable · ${workforceRoleShortName(a.role_key)}`, body: "The last connection check failed. iAcquire has been notified.", href: a.role_key === AI_GROWTH_PARTNER_ROLE_KEY ? "/growth-partner" : `/employees/${workforceRoleSlug(a.role_key)}` });
       }
     }
     for (const i of data.integration_errors ?? []) {
@@ -257,8 +278,8 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       sources.native.opportunities
         ? { key: "crm", label: "iAcquire CRM ready", done: true, href: "/crm" }
         : { key: "crm", label: "CRM connected by iAcquire", done: sources.crm, href: "/settings/integrations" },
-      { key: "agent", label: growthPartner ? "AI Growth Partner online" : "Retained profile online", done: growthPartner ? growthPartnerOnline : online > 0, href: primaryProfileHref },
-      { key: "chat", label: growthPartner ? "Permanent Growth Partner conversation ready" : "Retained profile conversation started", done: primaryConversationReady, href: growthPartner ? "/growth-partner/conversation" : "/employees" },
+      { key: "agent", label: primaryProfileHref === "/growth-partner" ? "AI Growth Partner online" : "Previous profile online", done: growthPartner ? growthPartnerOnline : online > 0, href: primaryProfileHref },
+      { key: "chat", label: primaryProfileHref === "/growth-partner" ? "Permanent Growth Partner conversation ready" : "Previous profile conversation started", done: primaryConversationReady, href: primaryProfileHref === "/growth-partner" ? "/growth-partner/conversation" : "/employees" },
     ];
 
     const nextActions: DashboardData["nextActions"] = [];
@@ -269,9 +290,9 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
       ? { title: "Open your permanent conversation", body: "Your AI Growth Partner is ready for a conversation in the shared workspace thread.", href: "/growth-partner/conversation", cta: "Open conversation" }
       : { title: "Review your retained profiles", body: "Your existing profile history is available while the workspace migration is reviewed.", href: "/employees", cta: "View profiles" });
     if (data.knowledge_sections < 3 && ctx.can("knowledge.edit")) nextActions.push({ title: "Add approved company knowledge", body: "Add your FAQs, hours and policies to the Knowledge Center.", href: "/knowledge", cta: "Add knowledge" });
-    if (!primaryProfileOnline && ctx.org.onboardingCompletedAt) nextActions.push(growthPartner
-      ? { title: "Your AI Growth Partner is being set up", body: "iAcquire is preparing its dedicated runtime and verifying its identity, tools and permissions.", href: "/growth-partner", cta: "View status" }
-      : { title: "Retained profile setup is in progress", body: "iAcquire is preparing the existing profile records while migration is reviewed.", href: "/employees", cta: "View status" });
+    if (!primaryProfileOnline && ctx.org.onboardingCompletedAt && ctx.can("agents.use")) nextActions.push(primaryProfileHref === "/growth-partner"
+      ? { title: "Your AI Growth Partner setup status", body: "Review the Business Brain, runtime connection and workspace permissions.", href: "/growth-partner", cta: "View status" }
+      : { title: "Previous profile setup needs review", body: "iAcquire is preparing the existing profile records while migration is reviewed.", href: "/employees", cta: "View status" });
 
     return {
       sources,
@@ -286,6 +307,12 @@ export async function getDashboard(ctx: OrgContext): Promise<DashboardData> {
         customerIssues: includeRetention ? avail(data.open_issues) : unavailable("Not available for your role"),
         aiActivity: avail(data.runs),
         pendingApprovals: avail(data.approvals),
+      },
+      work: {
+        enabledSchedules: data.enabled_work_schedules,
+        failedJobs: data.failed_work_jobs,
+        leadReviews: ctx.can("leads.view") ? data.pending_leads : null,
+        integrationErrors: includeIntegrations ? (data.integration_errors ?? []).length : null,
       },
       activity: (data.activity ?? []).map((r) => ({ day: r.day, messages: Number(r.n) })),
       funnel,

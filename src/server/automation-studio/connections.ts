@@ -7,7 +7,7 @@ import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { encryptSecret } from "@/server/security/crypto";
 import { isPublicAddress } from "@/server/onboarding/website";
 import { hostResolver } from "@/server/calendars/adapters/http";
-import { assertStudioEntitled } from "@/server/automation-studio/entitlement";
+import { assertStudioEntitled, studioEntitlement } from "@/server/automation-studio/entitlement";
 import { performOutbound, slackText, type OutboundDeps, type OutboundResult } from "@/server/automation-studio/outbound";
 import { OutboundPolicyError } from "@/server/security/outbound-http";
 import {
@@ -61,6 +61,23 @@ export async function listConnections(actor: CrmActor, opts: { includeRevoked?: 
     if (!(await tableExists(db))) return [];
     const { rows } = await db.query<Row>(`select ${VIEW_COLUMNS} from automation_connections where org_id = $1 ${opts.includeRevoked ? "" : "and status <> 'revoked'"} order by status = 'revoked', lower(name)`, [actor.orgId]);
     return rows.map(toView);
+  });
+}
+
+/** Reports Slack webhook status for the integrations hub without exposing connection settings or credentials. */
+export async function getSlackWebhookSummary(actor: CrmActor): Promise<{
+  entitled: boolean;
+  connections: Pick<ConnectionView, "kind" | "status" | "verifiedAt">[];
+}> {
+  assertCan(actor, "workflows.view");
+  return withSystem(async (db) => {
+    const { entitled } = await studioEntitlement(db, actor.orgId);
+    if (!entitled || !(await tableExists(db))) return { entitled, connections: [] };
+    const { rows } = await db.query<Pick<Row, "kind" | "status" | "verified_at">>(
+      "select kind, status, verified_at from automation_connections where org_id = $1 and kind = 'slack_webhook' and status <> 'revoked' order by verified_at desc nulls last",
+      [actor.orgId],
+    );
+    return { entitled, connections: rows.map((row) => ({ kind: row.kind, status: row.status, verifiedAt: iso(row.verified_at) })) };
   });
 }
 

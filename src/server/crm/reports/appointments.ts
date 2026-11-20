@@ -8,7 +8,7 @@ export const BOOKED_VIA_LABELS: Record<string, string> = {
   booking_page: "Booking page",
   website: "Website",
   staff: "Booked by the team",
-  agent: "AI employee",
+  agent: "AI activity",
   api: "API",
   import: "Import",
   ghl_migration: "GoHighLevel migration",

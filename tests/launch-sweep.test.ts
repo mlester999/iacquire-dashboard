@@ -12,6 +12,9 @@ import { connectHermesProfile, createConfigVersion, currentSettings, runHealthCh
 import { agentId, createUser } from "./support/fixtures";
 import { startMockHermes, type MockHermes } from "./support/mock-hermes";
 import { checkJobs, itemOf, readyClient, settled } from "./support/launch";
+import { clearSetupPayment } from "./support/billing";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
+import { makeRuntimeReady } from "./support/runtime-ready";
 
 const KEY = "a".repeat(40);
 
@@ -133,8 +136,8 @@ describe("work started without a person", () => {
     const base = { orgId: c.org.id, onBehalfOf: c.people.owner.id, title: "Test", idempotencyKey: `system-test-${c.org.id}` };
     // A capability that writes drafts for a person to send needs a person.
     await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "sales_assistant", capability: "pipeline_followup_drafts" })).rejects.toThrow(/read-only/i);
-    await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "sales_assistant", capability: "lead_research" })).rejects.toThrow(/read-only|role/i);
-    await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "crm_manager", capability: "performance_snapshot" })).rejects.toThrow(/role/i);
+    await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "sales_assistant", capability: "lead_research" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
+    await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "crm_manager", capability: "performance_snapshot" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
     await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "crm_manager", capability: "not_a_capability" as never })).rejects.toThrow(/not available/i);
     await withSystem((db) => db.query("update agent_instances set enabled = false where org_id = $1 and role_key = 'crm_manager'", [c.org.id]));
     await expect(dispatchSystemCapabilityJob({ ...base, agentRole: "crm_manager", capability: "crm_quality_review" })).rejects.toThrow(/paused/i);
@@ -239,4 +242,21 @@ describe("the sweep only ever runs checks", () => {
     expect(after).toMatchObject({ state: "ready_to_launch", percent: 100 });
     expect(itemOf(after, "knowledge.team").state).toBe("action_required");
   }, 180_000);
+});
+
+describe("the launch sweep for a Growth-Partner-only workspace", () => {
+  it("uses the dedicated Partner runtime check and starts no legacy employee jobs", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Sweep Client", conversation: "direct" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+    await makeRuntimeReady(tenant.runtimeAgentId, tenant.org.id, tenant.owner.id);
+
+    const result = await sweepLaunchVerification(tenant.org.id);
+    expect(result.queued).toEqual([]);
+    expect(await checkJobs(tenant.org.id)).toBe(0);
+    const membership = { ...tenant.ownerCtx.org, onboardingCompletedAt: new Date().toISOString() };
+    const readiness = await getLaunchReadiness({ ...tenant.ownerCtx, org: membership, memberships: [membership] });
+    expect(itemOf(readiness!, "growth_partner.runtime").state).toBe("done");
+    await expectNoLegacyEmployeeRows(tenant.org.id);
+  });
 });

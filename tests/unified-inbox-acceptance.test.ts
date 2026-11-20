@@ -77,7 +77,7 @@ describe("scenarios 1 to 3: a message arrives and the right person is found", ()
 describe("scenarios 4 and 5: a person replies and the provider reports delivery (SIMULATED provider)", () => {
   it("sends through the provider once and shows 'delivered' only after the provider's own event", async () => {
     const c = await inbound(m.org.id, { name: "Reply Rosa" });
-    const queued = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hi Rosa, we can visit Thursday at 10.");
+    const queued = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hi Rosa, we can visit Thursday at 10.", { purpose: "service" });
     expect(queued.status).toBe("queued");
     expect((await dispatchMessage(queued.messageId, { provider: rec.provider })).status).toBe("sent");
     expect(rec.calls.filter((x) => x.messageId === queued.messageId)).toHaveLength(1);
@@ -187,7 +187,7 @@ describe("scenarios 12 to 14: consistency, tenants and the plan", () => {
     const start = await inboxSync(m.ctx("owner"), null);
     const since = new Date(Date.parse(start.serverTime) - 1000).toISOString();
     await setConversationState(m.ctx("manager"), c.conversationId, { priority: "urgent" });
-    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "We are on it.");
+    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "We are on it.", { purpose: "service" });
     await dispatchMessage(sent.messageId, { provider: recordingProvider().provider });
     const a = await inboxSync(m.ctx("owner"), since);
     const b = await inboxSync(m.ctx("manager"), since);
@@ -210,7 +210,7 @@ describe("scenarios 12 to 14: consistency, tenants and the plan", () => {
     expect(JSON.stringify(await inboxSync(intruder, new Date(Date.now() - 60_000).toISOString()))).not.toContain(c.conversationId);
     await expect(getInboxCrmContext(intruder, c.conversationId)).rejects.toThrow(/not found/i);
     await expect(createTaskFromConversation(intruder, c.conversationId, { title: "Steal" })).rejects.toThrow(/not found/i);
-    await expect(sendHumanReply(intruder, c.conversationId, "Hello from outside")).rejects.toThrow();
+    await expect(sendHumanReply(intruder, c.conversationId, "Hello from outside", { purpose: "service" })).rejects.toThrow();
     expect(await count("select count(*)::text as n from tasks where title = 'Steal'", [])).toBe(0);
   });
 
@@ -218,7 +218,7 @@ describe("scenarios 12 to 14: consistency, tenants and the plan", () => {
     expect((await withSystem((db) => studioEntitlement(db, m.org.id))).entitled).toBe(false);
     // Everything in scenarios 1 to 13 ran in this workspace: lists, replies, takeover, transfer, links, sync and a CRM workflow.
     const c = await inbound(m.org.id, { name: "No Plan Nina" });
-    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hello Nina.");
+    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hello Nina.", { purpose: "service" });
     expect(sent.status).toBe("queued");
     await setConversationState(m.ctx("manager"), c.conversationId, { status: "closed", outcome: "answered", archived: true });
     expect((await listConversationsPage(m.ctx("owner"), { view: "archived", limit: 100 })).items.map((i) => i.id)).toContain(c.conversationId);
@@ -236,7 +236,7 @@ describe("scenarios 15 and 16: honest failures", () => {
     for (const key of ["web_chat", "phone"] as const) expect(health.find((h) => h.key === key)!.state).toBe("not_available");
     const c = await inbound(org.org.id);
     // A person trying to reply is told plainly, and no message row exists that could later look sent.
-    await expect(sendHumanReply(org.ctx("manager"), c.conversationId, "Can anyone hear me?")).rejects.toThrow(/SMS is not verified and enabled for this workspace yet/);
+    await expect(sendHumanReply(org.ctx("manager"), c.conversationId, "Can anyone hear me?", { purpose: "service" })).rejects.toThrow(/SMS is not verified and enabled for this workspace yet/);
     expect(await count("select count(*)::text as n from conversation_messages where conversation_id = $1 and direction = 'outbound'", [c.conversationId])).toBe(0);
     // An AI reply to the same customer is stopped by the same rule and is recorded as blocked, never as sent.
     const ai = await withSystem((db) => queueOutbound(db, { orgId: org.org.id, conversationId: c.conversationId, scope: "reply", actor: { kind: "ai", agentId: org.salesAgentId }, body: "Hello" }));
@@ -252,7 +252,7 @@ describe("scenarios 15 and 16: honest failures", () => {
 
   it("16. a failed send can be inspected, and sent again once, only as a new linked message", async () => {
     const c = await inbound(m.org.id, { name: "Retry Rita" });
-    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "See you Thursday at 10.");
+    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "See you Thursday at 10.", { purpose: "service" });
     const refused = recordingProvider(() => ({ ok: false, retryable: false, error: "The provider rejected the message (number not reachable)." }));
     expect((await dispatchMessage(sent.messageId, { provider: refused.provider })).status).toBe("failed");
     const thread = await loadInboxThread(m.ctx("manager"), c.conversationId);

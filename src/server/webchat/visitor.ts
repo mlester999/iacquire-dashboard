@@ -229,8 +229,8 @@ export async function postVisitorMessage(input: { widget: WidgetSettings; sessio
 
     const conv = await ensureConversation(db, input.widget, s, now);
     const inserted = await db.query<{ id: string }>(
-      `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, provider, provider_message_id, dedupe_key, created_at)
-       values ($1, $2, 'inbound', 'contact', $3, 'received', 'web_chat', $4, $5, $6) returning id`,
+      `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, provider, provider_message_id, dedupe_key, sender_verified, created_at)
+       values ($1, $2, 'inbound', 'contact', $3, 'received', 'web_chat', $4, $5, true, $6) returning id`,
       [s.orgId, conv.id, text, `${s.id}:${input.clientMessageId}`, dedupeKey, now],
     );
     const messageId = inserted.rows[0].id;

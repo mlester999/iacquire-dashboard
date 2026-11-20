@@ -50,7 +50,7 @@ export async function pauseAi(ctx: OrgContext, conversationId: string, reason?: 
       return { changed: true };
     }
     if (r.why === "human_owner") throw new AppError("conflict", "A person is handling this conversation, so the AI is not replying.");
-    if (r.why === "no_ai") throw new AppError("conflict", "No AI employee is handling this conversation, so there is nothing to pause.");
+    if (r.why === "no_ai") throw new AppError("conflict", "AI is already inactive on this conversation.");
     return { changed: false };
   });
 }
@@ -85,7 +85,7 @@ export async function pauseAiInTx(
  * checks as handing a conversation back; on a conversation a person owns it is only attached, and stays silent until it is handed back.
  */
 export async function assignAiEmployee(ctx: OrgContext, conversationId: string, agentId: string): Promise<{ agentId: string; ownerKind: OwnerKind }> {
-  if (!ctx.can("inbox.assign")) throw new AppError("forbidden", "Only owners and managers can choose the AI employee for a conversation.");
+  if (!ctx.can("inbox.assign")) throw new AppError("forbidden", "Only owners and managers can change an AI assignment.");
   await assertConversationVisible(ctx, conversationId);
   return withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; role_key: string; enabled: boolean; display_name: string; canonical_agent_id: string | null }>(
@@ -96,7 +96,7 @@ export async function assignAiEmployee(ctx: OrgContext, conversationId: string, 
       [agentId, ctx.org.orgId],
     );
     const agent = rows[0];
-    if (!agent) throw new AppError("not_found", "That AI employee isn't part of this workspace.");
+    if (!agent) throw new AppError("not_found", "The assigned AI profile is unavailable in this workspace.");
     if (!canHandleConversations(agent.role_key)) throw new AppError("invalid_input", `${agent.display_name} works behind the scenes and can't talk to customers. Choose the AI Growth Partner or a supported previous profile.`);
     if (!agent.enabled) throw new AppError("conflict", `${agent.display_name} isn't included in this workspace.`);
     const conv = await lockConversation(db, ctx.org.orgId, conversationId);

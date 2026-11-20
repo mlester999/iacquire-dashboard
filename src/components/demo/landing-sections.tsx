@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronDown, Clock, Mail, MailCheck, MessageSquareText, MousePointerClick, Route, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, BookOpen, ChevronDown, Clock, Mail, MailCheck, MessageSquareText, MousePointerClick, Route, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/primitives";
 import { DEMO_CAPABILITY_AREAS, VIEWS, type ViewId } from "@/lib/demo/showroom/content";
@@ -39,9 +39,9 @@ export function Benefits({ form }: { form: FormView }) {
 }
 
 const PARTNER_WORKFLOW = [
-  { title: "Checks a prospect against your approved brief", tag: "Evidence linked", tone: "info" },
-  { title: "Checks for a matching CRM record", tag: "Duplicate check", tone: "ok" },
-  { title: "Prepares a relevant next step", tag: "Review required", tone: "violet" },
+  { icon: BookOpen, title: "Checks a prospect against your approved brief", tag: "Evidence linked", tone: "info" },
+  { icon: Route, title: "Checks for a matching CRM record", tag: "Duplicate check", tone: "ok" },
+  { icon: ShieldCheck, title: "Prepares a relevant next step", tag: "Review required", tone: "violet" },
 ] as const;
 
 /** A small, invented example of one Growth Partner coordinating a task across capabilities. Labelled as a sample. */
@@ -49,27 +49,23 @@ export function HandoffPreview() {
   return (
     <figure aria-label="A sample workflow coordinated by one AI Growth Partner" className="sx-panel m-0 space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">One partner, one coordinated workflow</p>
+        <p className="flex items-center gap-2 text-[14px] font-semibold text-ink"><Sparkles className="size-4 text-primary" aria-hidden /> AI Growth Partner</p>
         <SimTag>Sample preview</SimTag>
       </div>
       <ol className="relative space-y-3">
-        <span aria-hidden className="absolute bottom-6 left-[19px] top-6 w-px border-l border-dashed border-line-strong" />
-        {PARTNER_WORKFLOW.map((h, index) => (
-          <li key={h.title} className="relative flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/15 bg-surface text-primary-ink">
-              <span className="text-[12px] font-semibold">{index + 1}</span>
+        {PARTNER_WORKFLOW.map(({ icon: Icon, title, tag, tone }) => (
+          <li key={title} className="relative flex items-start gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-primary/15 bg-surface text-primary-ink">
+              <Icon className="size-4" aria-hidden />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-semibold text-muted">AI Growth Partner</p>
-              <p className="text-[14px] font-medium leading-snug text-ink">{h.title}</p>
+              <p className="text-[14px] font-medium leading-snug text-ink">{title}</p>
+              <Chip tone={tone} className="mt-1.5">{tag}</Chip>
             </div>
-            <Chip tone={h.tone} className="hidden shrink-0 sm:inline-flex">
-              {h.tag}
-            </Chip>
           </li>
         ))}
       </ol>
-      <figcaption className="text-[12.5px] leading-relaxed text-muted">Illustrative only. No prospect is researched or saved here; a customer-facing action follows the required approval.</figcaption>
+      <figcaption className="text-[12.5px] leading-relaxed text-muted">Illustrative only. No prospect is researched or saved here; customer-facing actions follow your approval rules.</figcaption>
     </figure>
   );
 }

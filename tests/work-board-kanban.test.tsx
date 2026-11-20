@@ -82,13 +82,32 @@ describe("Work Board Kanban", () => {
       scheduleOperatorEnabled={false}
       timeZone="UTC"
       focusJobId={null}
+      employeeNames={{ sales_assistant: "Sales Assistant" }}
       referenceTime="2026-10-24T08:00:00.000Z"
     />);
 
     expect(screen.getAllByText("AI Growth Partner").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Previous profile · Sales Assistant")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Partner Control Center" }).getAttribute("href")).toBe("/growth-partner");
-    expect(screen.getByRole("link", { name: "Previous profile settings" }).getAttribute("href")).toBe("/employees/sales-assistant");
+    expect(screen.getByRole("link", { name: "Open previous role profile" }).getAttribute("href")).toBe("/employees/sales-assistant");
+  });
+
+  it("routes disabled retained-profile jobs to the Growth Partner and does not show the role avatar", () => {
+    render(<WorkBoardKanban
+      jobs={[job({ id: "disabled-role-job", employeeName: "Sales Assistant", employeeRole: "sales_assistant", conversationId: "old-conversation" })]}
+      schedules={[]}
+      filter="all"
+      scheduleOperatorEnabled={false}
+      timeZone="UTC"
+      focusJobId={null}
+      referenceTime="2026-10-24T08:00:00.000Z"
+    />);
+
+    const card = screen.getByText("Operations review job").closest("article") as HTMLElement;
+    expect(card.textContent).toContain("Previous profile · Sales Assistant");
+    expect(within(card).getByRole("link", { name: "Open AI Growth Partner" }).getAttribute("href")).toBe("/growth-partner");
+    expect(card.querySelector("img[alt*='Sales Assistant']")).toBeNull();
+    expect(card.querySelector("a[href^='/chat/']")).toBeNull();
   });
 
   it("keeps persisted jobs and future schedule occurrences in separate truthful lanes", () => {
@@ -148,6 +167,34 @@ describe("Work Board Kanban", () => {
     // The prepared job's status pill is not the green success tone.
     const draftCard = within(lane("Prepared, not finished")).getByText("Follow-up drafts").closest("article") as HTMLElement;
     expect(draftCard.innerHTML).not.toMatch(/success/);
+  });
+
+  it("shows an awaiting-connection block with its fix link", () => {
+    render(<WorkBoardKanban
+      jobs={[job({
+        id: "calendar-blocked",
+        capability: "appointment_availability",
+        title: "Calendar availability check",
+        status: "blocked",
+        statusLabel: "Waiting for connection",
+        stage: "awaiting_connection",
+        stageLabel: "Waiting for a connection",
+        failureCode: "awaiting_connection",
+        failureMessage: "No active calendar is set up yet.",
+        failureHref: "/crm/calendar",
+        resultSummary: "Waiting for Calendar: No active calendar is set up yet.",
+        employeeRole: "appointment_setter",
+      })]}
+      schedules={[]}
+      filter="all"
+      scheduleOperatorEnabled={false}
+      timeZone="UTC"
+      focusJobId={null}
+      referenceTime="2026-10-24T08:00:00.000Z"
+    />);
+    expect(screen.getByText("Waiting for connection")).toBeTruthy();
+    expect(screen.getByText("Waiting for Calendar: No active calendar is set up yet.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Fix connection" }).getAttribute("href")).toBe("/crm/calendar");
   });
 
   it("filters Partner work separately and keeps previous-profile activity in one group", () => {

@@ -443,10 +443,10 @@ export function buildOutcomeNotes(i: {
     notes.push({ key: "growth_partner.held", message: "An update for your AI Growth Partner is waiting for iAcquire's review. Until then, it keeps the setup already approved." });
   }
   if (heldProfiles) {
-    notes.push({ key: "employees.held", message: `${heldProfiles} employee update${heldProfiles === 1 ? " is" : "s are"} waiting for iAcquire's review. Until then, ${heldProfiles === 1 ? "that employee keeps" : "those employees keep"} the setup already approved.` });
+    notes.push({ key: "employees.held", message: `${heldProfiles} retained profile update${heldProfiles === 1 ? " is" : "s are"} waiting for iAcquire's review. Until then, ${heldProfiles === 1 ? "that profile keeps" : "those profiles keep"} the setup already approved.` });
   }
   const unchanged = i.employees.filter((e) => e.configStatus === "unchanged").length;
-  if (i.reSubmission && unchanged && unchanged < i.employees.length) notes.push({ key: "employees.unchanged", message: `${unchanged} employee${unchanged === 1 ? " was" : "s were"} already set up as your answers say.` });
+  if (i.reSubmission && unchanged && unchanged < i.employees.length) notes.push({ key: "employees.unchanged", message: `${unchanged} retained profile${unchanged === 1 ? " was" : "s were"} already set up as your answers say.` });
   if (i.wantsAppointments && i.scheduling.state === "skipped" && i.scheduling.reason) notes.push({ key: "scheduling.skipped", message: i.scheduling.reason });
   if (i.scheduling.drift?.length) {
     const shown = i.scheduling.drift.slice(0, 3);
@@ -456,6 +456,6 @@ export function buildOutcomeNotes(i: {
   if (i.reSubmission && i.targetingKept) notes.push({ key: "targeting.kept", message: "Your lead targeting was left as it is." });
   if (i.leftAsEdited.profile.length) notes.push({ key: "profile.kept", message: `Left as edited in Settings: ${list(i.leftAsEdited.profile.map((k) => FACT_LABELS[k]))}.` });
   if (i.leftAsEdited.messaging.length) notes.push({ key: "messaging.kept", message: `Left as set in Messaging settings: ${list(i.leftAsEdited.messaging.map((k) => MESSAGING_LABELS[k]))}.` });
-  if (i.leftAsEdited.preferences.length) notes.push({ key: "preferences.kept", message: `Left as set in AI preferences: ${list(i.leftAsEdited.preferences.map((k) => PREFERENCE_LABELS[k]))}.` });
+  if (i.leftAsEdited.preferences.length) notes.push({ key: "preferences.kept", message: `Left as set in Growth Partner Settings: ${list(i.leftAsEdited.preferences.map((k) => PREFERENCE_LABELS[k]))}.` });
   return notes;
 }

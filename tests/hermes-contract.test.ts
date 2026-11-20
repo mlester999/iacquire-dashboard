@@ -47,6 +47,16 @@ describe("Hermes verification fails closed",()=>{
     await expect(getToolsets(conn)).rejects.toMatchObject({kind:"bad_response"});
   });
 
+  it.each([{ sessionId: "prior-transcript" }, { memoryScope: "iaq:synthetic:persistent" }])(
+    "refuses to attach stored runtime state to an isolated run (%j)",
+    async (storedState) => {
+      const fetch = vi.spyOn(globalThis, "fetch");
+      await expect(startRun(conn, { input: "isolated test", idempotencyKey: "isolated-test", ...storedState }, { toolScope: "no_tools" }))
+        .rejects.toMatchObject({ reason: "tool_scope_unavailable" });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not accept an alias as the profile's primary identity",async()=>{
     vi.spyOn(globalThis,"fetch").mockImplementation(async url=>{
       if(String(url).endsWith("/v1/capabilities"))return Response.json({object:"hermes.api_server.capabilities",auth:{required:true,type:"bearer"},features:{run_submission:true,run_events_sse:true}});

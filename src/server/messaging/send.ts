@@ -11,15 +11,18 @@ import { nativeAutomationRefusal } from "@/server/crm/provider-guard";
 import { contactAddress, getConsent, isSuppressed, suppressAddress } from "@/server/messaging/contacts";
 import { identityFacts, latestConsentSource } from "@/server/messaging/consent-identity";
 import { dispatchGate, HELD_BY_PERSON_DETAIL } from "@/server/messaging/dispatch-gate";
-import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
-import { TYPED_CONSENT_SOURCE, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
+import { workflowMessageApproved } from "@/server/messaging/workflow-approval";
+import { feedbackDraftApproved, retentionMessageApproved } from "@/server/retention/approval";
+import { reminderMessageApproved } from "@/server/appointments/reminder-approval";
+import { isUnverifiedFormConsentSource, unverifiedIdentityRefusal } from "@/lib/webchat/identity";
 import type { ChannelProvider } from "@/server/messaging/provider";
 import { fillInvoiceLink, fillManageLink, fillProposalLink, fillReviewLink, hasInvoiceLinkPlaceholder, hasManageLinkPlaceholder, hasProposalLinkPlaceholder, hasReviewLinkPlaceholder, maskCustomerLinks } from "@/server/messaging/redact";
 import { buildUnsubscribeUrl } from "@/server/messaging/unsubscribe";
 import { transportFromProvider, type GhlTransportRequest } from "@/server/messaging/transports/ghl";
 import { isTransportName, transportFor } from "@/server/messaging/transports";
+import { OUTBOUND_DISABLED_REASON, outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import { TRANSPORT_LABELS, type ChannelTransport, type TransportName, type TransportResult, type TransportSender } from "@/server/messaging/transports/types";
-import { queueWebChatOutbound } from "@/server/messaging/web-chat-send";
+import { customerReplyApprovalReasonForRole, queueWebChatOutbound } from "@/server/messaging/web-chat-send";
 import {
   advancesDelivery,
   unconfirmedOutcome,
@@ -48,8 +51,9 @@ export type SendScope = "reply" | "followup" | "human" | "reminder" | "retention
 /** service: about something the customer has or asked for. marketing: promotional, and needs the customer's explicit marketing consent. */
 export type SendPurpose = "service" | "marketing";
 /**
- * system: work the server does on a person's explicit, recorded decision without any AI involved (an owner-approved campaign). It never
- * passes the AI gate, and like an AI send a refusal is recorded (or waits) instead of being thrown. `userId` is the person whose approval it acts on.
+ * system: work the server does on a person's explicit, recorded decision without any AI involved (an owner-approved campaign, a missed-call text). It never
+ * passes the AI employee gate, but it is stopped by the workspace's pauses and its status just as an AI send is (see evaluateSend and dispatchGate), and like an AI send a
+ * refusal is recorded (or waits) instead of being thrown. `userId` is the person whose approval it acts on.
  */
 export type SendActor = { kind: "ai"; agentId: string | null; approvalId?: string | null } | { kind: "human"; userId: string } | { kind: "system"; userId: string | null };
 
@@ -69,6 +73,10 @@ export interface SendRequest {
   followupStepId?: string | null;
   /** Makes the send at-most-once: a second request with the same key is refused by the database. */
   dedupeKey?: string | null;
+  /** Dispatcher only: the persisted message must belong to the completed workflow step that queued it. */
+  dispatchMessageId?: string;
+  /** Approval action only: the locked draft being evaluated before it is queued. */
+  approvedDraftMessageId?: string;
   purpose?: SendPurpose;
   /**
    * AI sends only: the conversation's ownership_version the message was prepared under. If a takeover, pause, resume or another employee
@@ -244,11 +252,16 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   // A website chat is never sent through a provider; its replies take queueWebChatOutbound. Anything else that reaches this chain with one is refused.
   if ((conv.channel as string) === "web_chat") return deny("channel_not_ready", "A website chat reply appears in the visitor's open chat window; it is not sent as a message.", { permanent: true });
   const channel = conv.channel;
+  const retentionFeedback = req.actor.kind === "ai" && req.scope === "retention" && hasReviewLinkPlaceholder(req.body);
   if (conv.contact_deleted) return deny("contact_unreachable", "This contact was removed.", { permanent: true });
-  // An invoice reminder is automatic and goes to the business's customer about money, and a document a person sent may wait for sending hours and go out later: a pause or a
-  // suspension of the workspace stops either, both when it is queued and right before it is sent. (Other system sends are held to the same rule by the caller that starts
-  // them; these are held here so no caller can forget.)
-  if (req.scope === "billing" || req.scope === "delivery") {
+  // The workspace's own pauses (customer messaging, outbound), the agency's emergency pause (one workspace or the whole platform) and a suspended or archived workspace stop:
+  //  * every send the system makes without an AI employee behind it (a missed-call text, a review request, a campaign): automationGate below only ever runs for an AI actor, so
+  //    without this check nothing but the caller's own good manners would stop them;
+  //  * an invoice reminder, which is automatic and goes to the business's customer about money, and a document a person sent, which may wait for a sending window and go out hours
+  //    later: whoever sends them.
+  // It runs both when the message is queued and right before it is sent. A person's own message (scope human, actor human) is deliberately not stopped by a pause: the pause
+  // stops automation, and a person answering a customer is not automation.
+  if (req.scope === "billing" || req.scope === "delivery" || req.actor.kind === "system") {
     for (const gateScope of ["messaging", "outbound"] as const) {
       const gate = await checkOrgAutomation(db, req.orgId, gateScope);
       if (!gate.allowed) return deny(gate.reason === "org_inactive" ? "org_inactive" : "automation_paused", gate.detail, { permanent: true });
@@ -284,7 +297,66 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
       const reason = gate.reason === "org_inactive" ? "org_inactive" : ["agent_not_ready", "agent_missing", "agent_disabled"].includes(gate.reason) ? "agent_not_ready" : "automation_paused";
       return deny(reason, gate.detail, { permanent: true });
     }
-    if (gate.decision === "needs_approval") return deny("needs_approval", gate.detail, { needsApproval: true });
+    const workflowEffectKey = req.scope === "followup" && req.dedupeKey?.startsWith("wf:") ? req.dedupeKey : null;
+    if (workflowEffectKey) {
+      const workspace = await checkOrgAutomation(db, req.orgId, "workflows");
+      if (!workspace.allowed) return deny("automation_paused", workspace.detail, { permanent: true });
+      const approved = await workflowMessageApproved(db, {
+        orgId: req.orgId,
+        contactId: conv.contact_id,
+        channel,
+        agentId: req.actor.agentId,
+        approvalId: req.actor.approvalId ?? null,
+        purpose: req.purpose,
+        effectKey: workflowEffectKey,
+        dispatchMessageId: req.dispatchMessageId,
+      });
+      if (!approved) return deny("workflow_approval_invalid", "This message is no longer covered by the approved workflow step.", { permanent: true });
+    } else if (req.scope === "retention" && (retentionFeedback || req.dispatchMessageId || req.dedupeKey?.startsWith("retention:"))) {
+      const effectKey = req.dedupeKey ?? "";
+      const approved = await retentionMessageApproved(db, {
+        orgId: req.orgId,
+        contactId: conv.contact_id,
+        agentId: req.actor.agentId,
+        approvalId: req.actor.approvalId ?? null,
+        purpose: req.purpose,
+        effectKey,
+        dispatchMessageId: req.dispatchMessageId,
+        now,
+      });
+      if (!approved) {
+        const messageId = req.approvedDraftMessageId ?? req.dispatchMessageId;
+        if (retentionFeedback && effectKey.startsWith("retention:") && !messageId && !req.actor.approvalId && gate.decision === "needs_approval") {
+          return deny("needs_approval", gate.detail, { needsApproval: true });
+        }
+        const reviewed = retentionFeedback && req.purpose === "service" && gate.decision === "allow" && await feedbackDraftApproved(db, {
+          orgId: req.orgId,
+          conversationId: req.conversationId,
+          contactId: conv.contact_id,
+          channel,
+          agentId: req.actor.agentId,
+          approvalId: req.actor.approvalId ?? null,
+          effectKey,
+          messageId,
+          now,
+        });
+        if (!reviewed) return deny("authorization_needed", "This message is no longer covered by the approved customer program.", { permanent: true });
+      }
+    } else if (req.scope === "reminder" && req.dedupeKey?.startsWith("reminder:")) {
+      const approved = await reminderMessageApproved(db, {
+        orgId: req.orgId,
+        contactId: conv.contact_id,
+        agentId: req.actor.agentId,
+        approvalId: req.actor.approvalId ?? null,
+        purpose: req.purpose,
+        effectKey: req.dedupeKey,
+        dispatchMessageId: req.dispatchMessageId,
+        now,
+      });
+      if (!approved) return deny("authorization_needed", "This appointment reminder is no longer scheduled or covered by the current authorization.", { permanent: true });
+    } else if (gate.decision === "needs_approval") {
+      return deny("needs_approval", gate.detail, { needsApproval: true });
+    }
     const { rows: settings } = await db.query<{ auto_reply_enabled: boolean }>("select auto_reply_enabled from messaging_settings where org_id = $1", [req.orgId]);
     // Autopilot is something the owner turns on. Until then the AI prepares drafts for a person to approve.
     if (!settings[0]?.auto_reply_enabled && !req.actor.approvalId) return deny("needs_approval", "Automatic replies are not switched on for this workspace yet.", { needsApproval: true });
@@ -312,6 +384,9 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   if (refusal) return deny(refusal.reason, refusal.detail, { permanent: true });
   const consent = await getConsent(db, req.orgId, conv.contact_id, channel, purpose);
   if (consent === "revoked") return deny("no_consent", "This customer withdrew consent on this channel.", { permanent: true });
+  if (retentionFeedback && (purpose !== "service" || consent !== "granted")) {
+    return deny("link_needs_consent", "A private feedback link requires consent to service messages on this channel.", { permanent: true });
+  }
   // Promotional messages need an explicit yes. Anything else needs one on record, or the customer having written to us first.
   if (purpose === "marketing" && consent !== "granted") {
     return deny("no_consent", waTemplate?.category === "marketing" && req.purpose !== "marketing" ? "This WhatsApp template is a marketing template, and this customer has not agreed to promotional messages on WhatsApp." : "This customer has not agreed to promotional messages on this channel.", { permanent: true });
@@ -319,8 +394,8 @@ export async function evaluateSend(db: Queryable, req: SendRequest): Promise<Sen
   // The box offering promotional messages was ticked by whoever typed the details, possibly before the address was confirmed as theirs. Confirming the address later does not
   // make that tick the customer's own, so it does not count until the customer or a person of the business records the agreement again. The grant keeps its source when a
   // merge carries it to another contact, so this holds for whichever contact now owns it.
-  if (purpose === "marketing" && (await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing")) === TYPED_CONSENT_SOURCE) {
-    return deny("no_consent", "The only promotional agreement on record was ticked in the website chat, before this customer confirmed the address. It needs to be recorded again.", { permanent: true });
+  if (purpose === "marketing" && isUnverifiedFormConsentSource(await latestConsentSource(db, req.orgId, conv.contact_id, channel, "marketing"))) {
+    return deny("no_consent", "A public form's promotional opt-in was ticked by whoever typed the address, before it was confirmed. Record the customer's agreement again before sending marketing messages.", { permanent: true });
   }
   if (consent === "unknown" && (req.scope === "followup" || !conv.last_inbound_at)) return deny("no_consent", "There is no consent on record to message this person.", { permanent: true });
 
@@ -479,6 +554,9 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
     if (decision.needsApproval) {
       await insert("draft", { reason: "needs_approval", detail: decision.detail });
       // The draft also appears in the Approval Center, so it can be approved or rejected from either place.
+      const roleKey = req.actor.kind === "ai" && req.actor.agentId
+        ? (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [req.actor.agentId, req.orgId])).rows[0]?.role_key
+        : null;
       const approvalId = await createApproval(db, {
         orgId: req.orgId,
         agentId: req.actor.kind === "ai" ? req.actor.agentId : null,
@@ -487,7 +565,7 @@ export async function queueOutbound(db: Queryable, req: SendRequest & { agentId?
         action: { messageId },
         targetType: "conversation",
         targetId: req.conversationId,
-        reason: "Your AI employee prepared this message and needs a person to approve it before it is sent.",
+        reason: customerReplyApprovalReasonForRole(roleKey, "message"),
         expectedEffect: "The message is sent to the customer.",
         risk: "medium",
         idempotencyKey: `draft:${messageId}`,
@@ -583,10 +661,13 @@ function requestFor(m: MessageRow, now: Date): SendRequest {
     hasReservation: Boolean(m.reservation_id),
     fenceVersion: m.author_kind === "ai" ? m.ownership_fence : null,
     dedupeKey: m.dedupe_key,
+    dispatchMessageId: m.id,
   };
 }
 
-const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "identity_unverified", "automation_paused", "org_inactive", "agent_not_ready", "followup_limit", "contact_unreachable"]);
+/** Why and what a message says when the environment's master switch (OUTBOUND_MESSAGING_ENABLED) was off at the moment it was due. Plain words: a person reads this in the inbox. */
+
+const PERMANENT_STEP_REASONS = new Set(["human_owner", "ai_paused", "stale_ownership", "suppressed", "no_consent", "identity_unverified", "automation_paused", "org_inactive", OUTBOUND_DISABLED_REASON, "outbound_switch_off", "agent_not_ready", "followup_limit", "contact_unreachable"]);
 
 async function finishBlocked(db: Queryable, m: Pick<MessageRow, "id" | "org_id" | "reservation_id" | "followup_step_id">, reason: string, detail: string) {
   await db.query("update conversation_messages set status = 'blocked', blocked_reason = $2, status_detail = $3 where id = $1", [m.id, reason, detail.slice(0, 300)]);
@@ -784,6 +865,15 @@ export async function dispatchMessage(messageId: string, deps: DispatchDeps = {}
     );
     const m = rows[0];
     if (!m) return null;
+    // The environment's master switch for messages to customers (OUTBOUND_MESSAGING_ENABLED), enforced here once for every message and every provider, before anything is
+    // prepared or any link is issued for it, and so before any transport is called. Off: the message is finished as blocked, for good. It is not retried (nothing here can change
+    // by waiting a few minutes, and a retry loop would only repeat this), and it is not sent later if the switch is turned on: a message that was due while sending was off is
+    // not one to release in a burst afterwards. Its credit hold is released and its follow-up step is marked, like any other block.
+    const outboundDisabled = outboundMessagingDisabled();
+    if (outboundDisabled) {
+      await finishBlocked(db, m, outboundDisabled.reason, outboundDisabled.detail);
+      return { done: "blocked" };
+    }
     // The message's credit hold may have lapsed while it waited (quiet hours, a provider switch). Then it is checked like a new send: the
     // balance and budget are read again, and a fresh hold is taken below before anything leaves.
     const holdStatus = m.reservation_id

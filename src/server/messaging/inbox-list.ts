@@ -184,7 +184,7 @@ export function toListItem(r: Row): ConversationListItem {
     lastMessageAt: iso(r.last_message_at),
     preview: maskCustomerLinks(r.last_message_preview),
     escalation: r.esc_id ? { id: r.esc_id, status: r.esc_status as string, urgency: r.esc_urgency as string } : null,
-    aiAgent: r.agent_id ? { id: r.agent_id, name: r.agent_name ?? "AI employee", roleKey: r.agent_role ?? "" } : null,
+    aiAgent: r.agent_id ? { id: r.agent_id, name: r.agent_name ?? "AI profile", roleKey: r.agent_role ?? "" } : null,
     aiPaused: r.ai_paused_at !== null,
     archivedAt: iso(r.archived_at),
     resolvedAt: iso(r.resolved_at),

@@ -107,6 +107,17 @@ describe("Growth Partner navigation (main iAcquire sidebar)", () => {
     expect(hrefs()).not.toContain("/employees");
   });
 
+  it("uses the canonical work and reporting names for a Growth Partner-only workspace", () => {
+    renderSidebar(["agents.use", "agents.configure", "analytics.view"], {
+      agents: [],
+    });
+    const main = screen.getByRole("navigation", { name: "Main" });
+    expect(within(main).getByRole("link", { name: "AI Work Board" }).getAttribute("href")).toBe("/work");
+    expect(within(main).getByRole("link", { name: "Schedules & Calendar" }).getAttribute("href")).toBe("/work/calendar");
+    expect(within(main).getByRole("link", { name: "Performance Reporting" }).getAttribute("href")).toBe("/analytics");
+    expect(within(main).queryByText(/Lead Hunter|Appointment Setter|Operations Manager/)).toBeNull();
+  });
+
   it("highlights only the permanent conversation on its route", () => {
     nav.pathname = "/growth-partner/conversation";
     renderSidebar();
@@ -132,7 +143,7 @@ describe("Growth Partner navigation (main iAcquire sidebar)", () => {
 
   it("renders the wordmark through the shared Logo with no colour override on the link", () => {
     renderSidebar();
-    const brand = screen.getByRole("link", { name: "iAcquire overview" });
+    const brand = screen.getByRole("link", { name: "iAcquireOS overview" });
     expect(brand.className).toContain("workspace-nav-brand");
     expect(brand.className).not.toContain("text-white");
     expect(within(brand).getByText("AcquireOS").className).toContain("logo-accent");

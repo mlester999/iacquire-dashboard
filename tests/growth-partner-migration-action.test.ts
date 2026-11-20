@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   requireAgencyOrThrow: vi.fn(),
   requireAgencyOrgPermissionOrThrow: vi.fn(),
   prepareGrowthPartnerMigrationCandidate: vi.fn(),
+  prepareApprovedMigrationPlan: vi.fn(),
   previewGrowthPartnerScheduleMigration: vi.fn(),
   revalidatePath: vi.fn(),
 }));
@@ -16,9 +17,12 @@ vi.mock("@/server/admin/growth-partner-migration", () => ({
   prepareGrowthPartnerMigrationCandidate: mocks.prepareGrowthPartnerMigrationCandidate,
   previewGrowthPartnerScheduleMigration: mocks.previewGrowthPartnerScheduleMigration,
 }));
+vi.mock("@/server/admin/growth-partner-migration-plan", () => ({
+  prepareApprovedMigrationPlan: mocks.prepareApprovedMigrationPlan,
+}));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
-import { prepareGrowthPartnerMigrationCandidateAction, previewGrowthPartnerScheduleMigrationAction } from "@/app/(admin)/admin/migration-actions";
+import { applyApprovedGrowthPartnerMigrationPlanAction, prepareGrowthPartnerMigrationCandidateAction, previewGrowthPartnerScheduleMigrationAction } from "@/app/(admin)/admin/migration-actions";
 import { AppError } from "@/server/errors";
 
 describe("prepare Growth Partner migration candidate server action", () => {
@@ -107,5 +111,42 @@ describe("Growth Partner schedule migration preview server action", () => {
     expect(mocks.requireAgencyOrgPermissionOrThrow).toHaveBeenCalledWith(orgId, "agency.workforce.manage");
     expect(mocks.previewGrowthPartnerScheduleMigration).toHaveBeenCalledWith(orgId);
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("apply an approved Growth Partner preparation", () => {
+  const orgId = "30000000-0000-4000-8000-000000000003";
+  const planId = "20000000-0000-4000-8000-000000000002";
+  const actorId = "10000000-0000-4000-8000-000000000001";
+  const digest = "d".repeat(64);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAgencyOrThrow.mockResolvedValue({ id: actorId });
+    mocks.requireAgencyOrgPermissionOrThrow.mockResolvedValue({ id: actorId });
+  });
+
+  it("validates the digest and requires both authorization checks on direct calls", async () => {
+    await expect(applyApprovedGrowthPartnerMigrationPlanAction(orgId, planId, "wrong")).resolves.toMatchObject({ code: "invalid_input" });
+    expect(mocks.requireAgencyOrThrow).not.toHaveBeenCalled();
+    mocks.requireAgencyOrThrow.mockRejectedValueOnce(new AppError("forbidden", "Super Admin access is required."));
+    await expect(applyApprovedGrowthPartnerMigrationPlanAction(orgId, planId, digest)).resolves.toMatchObject({ code: "forbidden" });
+    expect(mocks.requireAgencyOrgPermissionOrThrow).not.toHaveBeenCalled();
+    mocks.requireAgencyOrgPermissionOrThrow.mockRejectedValueOnce(new AppError("forbidden", "Workspace access is required."));
+    await expect(applyApprovedGrowthPartnerMigrationPlanAction(orgId, planId, digest)).resolves.toMatchObject({ code: "forbidden" });
+    expect(mocks.requireAgencyOrgPermissionOrThrow).toHaveBeenCalledWith(orgId, "agency.workforce.manage");
+    expect(mocks.prepareApprovedMigrationPlan).not.toHaveBeenCalled();
+  });
+
+  it("forwards exactly the approved plan and refreshes both review screens after success", async () => {
+    const receipt = { brainVersion: 2, replacementScheduleCount: 0 };
+    mocks.prepareApprovedMigrationPlan.mockResolvedValueOnce(receipt);
+    await expect(applyApprovedGrowthPartnerMigrationPlanAction(orgId, planId, digest)).resolves.toEqual({ ok: true, data: receipt });
+    expect(mocks.requireAgencyOrThrow).toHaveBeenCalledWith("super_admin");
+    expect(mocks.requireAgencyOrgPermissionOrThrow).toHaveBeenCalledWith(orgId, "agency.workforce.manage");
+    expect(mocks.prepareApprovedMigrationPlan).toHaveBeenCalledWith(orgId, actorId, { planId, digest });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/admin/clients/${orgId}`);
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/growth-partner");
   });
 });

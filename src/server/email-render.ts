@@ -58,7 +58,7 @@ const META: Record<EmailTemplate, { tag: string; cta: string; headline: string }
   // Sent to a business's customer, not to an iAcquire user: it carries a one-time code and no link.
   proposal_code: { tag: "Your code", cta: "Open in iAcquire", headline: "Your code" },
   // Sent to a prospect who asked for the demo, not to an iAcquire user: one link that works once. Opening it only shows a button; pressing the button starts the demo.
-  demo_link: { tag: "Demo access", cta: "Open your demo", headline: "See the AI team in action" },
+  demo_link: { tag: "Demo access", cta: "Open your demo", headline: "See the AI Growth Partner in action" },
   // Sent to a buyer iAcquire invited, not to an iAcquire user: the offer, its price and one private link. The link is the only credential in it; the outbox keeps a copy without it.
   purchase_invitation: { tag: "Purchase invitation", cta: "Review your purchase", headline: "Your iAcquireOS offer is ready" },
 };
@@ -487,7 +487,7 @@ export function renderEmail(email: OutgoingEmail, opts: RenderOptions): Rendered
     // A useful demo preview avoids repeating the subject and omits nbsp padding, which Gmail shows as a large gap.
     const demoExpiry = email.template === "demo_link" ? expiryOf(parsed) : undefined;
     const preheader = email.template === "demo_link"
-      ? `Explore how iAcquire's AI team works in a private, sample-data preview. Your link works once${demoExpiry ? ` and expires in ${demoExpiry}` : ""}.`
+      ? `Explore how the AI Growth Partner works in a private, sample-data preview. Your link works once${demoExpiry ? ` and expires in ${demoExpiry}` : ""}.`
       : clip(headline, 110);
     html = layout({ ...common, preheader, padPreheader: email.template !== "demo_link", tag, tone, headlineHtml: esc(headline), headlineText: headline, hero, sections });
   }

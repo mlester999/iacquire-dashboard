@@ -1,12 +1,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, ArrowUpRight, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Clock, Cog, Info, ListChecks, Sparkles, XCircle } from "lucide-react";
-import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, EmptyState, ProgressBar } from "@/components/ui/primitives";
 import { AvatarTile, InfoChip, StatusPill } from "@/components/ui/status";
 import { IconTile, TINT } from "@/components/overview/panel";
 import { describeAction } from "@/lib/activity";
-import { AGENT_BY_KEY, agentIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { cn, relativeTime } from "@/lib/utils";
 
 /** The next best steps, as three actionable cards instead of a dark text band. */
@@ -85,38 +83,6 @@ export function AlertsList({ alerts }: { alerts: Array<{ tone: "warning" | "crit
                 <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{a.body}</span>
               </span>
               <ChevronRight className="mt-1 size-4 shrink-0 text-faint transition group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-export function TeamGrid({ agents }: { agents: Array<{ id: string; role_key: AgentRoleKey; display_name: string; enabled: boolean; status: AgentStatus }> }) {
-  return (
-    <ul className="grid grid-cols-1 h-full auto-rows-fr gap-3 sm:grid-cols-2">
-      {agents.map((a) => {
-        const meta = AGENT_BY_KEY[a.role_key];
-        return (
-          <li key={a.id} className="min-w-0">
-            <Link
-              href={a.enabled ? "/growth-partner/conversation" : `/employees/${meta.slug}`}
-              className="group flex h-full items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 transition duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card"
-            >
-              <AgentAvatar role={meta} size="md" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, meta)}>
-                  {agentIdentityLabel(a.display_name, meta)}
-                </p>
-                <p className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted" title={meta.tagline}>
-                  {meta.tagline}
-                </p>
-                <div className="mt-2">
-                  <AgentStatusBadge status={a.enabled ? a.status : "disabled"} size="sm" />
-                </div>
-              </div>
-              <ArrowUpRight className="size-4 shrink-0 self-start text-faint transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
             </Link>
           </li>
         );

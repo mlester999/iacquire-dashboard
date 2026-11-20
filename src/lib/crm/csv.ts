@@ -11,7 +11,7 @@ export interface ParsedCsv {
  * Parses CSV text. The first non-empty row is the header. Fully empty rows are dropped. Limits protect the server from a huge or
  * malformed upload; exceeding one is an error, never a silent truncation.
  */
-export function parseCsv(text: string, opts: { maxRows?: number; maxColumns?: number; maxCellLength?: number } = {}): ParsedCsv {
+export function parseCsv(text: string, opts: { maxRows?: number; maxColumns?: number; maxCellLength?: number; requireMatchingColumns?: boolean } = {}): ParsedCsv {
   const maxRows = opts.maxRows ?? 50_000;
   const maxColumns = opts.maxColumns ?? 200;
   const maxCell = opts.maxCellLength ?? 5000;
@@ -76,6 +76,10 @@ export function parseCsv(text: string, opts: { maxRows?: number; maxColumns?: nu
   if (!records.length) throw new CsvError("The file is empty.");
   const headers = records[0].map((h) => h.trim());
   if (headers.every((h) => !h)) throw new CsvError("The first row must contain column names.");
+  if (opts.requireMatchingColumns) {
+    const mismatch = records.findIndex((record) => record.length !== headers.length);
+    if (mismatch !== -1) throw new CsvError(`Record ${mismatch} must contain the same number of fields as the header.`);
+  }
   const seen = new Map<string, number>();
   const unique = headers.map((h, idx) => {
     const base = h || `Column ${idx + 1}`;

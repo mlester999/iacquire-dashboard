@@ -4,7 +4,7 @@
 export const MARKETPLACE_FILTERS = [
   { id: "all", label: "All Services" },
   { id: "ai-automation", label: "AI Automations" },
-  { id: "ai-agents", label: "AI Agents" },
+  { id: "ai-agents", label: "Custom AI workflows" },
   { id: "crm-integrations", label: "CRM & Integrations" },
   { id: "websites-funnels", label: "Websites & Funnels" },
   { id: "custom-development", label: "Custom Development" },
@@ -272,7 +272,7 @@ export const MAINTENANCE_LANES = [
   {
     id: "new_project",
     title: "New custom projects",
-    body: "New automations, AI agents, websites and software are scoped and quoted separately, even if you have a maintenance plan.",
+    body: "New automations, custom AI workflows, websites and software are scoped and quoted separately, even if you have a maintenance plan.",
   },
 ] as const;
 export type MaintenanceStatus = "requested" | "active" | "past_due" | "cancel_requested" | "cancelled" | "declined" | "expired";

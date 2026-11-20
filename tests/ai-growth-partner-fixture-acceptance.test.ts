@@ -570,6 +570,11 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
       sourceWarnings: [],
     });
     expect(job?.events.map((event) => event.stage)).toEqual(expect.arrayContaining(["searching", "reviewing", "extracting", "qualifying", "checking_duplicates", "preparing_results", "completed"]));
+    const { rows: ledger } = await withSystem((db) => db.query<{ transport: string }>(
+      "select distinct policy_snapshot ->> 'transport' as transport from lead_research_source_usage where org_id = $1 and work_job_id = $2",
+      [org.id, sent.jobId],
+    ));
+    expect(ledger).toEqual([{ transport: "synthetic_fixture" }]);
 
     const leads = await listLeads(context, "all");
     expect(leads).toHaveLength(4);
@@ -580,7 +585,7 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
     expect(alpha).toMatchObject({ qualification_state: "evidence_backed", score: 80, duplicate_status: "no_match" });
     expect(alpha?.signal_records).toEqual([expect.objectContaining({ source: "orlando-roofing-alpha.test", confidence: 0.82 })]);
     expect(alpha?.signal_records[0]?.evidence_url).toMatch(/^https:\/\/orlando-roofing-alpha\.test\/careers\//);
-    expect(winter).toMatchObject({ qualification_state: "duplicate", duplicate_status: "duplicate" });
+    expect(winter).toMatchObject({ qualification_state: "duplicate", duplicate_status: "duplicate", source_platform: "synthetic_fixture" });
     expect(winter?.duplicate_matches[0]).toMatchObject({ kind: "crm_company", domain: "winter-park-roofing.test" });
     expect(kissimmee).toMatchObject({ qualification_state: "needs_evidence", score: 0 });
     expect(kissimmee?.evidence[0]).toMatchObject({
@@ -717,11 +722,15 @@ describe("AI Growth Partner synthetic fixture acceptance", () => {
 
     const mockRuns = [...mock.runs.values()];
     expect(mockRuns).toHaveLength(2);
-    const restrictedRun = mockRuns.find((run) => run.body.iacquire_tool_scope === "no_tools");
+    const restrictedRun = mockRuns.find((run) => String(run.body.input).includes("SOURCE_BUNDLE_JSON:"));
     expect(restrictedRun).toBeTruthy();
     expect(restrictedRun?.headers["x-iacquire-tool-scope"]).toBe("no_tools");
     expect(restrictedRun?.body.iacquire_tool_scope).toBe("no_tools");
-    expect(restrictedRun?.headers["x-hermes-session-key"]).toBe(`iaq:${org.id}:growth_partner`);
+    expect(restrictedRun?.profile).toBe(PROFILE);
+    expect(restrictedRun?.body.session_id).toBeUndefined();
+    expect(restrictedRun?.body.conversation_history).toBeUndefined();
+    expect(restrictedRun?.headers["x-hermes-session-key"]).toBeUndefined();
+    expect(restrictedRun?.headers["idempotency-key"]).toMatch(new RegExp(`^research:[0-9a-f-]+:${sent.jobId}:\\d+$`));
     expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(2);
     expect(fixtureState.notificationAttempts - notificationAttemptsBeforeMainRun).toBe(1);
 

@@ -249,7 +249,7 @@ describe("a workspace whose plan lapsed or never existed still does the everyday
     const m = await messagingOrg({ name: "Matrix Inbox Co" });
     await lapse(m, LAPSED[1]);
     const c = await inbound(m.org.id, { name: "Lapsed Lena" });
-    const queued = await sendHumanReply(m.ctx("manager"), c.conversationId, "Thanks Lena, we can come Thursday at 10.");
+    const queued = await sendHumanReply(m.ctx("manager"), c.conversationId, "Thanks Lena, we can come Thursday at 10.", { purpose: "service" });
     expect(queued.status).toBe("queued");
     expect((await dispatchMessage(queued.messageId, { provider: recordingProvider().provider })).status).toBe("sent");
   });

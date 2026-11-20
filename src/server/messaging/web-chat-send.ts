@@ -7,6 +7,13 @@ import { createApproval } from "@/server/approvals/service";
 import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import type { QueueResult, SendRequest } from "@/server/messaging/send";
 
+export function customerReplyApprovalReasonForRole(roleKey: string | null | undefined, destination: "message" | "website reply"): string {
+  const subject = roleKey === "growth_partner" ? "Your AI Growth Partner" : "The assigned AI profile";
+  return destination === "website reply"
+    ? `${subject} prepared this reply to a website visitor and needs a person to approve it before it is sent.`
+    : `${subject} prepared this message and needs a person to approve it before it is sent.`;
+}
+
 // A reply to a website visitor. The visitor's open widget collects it, so nothing leaves through a provider: no sender to verify, no consent
 // ledger, no credits for a text segment, no quiet hours. What does apply is everything about WHO may speak in the conversation: a person who owns
 // it silences the AI, a pause or a takeover that happened after the reply was prepared makes it stale, an AI reply waits while someone is being
@@ -64,7 +71,10 @@ export async function queueWebChatOutbound(db: Queryable, req: SendRequest & { a
         action: { messageId },
         targetType: "conversation",
         targetId: req.conversationId,
-        reason: "Your AI employee prepared this reply to a website visitor and needs a person to approve it before it is sent.",
+        reason: customerReplyApprovalReasonForRole(
+          (await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [req.actor.kind === "ai" ? req.actor.agentId : null, req.orgId])).rows[0]?.role_key,
+          "website reply",
+        ),
         expectedEffect: "The reply appears in the visitor's chat window.",
         risk: "medium",
         idempotencyKey: `draft:${messageId}`,

@@ -58,18 +58,18 @@ afterAll(async () => {
 
 describe("AQi context and knowledge", () => {
   it("adapts suggestions to the current page and only exposes authorized routes", async () => {
-    const bootstrap = await getAqiBootstrap(viewer, "/employees");
-    expect(bootstrap.page?.label).toBe("Previous role profiles");
-    expect(bootstrap.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
-    expect(bootstrap.allowedPaths).toContain("/employees");
+    const bootstrap = await getAqiBootstrap(viewer, "/growth-partner");
+    expect(bootstrap.page?.label).toBe("AI Growth Partner");
+    expect(bootstrap.suggestions.map((item) => item.question)).toContain("How do I review my AI Growth Partner setup?");
+    expect(bootstrap.allowedPaths).toContain("/growth-partner");
     expect(bootstrap.allowedPaths).not.toContain("/admin/aqi");
     expect(bootstrap.config.identity).toBe("AQi");
   });
 
   it("retrieves approved knowledge for the workspace role and page", async () => {
-    const result = await retrieveAqiKnowledge(viewer, "How do I change an employee's instructions?", "/employees");
+    const result = await retrieveAqiKnowledge(viewer, "How do I review my AI Growth Partner setup?", "/growth-partner");
     expect(result.sources.length).toBeGreaterThan(0);
-    expect(result.entries.some((entry) => entry.title === "Employee instructions and knowledge")).toBe(true);
+    expect(result.entries.some((entry) => entry.title === "AI Growth Partner")).toBe(true);
     expect(result.entries.every((entry) => entry.roles.length === 0 || entry.roles.includes("owner"))).toBe(true);
   });
 
@@ -166,9 +166,9 @@ describe("AQi context and knowledge", () => {
 
   it("lets a Super Admin preview retrieval without an answer", async () => {
     const admin = await createUser({ platformRole: "agency_super_admin" });
-    const preview = await previewAqiRetrieval(agencyUser(admin, "agency_super_admin"), "employee instructions", "/employees");
-    expect(preview.entries.some((entry) => entry.title === "Employee instructions and knowledge")).toBe(true);
-    await expect(previewAqiRetrieval(viewer.user, "employee instructions", "/employees")).rejects.toThrow(/Super Admin/i);
+    const preview = await previewAqiRetrieval(agencyUser(admin, "agency_super_admin"), "Growth Partner setup", "/growth-partner");
+    expect(preview.entries.some((entry) => entry.title === "AI Growth Partner")).toBe(true);
+    await expect(previewAqiRetrieval(viewer.user, "Growth Partner setup", "/growth-partner")).rejects.toThrow(/Super Admin/i);
   });
 });
 

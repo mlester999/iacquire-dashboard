@@ -80,7 +80,7 @@ describe("which AI employees may handle a conversation", () => {
     const c = await inbound(m.org.id);
     await expect(assignAiEmployee(m.ctx("sales"), c.conversationId, m.salesAgentId)).rejects.toThrow(/Only owners and managers/);
     const other = await messagingOrg({ name: "Foreign Agents Co" });
-    await expect(assignAiEmployee(m.ctx("manager"), c.conversationId, other.salesAgentId)).rejects.toThrow(/isn't part of this workspace/);
+    await expect(assignAiEmployee(m.ctx("manager"), c.conversationId, other.salesAgentId)).rejects.toMatchObject({ code: "not_found", message: "The assigned AI profile is unavailable in this workspace." });
     const setter = await setupAgent(m, "appointment_setter");
     await withSystem((db) => db.query("update agent_instances set status = 'offline' where id = $1", [setter]));
     await expect(assignAiEmployee(m.ctx("manager"), c.conversationId, setter)).rejects.toThrow(/connection check/);
@@ -332,7 +332,7 @@ describe("sending a failed message again", () => {
 
   async function failedReply(provider: ReturnType<typeof recordingProvider>) {
     const c = await inbound(m.org.id);
-    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "We can do Thursday at 10.");
+    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "We can do Thursday at 10.", { purpose: "service" });
     expect((await dispatchMessage(sent.messageId, { provider: provider.provider })).status).toBe("failed");
     return { c, id: sent.messageId };
   }
@@ -386,7 +386,7 @@ describe("sending a failed message again", () => {
 
   it("cannot be used on a message that did not fail, by someone who cannot see it, or from another workspace", async () => {
     const c = await inbound(m.org.id);
-    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "Fine");
+    const sent = await sendHumanReply(m.ctx("manager"), c.conversationId, "Fine", { purpose: "service" });
     await expect(retryFailedMessage(m.ctx("manager"), sent.messageId)).rejects.toThrow(/Only a message that failed/);
     const { id } = await failedReply(rejectedBy());
     await expect(retryFailedMessage(m.ctx("support"), id)).rejects.toThrow(/not found/i);

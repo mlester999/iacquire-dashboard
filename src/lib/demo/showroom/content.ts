@@ -37,6 +37,18 @@ export const VIEWS: readonly ViewDef[] = [
 export const VIEW_IDS: readonly ViewId[] = [...VIEWS.map((v) => v.id), "summary"];
 export const isViewId = (v: unknown): v is ViewId => typeof v === "string" && (VIEW_IDS as readonly string[]).includes(v);
 
+export const DEMO_AQI_SUGGESTIONS: Record<ViewId, readonly string[]> = {
+  overview: ["What can the AI Growth Partner do for a business like mine?", "What is included in the implementation?", "Do I need to pay a monthly fee?"],
+  workforce: ["What is the AI Work Board?", "How does a fact in the Business Brain get confirmed?"],
+  crm: ["What is in the native CRM?", "How does a lead move through the pipeline?", "Can I use my own pipeline stages?"],
+  inbox: ["Which channels can the inbox bring together?", "How does the Growth Partner use my calendar?", "Who approves a reply before it is sent?"],
+  automation: ["What is Automation Studio?", "Is Automation Studio part of the core system?", "Can I use n8n or Zapier instead?"],
+  reports: ["What does the Growth Partner report on?", "Where do the numbers come from?", "Can I see reports for my own pipeline?"],
+  pricing: ["What does the implementation cost?", "What does Managed Maintenance add?", "What costs are separate?"],
+  why: ["Why not build this myself?", "How is this different from a normal CRM?", "What happens after I ask for a consultation?"],
+  summary: ["What happens when I request a consultation?", "What would you set up for me first?", "How long does setup take?"],
+};
+
 export interface JourneyStep {
   step: 1 | 2 | 3 | 4;
   view: ViewId;
@@ -113,7 +125,7 @@ export const REPORT_SOURCES = [
 export const CORE_INCLUDES = [
   "Your agreed system, configured, verified and activated by the iAcquire team",
   "The native CRM: contacts, pipelines, deals, a unified inbox, calendars and tasks",
-  "One AI Growth Partner, configured to your approved scope, with human approval on customer-facing actions",
+  "One AI Growth Partner, configured to your approved scope, with customer-facing actions governed by your approval rules",
   "Use it through your own iAcquire portal, with no mandatory platform subscription",
   "Connect external automation tools such as n8n, Zapier or Make through supported APIs and webhooks",
 ];
@@ -131,7 +143,7 @@ export const STUDIO_INCLUDES = [
 ];
 
 export const PLAN_NOT_INCLUDED = [
-  "New automations, AI agents, websites, funnels or software beyond the plan: quoted separately",
+  "New automations, custom AI workflows, websites, funnels or software beyond the plan: quoted separately",
   "Third-party platform subscriptions and any usage or API costs",
 ];
 
@@ -205,7 +217,7 @@ export interface Faq {
 export function faqs(setup: string, monthly: string): Faq[] {
   return [
     { q: "Do I have to pay a monthly fee to use the system?", a: `No. The implementation (${setup}, paid once) gives you the system you agreed. The Managed Maintenance plan (${monthly} a month) is optional and is never needed to use the core system.` },
-    { q: "Will the AI Growth Partner message my customers on its own?", a: "No. Anything that reaches a customer waits for the required approval, and every approval is recorded." },
+    { q: "Will the AI Growth Partner message my customers on its own?", a: "Customer-facing actions follow the approval rules configured for your workspace. Which actions need review depends on those rules and the connected tools." },
     { q: "Is this demo using my real business data?", a: "No. Everything you see here is sample data, labelled as such. Nothing in this demo is searched, sent, booked or saved about a real business." },
     { q: "What is Automation Studio, and do I need it?", a: "It is a builder where you describe an automation in plain words and watch it take shape. It is part of the optional Managed Maintenance plan. Without it you can still connect external automation tools through APIs and webhooks." },
     { q: "What do AI usage and messaging cost?", a: "Usage-based costs such as AI model calls and messaging are separate from the implementation and the plan, and are shown in your portal." },

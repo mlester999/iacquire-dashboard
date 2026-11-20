@@ -14,6 +14,7 @@ import { createOrg } from "./support/fixtures";
 import { agencyPeople, crmOrg } from "./support/crm";
 import { clearSetupPayment, onboardedClient } from "./support/billing";
 import { checkJobs, draftClient, readyClient, settled, WEEKDAYS } from "./support/launch";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
 
 const hoursFromNow = (h: number) => new Date(Date.now() + h * 3_600_000);
 
@@ -260,5 +261,19 @@ describe("with nothing to look at", () => {
   it("does nothing, and fails nothing, when there is no client to look at", async () => {
     await withSystem((db) => db.query("update organizations set status = 'suspended' where kind = 'client'"));
     expect(await runLaunchWatch()).toEqual({ examined: 0, checksQueued: 0, recorded: 0, regressions: 0, calendarChanges: 0, failed: 0, cutOff: false });
+  });
+});
+
+describe("the launch watch for a Growth-Partner-only workspace", () => {
+  it("records the Partner's launch state without assuming six legacy employee rows", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Watch Client", runtime: "setup_required" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+
+    const result = await runLaunchWatch();
+    expect(result.failed).toBe(0);
+    expect((await readLaunchCurrent([tenant.org.id])).get(tenant.org.id)).toBeTruthy();
+    expect(await ledgerRows(tenant.org.id)).toHaveLength(1);
+    await expectNoLegacyEmployeeRows(tenant.org.id);
   });
 });

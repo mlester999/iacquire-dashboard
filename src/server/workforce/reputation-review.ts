@@ -207,7 +207,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
   return out;
 };
 
-export async function runReputationReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runReputationReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "reputation_review",
     allowedRoles: ["performance_analyst", "growth_partner"],
@@ -217,5 +217,5 @@ export async function runReputationReviewJob(job: WorkJobRow, _context: { worker
     metrics,
     limitations: "Only stored records in this workspace were read. Nothing was written, posted, approved or sent, no customer was contacted and no review site was asked anything. Public reviews are what a connected site last returned, not a live count, and the site's own total may be higher. No customer or reviewer is named and no review is quoted. A request for a review is never described as the cause of a review, and a small number of answers is never read as a trend.",
     subject: "Reputation",
-  });
+  }, context.controller.signal);
 }

@@ -26,6 +26,7 @@ import {
   type WorkforceCalendarView,
 } from "@/lib/workforce-calendar-view";
 import { projectWorkforceScheduleOccurrences } from "@/lib/workforce-schedule-recurrence";
+import { workforceScheduleSkipReasonLabel } from "@/lib/workforce-schedule-copy";
 import { cn } from "@/lib/utils";
 import type { WorkforceCalendarData, WorkforceCalendarJob, WorkforceCalendarSchedule } from "@/server/workforce/calendar";
 
@@ -237,6 +238,12 @@ function SelectedItem({
             ? "This schedule is paused. No job will be created from this occurrence."
             : "Scheduled work automation is off. No job will be created from this occurrence."}
       </div>
+      {schedule.lastSkippedReason && (
+        <p role="status" className="mt-3 rounded-xl border border-warning/25 bg-warning-soft/40 px-3 py-2.5 text-[12px] leading-relaxed text-warning-ink">
+          Last schedule check: {workforceScheduleSkipReasonLabel(schedule.lastSkippedReason)}
+          {schedule.lastSkippedAt ? ` Checked ${calendarTimestampLabel(schedule.lastSkippedAt, timeZone)}.` : ""}
+        </p>
+      )}
       <dl className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
         <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">Recurrence</dt><dd className="mt-1 font-semibold text-ink-2">{scheduleRecurrenceLabel(schedule)} · {schedule.timezone}</dd></div>
         <div className="rounded-lg border border-line p-2.5"><dt className="text-ink-2">{schedule.enabled ? "Next scheduled run" : "Next recurrence"}</dt><dd className="mt-1 font-semibold text-ink-2">{nextScheduleValue}</dd></div>
@@ -369,13 +376,13 @@ export function WorkforceCalendar({
 
       <nav className="flex flex-wrap items-center gap-1 rounded-xl border border-primary/10 bg-primary-soft/50 p-1.5" aria-label="Work Board sections">
         <Link href="/work" className="rounded-lg px-3 py-2 text-[12px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Work Board</Link>
-        <Link href="/work/calendar" aria-current="page" className="rounded-lg bg-surface px-3 py-2 text-[12px] font-semibold text-primary-ink shadow-soft">Schedules &amp; Calendar</Link>
+        <Link href="/work/calendar" aria-current="page" className="rounded-lg bg-surface px-3 py-2 text-[12px] font-semibold text-primary-ink shadow-soft">Schedules & Calendar</Link>
         <Link href="/activity" className="rounded-lg px-3 py-2 text-[12px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Activity</Link>
         <Link href="/approvals" className="rounded-lg px-3 py-2 text-[12px] font-medium text-ink-2 hover:bg-surface hover:text-ink">Approvals</Link>
         <span className="ml-auto hidden px-2 text-[12px] font-semibold uppercase tracking-[.1em] text-ink-2 md:block">{data.timezone}</span>
       </nav>
 
-      <section className="space-y-3" aria-label="Schedules and calendar">
+      <section className="space-y-3" aria-label="Schedules & Calendar">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3 shadow-soft">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex h-9 items-center gap-1 rounded-xl border border-line bg-surface-2/60 p-1">

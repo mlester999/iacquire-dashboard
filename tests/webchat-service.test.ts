@@ -314,7 +314,7 @@ describe("handing the chat to a person", () => {
     await embedCall(c, { action: "send", token, body: { text: "Hello", clientMessageId: clientId() }, generate: answer("Hi, I'm the assistant.").generate });
     const conv = (await rows<{ id: string }>("select c.id from conversations c join web_chat_sessions s on s.conversation_id = c.id where s.token_hash = $1", [hashOf(token)]))[0].id;
     // A teammate answers from the Inbox: the conversation becomes theirs.
-    const sent = await sendHumanReply(c.m.ctx("manager"), conv, "This is Mia from the team. How can I help?");
+    const sent = await sendHumanReply(c.m.ctx("manager"), conv, "This is Mia from the team. How can I help?", { purpose: "service" });
     expect(sent.status).toBe("queued");
     const ai = answer("The AI must not speak now.");
     const r = await embedCall(c, { action: "send", token, body: { text: "Great, I need a quote", clientMessageId: clientId() }, generate: ai.generate });

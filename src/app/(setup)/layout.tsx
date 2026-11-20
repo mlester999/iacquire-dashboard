@@ -11,7 +11,10 @@ export default async function SetupLayout({ children }: { children: React.ReactN
   return (
     <div className="app-backdrop grain relative min-h-dvh">
       <header className="relative z-10 mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Logo />
+        <div className="shrink-0">
+          <span className="hidden min-[361px]:block"><Logo /></span>
+          <span className="min-[361px]:hidden"><Logo compact /></span>
+        </div>
         <div className="flex items-center gap-3 text-[14px] text-muted">
           <span className="hidden max-w-[16rem] sm:inline-flex">
             <InfoChip icon={<Building2 />}>{ctx.org.name}</InfoChip>

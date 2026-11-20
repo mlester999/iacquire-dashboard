@@ -743,7 +743,7 @@ function launchControlFacts(o: {
   const out: LaunchControlFact[] = [];
   if (o.calendar) {
     out.push({ key: "booking_page", label: "Public booking page", on: o.calendar.bookingPageOn, wanted: o.wantsAppointments === true, href: `/crm/calendars/${o.calendar.id}` });
-    out.push({ key: "ai_booking", label: "Appointment Setter books on its own", on: o.aiBooking, wanted: false, href: "/appointments" });
+    out.push({ key: "ai_booking", label: "AI Growth Partner books appointments on its own", on: o.aiBooking, wanted: false, href: "/appointments" });
   }
   out.push({ key: "auto_reply", label: "AI replies to customers", on: o.autoReply, wanted: o.channels.some((c) => c.wanted), href: "/settings/messaging" });
   for (const c of o.channels) out.push({ key: `channel.${c.channel}`, label: CHANNEL_NAME[c.channel], on: c.enabled, wanted: c.wanted, href: "/settings/messaging" });

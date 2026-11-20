@@ -320,6 +320,8 @@ interface DeliveryReport {
   alertKey: string;
   dedupeKey: string;
   hasFindings: boolean;
+  notificationKind?: "agent_status" | "agent_task_completed";
+  notificationHref?: string;
 }
 
 async function recordDelivery(
@@ -380,11 +382,11 @@ async function recordDelivery(
   }
 
   const notificationId = await notifyUser(db, recipient.id, report.orgId, {
-    kind: "agent_task_completed",
+    kind: report.notificationKind ?? "agent_task_completed",
     severity: report.severity,
     title: report.title,
     body: report.summary,
-    link: reportLink(report.jobId, report.id),
+    link: report.notificationHref ?? reportLink(report.jobId, report.id),
     dedupeKey: notificationDedupeKey(report.alertKey),
   });
   if (!notificationId) {
@@ -575,6 +577,169 @@ export async function publishReviewReport(
   return { reportId: report.id, created: true };
 }
 
+/** Records and delivers one owner/admin notice for a failed, blocked, or lost-worker job. */
+export async function publishWorkJobFailureReport(
+  db: Queryable,
+  input: { jobId: string; orgId: string; now?: Date },
+): Promise<{ reportId: string; created: boolean } | null> {
+  const { rows } = await db.query<{
+    id: string; org_id: string; agent_instance_id: string; capability: string; title: string;
+    status: string; failure_code: string | null; display_name: string | null;
+  }>(
+    `select j.id, j.org_id, j.agent_instance_id, j.capability, j.title, j.status, j.failure_code,
+            a.display_name
+       from ai_work_jobs j
+       left join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+      where j.id = $1 and j.org_id = $2 and j.status in ('failed', 'blocked')`,
+    [input.jobId, input.orgId],
+  );
+  const job = rows[0];
+  if (!job) return null;
+
+  const lostWorker = job.failure_code === "worker_lost";
+  const severity: ProactiveSeverity = lostWorker ? "critical" : "warning";
+  const state = job.status === "blocked" ? "is blocked" : "failed";
+  const title = job.status === "blocked" ? "Growth Partner work is blocked" : "Growth Partner work failed";
+  const summary = `“${job.title}” ${state}. Open the Work Board for the recorded reason and next step.`;
+  const finding: ProactiveFinding = {
+    key: "work_job_failure",
+    severity,
+    title: job.status === "blocked" ? "Work needs a connection or person" : "Work did not complete",
+    detail: job.failure_code
+      ? `The recorded status is ${job.status.replaceAll("_", " ")} (${job.failure_code}). Open the job to review its recorded details.`
+      : `The recorded status is ${job.status.replaceAll("_", " ")}. Open the job to review its recorded details.`,
+    count: 1,
+    samples: [],
+    evidenceHref: `/work?job=${job.id}`,
+    recommendedAction: "Open the job details and follow the recorded recovery step.",
+    requiresApproval: false,
+  };
+  const report = await insertReport(db, {
+    orgId: job.org_id,
+    agentId: job.agent_instance_id,
+    jobId: job.id,
+    capability: job.capability,
+    kind: "blocker",
+    severity,
+    title,
+    summary,
+    sections: sectionsFor({
+      subject: "Work",
+      summary,
+      findings: [finding],
+      metrics: [],
+      limitations: "The job status is recorded by the workforce runner. The report does not retry the job or change a business record.",
+      agentName: job.display_name ?? "Growth Partner",
+    }),
+    findings: [finding],
+    evidence: [{ label: "Open work details", href: `/work?job=${job.id}` }],
+    data: { notificationKind: "agent_status", failureCode: job.failure_code },
+    dedupeKey: `job-failure:${job.id}`,
+    alertKey: `work-job-failure:${job.id}`,
+  });
+  if (!report.created) return { reportId: report.id, created: false };
+
+  const now = input.now ?? new Date();
+  const zone = await orgTimezone(db, job.org_id);
+  const recipients = await supervisors(db, job.org_id);
+  await deliverReport(db, {
+    id: report.id,
+    orgId: job.org_id,
+    jobId: job.id,
+    title,
+    summary,
+    severity,
+    alertKey: `work-job-failure:${job.id}`,
+    dedupeKey: `job-failure:${job.id}`,
+    hasFindings: true,
+    notificationKind: "agent_status",
+  }, recipients, { now, orgZone: zone, notifyEligible: true });
+  return { reportId: report.id, created: true };
+}
+
+/** Records one notice after a schedule is paused for three consecutive failed or blocked runs. */
+export async function publishScheduleAutoDisabledReport(
+  db: Queryable,
+  input: { orgId: string; scheduleId: string; jobId: string; failureCount: number; now?: Date },
+): Promise<{ reportId: string; created: boolean } | null> {
+  const { rows } = await db.query<{
+    id: string; org_id: string; agent_instance_id: string; capability: string; title: string; display_name: string | null;
+  }>(
+    `select j.id, j.org_id, j.agent_instance_id, j.capability, j.title, a.display_name
+       from ai_work_jobs j
+       left join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+      where j.id = $1 and j.org_id = $2`,
+    [input.jobId, input.orgId],
+  );
+  const job = rows[0];
+  if (!job) return null;
+
+  const title = "A scheduled review was paused after repeated failures";
+  const summary = `The schedule was paused after ${input.failureCount} consecutive scheduled jobs failed or were blocked. Open the Work Board to review the schedule and latest job.`;
+  const notificationHref = `/work?schedule=${encodeURIComponent(input.scheduleId)}`;
+  const finding: ProactiveFinding = {
+    key: "schedule_auto_disabled",
+    severity: "warning",
+    title: "The schedule was paused",
+    detail: summary,
+    count: 1,
+    samples: [],
+    evidenceHref: notificationHref,
+    recommendedAction: "Review the schedule and resolve the latest job before enabling it again.",
+    requiresApproval: false,
+  };
+  const dedupeKey = `schedule-disabled:${input.scheduleId}:${input.jobId}`;
+  const report = await insertReport(db, {
+    orgId: job.org_id,
+    agentId: job.agent_instance_id,
+    jobId: job.id,
+    capability: job.capability,
+    kind: "blocker",
+    severity: "warning",
+    title,
+    summary,
+    sections: sectionsFor({
+      subject: "Scheduled work",
+      summary,
+      findings: [finding],
+      metrics: [{
+        key: "consecutive_failures",
+        label: "Consecutive scheduled failures",
+        value: input.failureCount,
+        period: "current schedule",
+        definition: "Consecutive scheduled jobs that ended failed or blocked before this schedule was paused.",
+        source: "ai_work_jobs",
+      }],
+      limitations: "The scheduler paused this one schedule. Other schedules and the global operator switch were not changed.",
+      agentName: job.display_name ?? "Growth Partner",
+    }),
+    findings: [finding],
+    evidence: [{ label: "Review the paused schedule", href: notificationHref }, { label: "Open the latest job", href: `/work?job=${job.id}` }],
+    data: { notificationKind: "agent_status", notificationHref, scheduleId: input.scheduleId, failureCount: input.failureCount },
+    dedupeKey,
+    alertKey: dedupeKey,
+  });
+  if (!report.created) return { reportId: report.id, created: false };
+
+  const now = input.now ?? new Date();
+  const zone = await orgTimezone(db, job.org_id);
+  const recipients = await supervisors(db, job.org_id);
+  await deliverReport(db, {
+    id: report.id,
+    orgId: job.org_id,
+    jobId: job.id,
+    title,
+    summary,
+    severity: "warning",
+    alertKey: dedupeKey,
+    dedupeKey,
+    hasFindings: true,
+    notificationKind: "agent_status",
+    notificationHref,
+  }, recipients, { now, orgZone: zone, notifyEligible: true });
+  return { reportId: report.id, created: true };
+}
+
 /**
  * Releases non-critical reports that were held only because they arrived during quiet hours.
  * The policy is re-evaluated for the current time; a person who lowered a threshold or turned the
@@ -585,8 +750,10 @@ export async function releaseHeldProactiveReports(now = new Date()): Promise<{ d
     const { rows } = await db.query<{
       report_id: string; org_id: string; user_id: string; title: string; summary: string; severity: ProactiveSeverity;
       job_id: string | null; alert_key: string; timezone: string | null; prefs: Record<string, unknown> | null; org_timezone: string | null;
+      notification_kind: string | null; notification_href: string | null;
     }>(
       `select d.report_id, d.org_id, d.user_id, r.title, r.summary, r.severity, r.job_id, r.alert_key,
+              r.data->>'notificationKind' as notification_kind, r.data->>'notificationHref' as notification_href,
               u.timezone, p.prefs, o.timezone as org_timezone
          from ai_work_report_deliveries d
          join ai_work_reports r on r.id = d.report_id and r.org_id = d.org_id
@@ -617,11 +784,11 @@ export async function releaseHeldProactiveReports(now = new Date()): Promise<{ d
         continue;
       }
       const notificationId = await notifyUser(db, row.user_id, row.org_id, {
-        kind: "agent_task_completed",
+        kind: row.notification_kind === "agent_status" ? "agent_status" : "agent_task_completed",
         severity: row.severity,
         title: row.title,
         body: row.summary,
-        link: reportLink(row.job_id, row.report_id),
+        link: row.notification_href?.startsWith("/") ? row.notification_href : reportLink(row.job_id, row.report_id),
         dedupeKey: notificationDedupeKey(row.alert_key),
       });
       await db.query(

@@ -119,8 +119,8 @@ describe("where it is named", () => {
   it("is in the Requests menu behind the workspace switch, the assistant's route list and the notification wording", () => {
     const sidebar = read("src/components/shell/sidebar.tsx");
     expect(sidebar).toMatch(/\{ href: "\/support\/change", label: "Request a Change", icon: PencilRuler, permission: "support\.use", feature: "request_changes" \}/);
-    expect(sidebar).toContain("const requestItems = REQUESTS.filter((i) => can(i.permission) && !(i.feature && !(shell.features ?? []).includes(i.feature)))");
-    expect(sidebar).not.toContain("REQUESTS.filter((i) => can(i.permission))");
+    expect(sidebar).toContain("const requestItems = REQUESTS.filter((item) => isNavItemVisible(shell, item))");
+    expect(sidebar).toContain("if (item.feature && !(shell.features ?? []).includes(item.feature)) return false;");
     expect(AQI_ROUTES.find((r) => r.path === "/support/change")).toMatchObject({ label: "Request a Change", permission: "support.use" });
     expect(matchAqiRoute("/support/change")?.path).toBe("/support/change");
     expect(matchAqiRoute("/support/12345678-1234-1234-1234-123456789012")?.path).toBe("/support");

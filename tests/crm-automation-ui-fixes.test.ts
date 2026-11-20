@@ -263,7 +263,7 @@ describe("14: AI steps and Send-as employees show whether they can act, from the
     await agent("status = 'online'");
     expect(await trace()).toMatchObject({ outcome: "would_skip", detail: expect.stringMatching(/isn't connected to its AI service yet/) });
     await agent("hermes_base_url = 'https://hermes.example.com', hermes_profile = $2, credential_id = $3", [`client-${uid()}`, await credentialFor(o.org.id)]);
-    expect(await trace()).toMatchObject({ outcome: "would_skip", detail: expect.stringMatching(/Live AI employee runs are switched off for now/) });
+    expect(await trace()).toMatchObject({ outcome: "would_skip", detail: expect.stringMatching(/Live AI runs are paused/) });
     await agent(
       `last_health_ok = true, tool_inventory_contract = 'hermes.api_server.tool_catalog.v1',
        tool_inventory_digest = repeat('a', 64), tool_inventory_verified_at = now(),

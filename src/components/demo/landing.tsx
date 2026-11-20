@@ -61,8 +61,11 @@ export function DemoLanding({
             See the <span className="sx-gradient-text">AI Growth Partner</span> at work
           </h1>
           <p className="max-w-xl text-[17px] leading-relaxed text-ink-2">
-            Tell us a little about your business. We email you a link to a guided demo of one AI Growth Partner and its six capabilities, using sample data only. Nothing is sent to anyone and no workspace is created.
+            See how one AI Growth Partner works from a Business Brain, qualifies a sample lead, and prepares the next step for approval. We’ll email you a link to the guided simulation.
           </p>
+          <Link href="/product" className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-semibold text-primary-ink underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">
+            Explore iAcquireOS <ArrowRight className="size-4" aria-hidden />
+          </Link>
         </header>
 
         <div id="request" className="scroll-mt-6 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6">

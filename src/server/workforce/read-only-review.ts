@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, type Queryable } from "@/server/db";
+import { readSystem, withSystem, type Queryable } from "@/server/db";
 import {
   appendWorkEvent,
   finishWorkJob,
@@ -68,6 +68,13 @@ export interface ReviewSource {
 
 export type ReviewCapabilityArea = "contacts" | "companies" | "opportunities" | "appointments" | "calendars" | "reporting";
 
+export interface RequiredReviewSource {
+  ok: boolean;
+  connector: string;
+  reason: string;
+  href: string;
+}
+
 export interface ReadOnlyReviewSpec {
   capability: string;
   allowedRoles: readonly WorkforceRoleKey[];
@@ -85,8 +92,10 @@ export interface ReadOnlyReviewSpec {
    * `source.provider` (a hybrid workspace has one owner per capability). A review with no CRM mode to describe leaves it out and its result stays as it was.
    */
   sourceArea?: ReviewCapabilityArea;
-  /** Runs after the role gate and before the records are read, outside the review's transaction (for example a permission lookup about the requester). */
+  /** Runs after the role gate and before the records are read (for example a permission lookup about the requester). */
   beforeScan?: (job: WorkJobRow) => Promise<void>;
+  /** Optional external prerequisite. An unavailable source leaves the job blocked with a route to fix the connection. */
+  requiresSource?: (job: WorkJobRow) => Promise<RequiredReviewSource>;
   limitations: string;
   /** Short noun used in the notification, e.g. "CRM quality". */
   subject: string;
@@ -175,8 +184,16 @@ export function severityTone(severity: ReviewSeverity): "danger" | "warning" | "
   return severity === "critical" ? "danger" : severity === "warning" ? "warning" : "neutral";
 }
 
-export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReviewSpec): Promise<void> {
+export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReviewSpec, signal?: AbortSignal): Promise<void> {
   const workerId = job.lease_owner ?? "";
+  const assertContinuing = async (db: Queryable) => {
+    if (signal?.aborted) throw new Error("work_cancelled");
+    const { rows } = await db.query<{ status: string; cancel_requested_at: Date | null }>(
+      "select status, cancel_requested_at from ai_work_jobs where id = $1 and org_id = $2",
+      [job.id, job.org_id],
+    );
+    if (signal?.aborted || rows[0]?.status !== "running" || rows[0].cancel_requested_at) throw new Error("work_cancelled");
+  };
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       "select role_key, display_name from agent_instances where id = $1 and org_id = $2",
@@ -206,50 +223,96 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
 
   if (spec.beforeScan) await spec.beforeScan(job);
 
-  await withSystem(async (db) => {
-    await recordWorkStage(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      workerId,
-      stage: "scanning",
-      message: spec.scanningMessage,
+  const requiredSource = spec.requiresSource ? await spec.requiresSource(job) : null;
+  if (requiredSource && !requiredSource.ok) {
+    const href = requiredSource.href.startsWith("/") && !requiredSource.href.startsWith("//") && !requiredSource.href.includes("\\")
+      ? requiredSource.href
+      : "/settings/integrations";
+    const summary = `Waiting for ${requiredSource.connector}: ${requiredSource.reason}`;
+    await withSystem(async (db) => {
+      const finished = await finishWorkJob(db, {
+        jobId: job.id,
+        orgId: job.org_id,
+        workerId,
+        status: "blocked",
+        stage: "awaiting_connection",
+        failureCode: "awaiting_connection",
+        failureMessage: requiredSource.reason,
+        resultSummary: summary,
+        result: { awaitingConnection: { connector: requiredSource.connector, reason: requiredSource.reason, href } },
+        event: {
+          kind: "notice",
+          stage: "awaiting_connection",
+          message: summary,
+          data: { connector: requiredSource.connector, reason: requiredSource.reason, href },
+        },
+      });
+      if (!finished) throw new Error("work_finished_elsewhere");
     });
+    return;
+  }
 
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "scanning",
+    message: spec.scanningMessage,
+  }));
+
+  // Do not hold a write transaction or a job-row lock while the review scans. The Stop action
+  // must be able to persist its request while a read is in progress.
+  const { findings, metrics, examined, source } = await readSystem(async (db) => {
+    await assertContinuing(db);
     const findings: ReviewFinding[] = [];
     for (const check of spec.checks) {
       const result = await check(db, job);
       if (result && result.count > 0) findings.push(result);
+      await assertContinuing(db);
     }
     const metrics = spec.metrics ? await spec.metrics(db, job) : [];
+    await assertContinuing(db);
     const examined = spec.examined ? (await spec.examined(db, job)).map((item) => ({ label: item.label, count: num(item.count) })) : undefined;
+    await assertContinuing(db);
     // Only the reviews of CRM records say where they read from; a receivables or social review has no CRM mode to describe.
     const source = spec.sourceArea ? await readReviewSource(db, job.org_id, spec.sourceArea) : undefined;
-    const limitations = source ? `${spec.limitations} ${sourceLimitation(source)}` : spec.limitations;
-    if (metrics.length) {
-      await appendWorkEvent(db, {
-        jobId: job.id,
-        orgId: job.org_id,
-        workerId,
-        kind: "progress",
-        stage: "analyzing",
-        message: `Measured ${metrics.length} KPI${metrics.length === 1 ? "" : "s"} from persisted records.`,
-        data: { metrics: metrics.map((metric) => metric.key) },
-      });
-    }
+    await assertContinuing(db);
+    return { findings, metrics, examined, source };
+  });
 
-    await recordWorkStage(db, {
+  const limitations = source ? `${spec.limitations} ${sourceLimitation(source)}` : spec.limitations;
+  if (metrics.length) {
+    await withSystem((db) => appendWorkEvent(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
+      kind: "progress",
       stage: "analyzing",
-      message: spec.analyzingMessage,
-      progress: {
-        checksRun: spec.checks.length,
-        findings: findings.length,
-        affectedItems: findings.reduce((total, item) => total + num(item.count), 0),
-      },
-    });
+      message: `Measured ${metrics.length} KPI${metrics.length === 1 ? "" : "s"} from persisted records.`,
+      data: { metrics: metrics.map((metric) => metric.key) },
+    }));
+  }
 
+  const critical = findings.filter((item) => item.severity === "critical").length;
+  const warning = findings.filter((item) => item.severity === "warning").length;
+  const affected = findings.reduce((total, item) => total + num(item.count), 0);
+  const metricNote = metrics.length ? ` Measured ${metrics.length} KPI${metrics.length === 1 ? "" : "s"} from the same records.` : "";
+  const summary = reviewSummary({ subject: spec.subject, findings: findings.length, affected, critical, warning, metricNote, examined });
+
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "analyzing",
+    message: spec.analyzingMessage,
+    progress: {
+      checksRun: spec.checks.length,
+      findings: findings.length,
+      affectedItems: affected,
+    },
+  }));
+
+  await withSystem(async (db) => {
     for (const item of findings.slice(0, 12)) {
       await appendWorkEvent(db, {
         jobId: job.id,
@@ -261,21 +324,19 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
         data: { key: item.key, severity: item.severity, count: item.count, href: item.evidenceHref },
       });
     }
+  });
 
-    const critical = findings.filter((item) => item.severity === "critical").length;
-    const warning = findings.filter((item) => item.severity === "warning").length;
-    const affected = findings.reduce((total, item) => total + num(item.count), 0);
-    const metricNote = metrics.length ? ` Measured ${metrics.length} KPI${metrics.length === 1 ? "" : "s"} from the same records.` : "";
-    const summary = reviewSummary({ subject: spec.subject, findings: findings.length, affected, critical, warning, metricNote, examined });
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "preparing_results",
+    message: "Review complete. Findings and recommended actions are ready.",
+  }));
 
-    await recordWorkStage(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      workerId,
-      stage: "preparing_results",
-      message: "Review complete. Findings and recommended actions are ready.",
-    });
-    const finished = await finishWorkJob(db, {
+  await readSystem((db) => assertContinuing(db));
+  const finished = await withSystem(async (db) => {
+    const didFinish = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
@@ -300,7 +361,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
         data: { critical, warning, findings: findings.length, ...(examined ? { examined } : {}), ...(source ? { source } : {}) },
       },
     });
-    if (!finished) throw new Error("work_finished_elsewhere");
+    if (!didFinish) return false;
     // The report is the durable proactive card. It is written after the job is complete, and its
     // delivery policy is per supervisor. A review with no findings is recorded but not announced.
     await publishReviewReport(db, {
@@ -312,5 +373,7 @@ export async function runReadOnlyReviewJob(job: WorkJobRow, spec: ReadOnlyReview
       limitations,
       checksRun: spec.checks.length,
     });
+    return true;
   });
+  if (!finished) throw new Error("work_finished_elsewhere");
 }

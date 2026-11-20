@@ -96,7 +96,7 @@ const unassignedUpcoming: ReviewCheck = async (db, job) => {
   });
 };
 
-export async function runAppointmentReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runAppointmentReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "appointment_review",
     allowedRoles: ["appointment_setter", "growth_partner"],
@@ -115,5 +115,5 @@ export async function runAppointmentReviewJob(job: WorkJobRow, _context: { worke
     sourceArea: "appointments",
     limitations: "Only appointment records stored in this workspace were read. No calendar provider was contacted and no booking was confirmed, moved or cancelled.",
     subject: "Appointment",
-  });
+  }, context.controller.signal);
 }

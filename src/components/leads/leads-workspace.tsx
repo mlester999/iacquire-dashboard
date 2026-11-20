@@ -30,9 +30,13 @@ import { AvatarTile, InfoChip, StatusPill, type StatusTone } from "@/components/
 import { AccentTop, IconTile, Panel } from "@/components/overview/panel";
 import { Segmented, Sheet, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero,CoverageBar } from "@/components/ui/workspace";
-import { createResearchAction, requestCrmImportAction, retryResearchAction, reviewLeadsAction, saveTargetingAction } from "@/app/actions/leads";
+import { addLeadCompanyEvidenceAction, createResearchAction, requestCrmImportAction, retryResearchAction, reviewLeadsAction, saveTargetingAction, type LeadCompanyEvidenceActionState } from "@/app/actions/leads";
 import { type AgentStatus } from "@/lib/agents";
+import { INFLUENCER_PLATFORM_ADAPTERS, INFLUENCER_RESEARCH_AVAILABLE } from "@/lib/leads-targeting";
 import { WorkJobPanel } from "@/components/work/job-progress";
+import { LeadListUploadForm } from "@/components/leads/lead-list-upload-form";
+import { leadSourceLabel } from "@/lib/lead-list-upload";
+import { FSA_DIRECTORY_LICENCE, FSA_DIRECTORY_NAME, type ResearchSourceKey } from "@/lib/lead-research-sources";
 import { cn, formatDateTime, relativeTime, sentenceCase } from "@/lib/utils";
 
 interface Lead {
@@ -42,6 +46,7 @@ interface Lead {
   domain: string | null;
   industry: string | null;
   location: string | null;
+  source_platform?: string;
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
@@ -57,12 +62,13 @@ interface Lead {
     confidence: number | null;
     client_fit: string | null;
   }>;
-  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null; source?: "openstreetmap" | "company_website" | null }>;
+  evidence: Array<{ url: string; observed_at?: string | null; reviewed_at?: string | null; summary?: string | null; source?: ResearchSourceKey | "tenant_upload" | "reviewer_company_website" | null }>;
   duplicate_status: string;
   duplicate_matches?: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
   public_contact?: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null };
   review_status: "pending" | "approved" | "rejected";
   crm_sync_status: string;
+  crm_company_id?: string | null;
   created_at: string;
 }
 
@@ -146,6 +152,17 @@ const SYNC_LABEL: Record<string, string> = {
   failed: "CRM import failed",
 };
 
+function needsCompanyEvidence(lead: Lead) {
+  return lead.qualification_state === "needs_evidence"
+    && ["approved_source", "synthetic_fixture"].includes(lead.source_platform ?? "")
+    && lead.evidence.some((item) => item.source === "fsa_directory" || item.source === "openstreetmap");
+}
+
+function canRequestLeadImport(lead: Lead) {
+  return lead.review_status === "approved" && lead.qualification_state === "evidence_backed" && lead.duplicate_status === "no_match"
+    && ["not_synced", "blocked", "failed"].includes(lead.crm_sync_status);
+}
+
 export function LeadsWorkspace(props: {
   leads: Lead[];
   requests: ResearchRequest[];
@@ -153,20 +170,21 @@ export function LeadsWorkspace(props: {
   hunterReady: boolean;
   hunterStatus: AgentStatus;
   canResearch: boolean;
+  canUpload?: boolean;
   canReview: boolean;
   canExport: boolean;
   initialTab: string;
   timeZone: string;
 }) {
-  const [tab, setTab] = React.useState(props.initialTab);
+  const [tab, setTab] = React.useState(props.initialTab === "upload" && !props.canUpload ? "review" : props.initialTab);
   const pending = props.leads.filter((l) => l.review_status === "pending");
   return (
     <div className="space-y-6">
-      <PageHero eyebrow="Lead intelligence" title="Find the right fit. Build a stronger pipeline." description="Research businesses that match your ideal customer. Review the evidence, keep the right ones and approve what happens next. Nobody is contacted automatically." icon={<Radar className="size-4"/>} action={props.canExport && props.leads.length > 0 ? (
+      <PageHero eyebrow="Lead intelligence" title="Find the right fit. Build a stronger pipeline." description="Find businesses that match your ideal customer. Review the evidence, keep the right ones and approve what happens next." icon={<Radar className="size-4"/>} action={props.canExport && props.leads.length > 0 ? (
           <ButtonLink href="/api/leads/export" variant="secondary" prefetch={false}>
             <Download className="size-4" /> Export CSV
           </ButtonLink>
-        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Your research pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[14px] text-muted">researched leads</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
+        ):undefined} aside={<div className="rounded-2xl border border-line bg-surface/80 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-muted">Your lead pipeline</p><div className="mt-3 flex items-baseline gap-2"><strong className="text-[32px] font-semibold tracking-tight">{props.leads.length}</strong><span className="text-[14px] text-muted">candidates</span></div><div className="mt-4"><CoverageBar label="Lead review status" parts={[{label:"Review",count:pending.length,color:"var(--warning)"},{label:"Approved",count:props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--success)"},{label:"Other",count:props.leads.length-pending.length-props.leads.filter(lead=>lead.review_status==="approved").length,color:"var(--muted)"}]}/></div></div>}/>
       <HunterBanner ready={props.hunterReady} status={props.hunterStatus} />
       <div data-aqi-target="leads.tabs">
       <Tabs
@@ -177,12 +195,14 @@ export function LeadsWorkspace(props: {
           { value: "review", label: "Review queue", count: pending.length },
           { value: "all", label: "All leads", count: props.leads.length },
           { value: "research", label: "Research" },
+          ...(props.canUpload ? [{ value: "upload", label: "Upload CSV" }] : []),
           { value: "targeting", label: "Targeting rules" },
         ]}
       >
-      {tab === "review" && <LeadTable leads={pending} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads waiting for review" emptyBody="New research results appear here for you to approve or reject." mode="review" />}
-      {tab === "all" && <LeadTable leads={props.leads} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads yet" emptyBody="Run a research request to start building your pipeline." mode="all" />}
+      {tab === "review" && <LeadTable leads={pending} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads waiting for review" emptyBody={props.canUpload ? "Start a research request or upload a company list. New candidates appear here for review." : "New candidates appear here when your workspace has leads to review."} mode="review" />}
+      {tab === "all" && <LeadTable leads={props.leads} canReview={props.canReview} timeZone={props.timeZone} emptyTitle="No leads yet" emptyBody={props.canUpload ? "Start a research request or upload a company list to build your pipeline." : "Leads appear when your workspace adds them."} mode="all" />}
       {tab === "research" && <ResearchPanel {...props} />}
+      {tab === "upload" && props.canUpload && <LeadListUploadForm openReview={() => setTab("review")} />}
       {tab === "targeting" && <TargetingForm targeting={props.targeting} canEdit={props.canResearch} />}
       </Tabs>
       </div>
@@ -199,7 +219,7 @@ function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }
         <p className="flex flex-wrap items-center gap-2 text-[14px] font-semibold">
           AI Growth Partner <AgentStatusBadge status={status} />
         </p>
-        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Research uses only sources enabled with saved request and spend limits in AI Growth Partner settings. If no discovery source is enabled, the run stays blocked." : "Research can be saved now, but nothing runs until AI Growth Partner is connected and online."}</p>
+        <p className="mt-0.5 text-[14px] text-muted">{ready ? "Research uses only sources enabled with saved request and spend limits in Growth Partner Settings. If no discovery source is enabled, the run stays blocked." : "Research can be saved now, but nothing runs until AI Growth Partner is connected and online."}</p>
       </div>
     </div>
   );
@@ -208,7 +228,8 @@ function HunterBanner({ ready, status }: { ready: boolean; status: AgentStatus }
 function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: { leads: Lead[]; canReview: boolean; timeZone: string; emptyTitle: string; emptyBody: string; mode: "review" | "all" }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<string[]>([]);
-  const [open, setOpen] = React.useState<Lead | null>(null);
+  const [openLeadId, setOpenLeadId] = React.useState<string | null>(null);
+  const activeLead = leads.find((lead) => lead.id === openLeadId) ?? null;
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState("all");
   const [sort, setSort] = React.useState("newest");
@@ -225,7 +246,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
       if (!res.ok) return toast.error(res.error);
       toast.success(`${res.data.updated} lead${res.data.updated === 1 ? "" : "s"} ${decision === "approve" ? "approved" : "rejected"}`);
       setSelected([]);
-      setOpen(null);
+      setOpenLeadId(null);
       router.refresh();
     } catch {
       toast.error("We couldn't confirm the review. Refresh to check its status before trying again.");
@@ -256,6 +277,8 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
     );
   }
   const selectedLeads = leads.filter((l) => selected.includes(l.id));
+  const eligibleReviewIds = selectedLeads.filter((lead) => lead.review_status === "pending" && lead.qualification_state !== "disqualified" && !needsCompanyEvidence(lead)).map((lead) => lead.id);
+  const eligibleImportIds = selectedLeads.filter(canRequestLeadImport).map((lead) => lead.id);
   return (
     <Card className="overflow-hidden" data-aqi-target="leads.review-table">
       <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center">
@@ -293,18 +316,18 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
               <span className="text-[14px] font-medium">{selected.length} selected{selected.some((id) => !filtered.some((lead) => lead.id === id)) ? " · includes leads hidden by these filters" : ""}</span>
               <div className="ml-auto flex flex-wrap gap-2">
                 {selectedLeads.some((l) => l.review_status === "pending") && (
-                  <>
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => review(selected, "reject")}>
-                      <X className="size-3.5" /> Reject
-                    </Button>
-                    <Button size="sm" disabled={busy} onClick={() => review(selected, "approve")}>
-                      <Check className="size-3.5" /> Approve
-                    </Button>
-                  </>
+                  <Button size="sm" variant="secondary" disabled={busy} onClick={() => review(selected, "reject")}>
+                    <X className="size-3.5" /> Reject
+                  </Button>
                 )}
-                {selectedLeads.some((l) => l.review_status === "approved") && (
-                  <Button size="sm" variant="brand" disabled={busy} onClick={() => importToCrm(selected)}>
-                    <Send className="size-3.5" /> Send approved to CRM
+                {eligibleReviewIds.length > 0 && (
+                  <Button size="sm" disabled={busy} onClick={() => review(eligibleReviewIds, "approve")}>
+                    <Check className="size-3.5" /> Approve {eligibleReviewIds.length}
+                  </Button>
+                )}
+                {eligibleImportIds.length > 0 && (
+                  <Button size="sm" variant="brand" disabled={busy} onClick={() => importToCrm(eligibleImportIds)}>
+                    <Send className="size-3.5" /> Request CRM import for {eligibleImportIds.length}
                   </Button>
                 )}
               </div>
@@ -321,7 +344,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
                   <input type="checkbox" aria-label={`Select ${lead.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} />
                 </label>
               )}
-              <button type="button" onClick={() => setOpen(lead)} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">
+              <button type="button" onClick={() => setOpenLeadId(lead.id)} className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">
                 <AvatarTile name={lead.business_name} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block break-words text-[14px] font-semibold text-ink">{lead.business_name}</span>
@@ -367,7 +390,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
           </thead>
           <tbody className="divide-y divide-line">
             {filtered.map((l) => (
-              <tr key={l.id} className={cn("cursor-pointer transition hover:bg-surface-2/60", selected.includes(l.id) && "bg-primary-soft/30")} onClick={() => setOpen(l)}>
+              <tr key={l.id} className={cn("cursor-pointer transition hover:bg-surface-2/60", selected.includes(l.id) && "bg-primary-soft/30")} onClick={() => setOpenLeadId(l.id)}>
                 {canReview && (
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" aria-label={`Select ${l.business_name}`} className="size-4 accent-[var(--primary)]" checked={selected.includes(l.id)} onChange={() => toggle(l.id)} />
@@ -377,7 +400,7 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
                   <div className="flex min-w-0 items-center gap-3">
                     <AvatarTile name={l.business_name} size="md" />
                     <div className="min-w-0">
-                      <button type="button" onClick={() => setOpen(l)} title={l.business_name} className="block max-w-[260px] truncate rounded-md text-left font-semibold text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{l.business_name}</button>
+                      <button type="button" onClick={() => setOpenLeadId(l.id)} title={l.business_name} className="block max-w-[260px] truncate rounded-md text-left font-semibold text-ink hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{l.business_name}</button>
                       <p className="mt-0.5 max-w-[260px] truncate text-[12px] text-muted" title={l.industry ?? undefined}>{l.industry ?? "Industry unknown"}</p>
                     </div>
                   </div>
@@ -400,29 +423,34 @@ function LeadTable({ leads, canReview, timeZone, emptyTitle, emptyBody, mode }: 
         </table>
       </div>
       {filtered.length === 0 && <EmptyState compact icon={<Search className="size-5"/>} title="No matching leads" description="Try another search or review status." action={<Button variant="secondary" size="sm" onClick={() => { setQuery(""); setStatus("all"); }}>Clear filters</Button>}/>}
-      <LeadSheet lead={open} onClose={() => setOpen(null)} canReview={canReview} timeZone={timeZone} onReview={review} onImport={importToCrm} busy={busy} />
+      <LeadSheet lead={activeLead} onClose={() => setOpenLeadId(null)} canReview={canReview} timeZone={timeZone} onReview={review} onImport={importToCrm} busy={busy} />
     </Card>
   );
 }
 
 function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, busy }: { lead: Lead | null; onClose: () => void; canReview: boolean; timeZone: string; onReview: (ids: string[], d: "approve" | "reject") => void; onImport: (ids: string[]) => void; busy: boolean }) {
+  const sourceLabel = leadSourceLabel(lead?.source_platform ?? "");
+  const uploaded = lead?.source_platform === "tenant_upload";
+  const canAddCompanyEvidence = lead && canReview && needsCompanyEvidence(lead)
+    && lead.review_status !== "rejected" && lead.crm_sync_status === "not_synced";
   return (
     <Sheet open={Boolean(lead)} onOpenChange={(o) => !o && onClose()} title={lead?.business_name ?? "Lead"} description={lead ? [lead.industry, lead.location].filter(Boolean).join(" · ") : undefined}>
       {lead && (
         <div className="space-y-6 p-5">
           <div className="flex flex-wrap gap-2">
             <StatusPill tone={REVIEW_TONE[lead.review_status]}>{sentenceCase(lead.review_status)}</StatusPill>
-            <StatusPill tone={QUALIFICATION_TONE[lead.qualification_state]}>{QUALIFICATION_LABEL[lead.qualification_state]}</StatusPill>
+            <StatusPill tone={QUALIFICATION_TONE[lead.qualification_state]}>{uploaded && lead.qualification_state === "evidence_backed" ? "Source link supplied" : QUALIFICATION_LABEL[lead.qualification_state]}</StatusPill>
+            {sourceLabel && <StatusPill tone="neutral" dot={false}>{sourceLabel}</StatusPill>}
             {lead.review_status === "approved" && <StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"}>{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill>}
           </div>
-          <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
+          {!uploaded && <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/50 p-4">
             <div className="text-center">
               <p className="text-[32px] font-semibold leading-none tracking-tight tabular-nums">{lead.score ?? "—"}</p>
               <p className="mt-1 text-[12px] text-muted">of 100</p>
             </div>
             <p className="text-[13px] leading-relaxed text-muted">A research-priority score from cited evidence. It is not a measure of interest or consent.</p>
-          </div>
-          <div className="space-y-2.5">
+          </div>}
+          {!uploaded && <div className="space-y-2.5">
             {Object.entries(SCORE_LABELS).map(([k, [label, max]]) => {
               const v = lead.score_breakdown?.[k] ?? 0;
               return (
@@ -439,7 +467,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                 </div>
               );
             })}
-          </div>
+          </div>}
           {lead.qualification_summary && (
             <div>
               <p className="mb-1 text-[12px] font-medium uppercase tracking-wider text-faint">Growth Partner fit notes</p>
@@ -455,7 +483,7 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
               </ul>
             )}
             <p className="mt-2 text-[13px] leading-relaxed"><span className="font-medium">Next step:</span> {lead.recommended_next_action}</p>
-            <p className="mt-1 text-[12px] text-faint">Cited evidence and an AI confidence estimate still need human review; neither confirms interest or consent.</p>
+            <p className="mt-1 text-[12px] text-faint">{uploaded ? "Review the supplied data and confirm fit. Contact permission is checked separately." : "Cited evidence and an AI confidence estimate still need human review; neither confirms interest or consent."}</p>
           </div>
           {lead.signal_records.length > 0 ? (
             <div>
@@ -500,14 +528,19 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                     <a href={e.url} target="_blank" rel="noopener noreferrer nofollow" className="flex items-center gap-1.5 break-all text-[14px] font-medium text-primary hover:underline">
                       {e.url} <ExternalLink className="size-3 shrink-0" />
                     </a>
-                    {e.source && <p className="mt-1 text-[12px] font-medium text-faint">Source: {e.source === "openstreetmap" ? "OpenStreetMap" : "Company website"}</p>}
+                    {e.source && <p className="mt-1 text-[12px] font-medium text-faint">
+                      {e.source === "fsa_directory" ? <>{FSA_DIRECTORY_NAME} · <a className="underline" href={FSA_DIRECTORY_LICENCE} target="_blank" rel="noreferrer">Open Government Licence</a></>
+                        : { tenant_upload: "Link supplied by your workspace", openstreetmap: "OpenStreetMap", company_website: "Company website", reviewer_company_website: "Company page checked by your workspace" }[e.source]}
+                    </p>}
                     {e.summary && <p className="mt-1 text-[13px] text-muted">{e.summary}</p>}
                     {e.observed_at && <p className="mt-0.5 text-[12px] text-faint">Observed {formatDateTime(e.observed_at, timeZone)}</p>}
+                    {e.reviewed_at && <p className="mt-0.5 text-[12px] text-faint">Review recorded {formatDateTime(e.reviewed_at, timeZone)}</p>}
                   </li>
                 ))}
               </ul>
             )}
           </div>
+          {canAddCompanyEvidence && <LeadCompanyEvidenceForm key={lead.id} leadId={lead.id} />}
           <dl className="grid grid-cols-2 gap-3 text-[13px]">
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">Duplicate check</dt>
@@ -537,7 +570,12 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
             )}
             <div className="rounded-xl bg-surface-2 p-3">
               <dt className="text-muted">CRM</dt>
-              <dd className="mt-1.5"><StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill></dd>
+              <dd className="mt-1.5 flex flex-col items-start gap-2">
+                <StatusPill tone={SYNC_TONE[lead.crm_sync_status] ?? "neutral"} size="sm">{SYNC_LABEL[lead.crm_sync_status] ?? sentenceCase(lead.crm_sync_status)}</StatusPill>
+                {lead.crm_sync_status === "synced" && lead.crm_company_id && (
+                  <ButtonLink size="sm" variant="secondary" href={`/crm/companies/${lead.crm_company_id}?tab=tasks`}>Open CRM tasks</ButtonLink>
+                )}
+              </dd>
             </div>
           </dl>
           <div className="flex items-start gap-3 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
@@ -554,14 +592,14 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
                   <Button variant="secondary" disabled={busy} onClick={() => onReview([lead.id], "reject")}>
                     <X className="size-4" /> Reject
                   </Button>
-                  {lead.qualification_state !== "disqualified" && (
+                  {lead.qualification_state !== "disqualified" && !needsCompanyEvidence(lead) && (
                     <Button disabled={busy} onClick={() => onReview([lead.id], "approve")}>
                       <Check className="size-4" /> Approve lead
                     </Button>
                   )}
                 </>
               )}
-              {lead.review_status === "approved" && ["not_synced", "blocked", "failed"].includes(lead.crm_sync_status) && (
+              {canRequestLeadImport(lead) && (
                 <Button variant="brand" disabled={busy} onClick={() => onImport([lead.id])}>
                   <Send className="size-4" /> Request CRM import
                 </Button>
@@ -571,6 +609,32 @@ function LeadSheet({ lead, onClose, canReview, timeZone, onReview, onImport, bus
         </div>
       )}
     </Sheet>
+  );
+}
+
+const initialCompanyEvidenceState: LeadCompanyEvidenceActionState = { status: "idle" };
+
+function LeadCompanyEvidenceForm({ leadId }: { leadId: string }) {
+  const [state, action, pending] = React.useActionState(addLeadCompanyEvidenceAction.bind(null, leadId), initialCompanyEvidenceState);
+  return (
+    <form action={action} className="space-y-3 rounded-xl border border-line p-4">
+      <div>
+        <h3 className="font-medium">Add first-party evidence</h3>
+        <p className="mt-1 text-[13px] text-muted">Open the company’s public website and record what the page shows about this business. The link will be saved for workspace review.</p>
+      </div>
+      <Field label="Company page" htmlFor={`company-page-${leadId}`}>
+        <Input id={`company-page-${leadId}`} name="companyPage" type="url" maxLength={500} placeholder="https://…" required />
+      </Field>
+      <Field label="What the page shows" htmlFor={`company-evidence-${leadId}`}>
+        <Textarea id={`company-evidence-${leadId}`} name="companyEvidence" rows={3} maxLength={500} required />
+      </Field>
+      <label className="flex min-h-11 items-center gap-2 text-sm">
+        <input type="checkbox" name="firstPartyConfirmed" value="yes" className="size-4 shrink-0 accent-[var(--primary)]" required />
+        I checked this public page and confirmed it was published by this business.
+      </label>
+      <Button type="submit" variant="secondary" disabled={pending}>{pending ? "Saving evidence…" : "Save evidence"}</Button>
+      {state.status !== "idle" && <p role={state.status === "error" ? "alert" : "status"} className={cn("text-sm", state.status === "error" ? "text-danger" : "text-success")}>{state.message}</p>}
+    </form>
   );
 }
 
@@ -617,13 +681,13 @@ function ResearchPanel({ requests, hunterReady, canResearch, timeZone }: { reque
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       <Panel className="lg:col-span-2" icon={<Radar />} tone="primary" title="New research request" description="Describe who you want to find. Your targeting rules are applied automatically." bodyClassName="space-y-4">
-          <Segmented id="campaign" ariaLabel="Campaign type" value={campaign} onChange={setCampaign} options={[{ value: "business", label: "Businesses" }, { value: "influencer", label: "Influencer partners" }]} />
+          <Segmented id="campaign" ariaLabel="Campaign type" value={campaign} onChange={setCampaign} options={[{ value: "business", label: "Businesses" }, { value: "influencer", label: "Influencer partners (not available yet)", disabled: !INFLUENCER_RESEARCH_AVAILABLE }]} />
           <Field label="What should AI Growth Partner look for?" htmlFor="research-prompt">
             <Textarea id="research-prompt" data-aqi-target="leads.research" rows={4} maxLength={1000} value={prompt} onChange={(e) => setPrompt(e.target.value)} disabled={!canResearch} placeholder="Find businesses in California that may need appointment automation." />
           </Field>
           {campaign === "influencer" && (
             <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-[13px] text-muted">
-              <Info className="mt-0.5 size-3.5 shrink-0" /> Influencer research uses public, permitted sources only. iAcquire never scrapes profiles or sends automated DMs.
+              <Info className="mt-0.5 size-3.5 shrink-0" /> Influencer research requires an approved platform adapter. Saved influencer settings are kept for future use.
             </p>
           )}
           {!hunterReady && (
@@ -777,15 +841,18 @@ function TargetingForm({ targeting, canEdit }: { targeting: Targeting; canEdit: 
           <CardHeader>
             <div>
               <CardTitle>Influencer partnerships</CardTitle>
-              <CardDescription>Optional campaign type.</CardDescription>
+              <CardDescription>Influencer research requires an approved platform adapter. Saved influencer settings are kept for future use.</CardDescription>
             </div>
-            <Switch checked={t.influencer.enabled} disabled={!canEdit} onCheckedChange={(v) => set("influencer", { ...t.influencer, enabled: v })} aria-label="Enable influencer partnerships" />
+            <Switch checked={t.influencer.enabled} disabled={!canEdit || !INFLUENCER_RESEARCH_AVAILABLE} onCheckedChange={(v) => set("influencer", { ...t.influencer, enabled: v })} aria-label="Enable influencer partnerships" />
           </CardHeader>
           {t.influencer.enabled && (
             <CardContent className="space-y-3">
               <Field label="Platform" htmlFor="i-platform">
-                <Select id="i-platform" value={t.influencer.platform} disabled={!canEdit} onChange={(e) => set("influencer", { ...t.influencer, platform: e.target.value })}>
-                  {["instagram", "tiktok", "youtube", "linkedin", "x", "other"].map((p) => (
+                <Select id="i-platform" value={t.influencer.platform} disabled={!canEdit || !INFLUENCER_RESEARCH_AVAILABLE} onChange={(e) => set("influencer", { ...t.influencer, platform: e.target.value as Targeting["influencer"]["platform"] })}>
+                  {!INFLUENCER_PLATFORM_ADAPTERS.includes(t.influencer.platform) && (
+                    <option value={t.influencer.platform}>{sentenceCase(t.influencer.platform)} (saved setting, not used)</option>
+                  )}
+                  {INFLUENCER_PLATFORM_ADAPTERS.map((p) => (
                     <option key={p} value={p}>
                       {p === "x" ? "X" : sentenceCase(p)}
                     </option>

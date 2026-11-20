@@ -5,6 +5,8 @@
 import crypto from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { memberActor } from "@/server/crm/actor";
+import { createAppointmentType, createCalendar, setHostAvailability } from "@/server/calendars/setup";
 import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, AGENT_ROLES, AI_GROWTH_PARTNER_ROLE_KEY, SETUP_REQUIRED_LABEL, canChat, type WorkforceRoleKey } from "@/lib/agents";
 import { CAPABILITY_KEYS, WORKFORCE_CAPABILITIES, capabilitiesForRole, roleMayUseCapability, type CapabilityKey } from "@/lib/workforce-capabilities";
 import { deriveEmployeeReadiness } from "@/lib/workforce-readiness";
@@ -38,6 +40,13 @@ beforeAll(async () => {
     await withSystem((db) => createConfigVersion(db, { orgId: org.id, agentId: id, settings: defaultSettings(role), source: "onboarding", userId: owner.id, apply: true }));
   }
   await withSystem((db) => db.query("update agent_instances set status = 'online', last_health_ok = true, last_health_check_at = now() where org_id = $1", [org.id]));
+  const calendarActor = memberActor(ctx());
+  await setHostAvailability(calendarActor, owner.id, {
+    timezone: "UTC",
+    rules: Array.from({ length: 7 }, (_, weekday) => ({ weekday, startMinute: 9 * 60, endMinute: 17 * 60 })),
+  });
+  const calendar = await createCalendar(calendarActor, { name: "Conformance Calendar", assignment: "single", public: false, isDefault: true, members: [{ userId: owner.id }] });
+  await createAppointmentType(calendarActor, calendar.id, { name: "Conformance Appointment", durationMinutes: 30, minNoticeMinutes: 0, maxDaysAhead: 60, locationKind: "phone", public: false });
 }, 60000);
 
 describe("the registry and the identities agree", () => {

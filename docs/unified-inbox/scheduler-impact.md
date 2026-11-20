@@ -8,11 +8,11 @@ What I could not read from here (and you or I must re-read, read-only, before an
 
 * `POST` or `GET /api/internal/tick` exists. It needs **two** switches: `CRON_SECRET` (24+ characters, bearer token) and `SCHEDULER_ENABLED=true`. As of 2026-10-20 production had neither, `worker_job_runs` had no `tick` row (the scheduler
   has never run), no cron is configured, and every provider write switch was `false` (**verify**: re-read before relying on any of this).
-* One tick runs **all 77 registered jobs in order** (45 when this was first written on 2026-10-22; section 2g covers the eight added by 2026-10-23 and section 2h the twelve Wave 1 jobs added since), each isolated (a failure in one is recorded and the rest still run), with a heartbeat per job and a tick lease so overlapping calls do nothing. Slow jobs declare `everyMinutes` and are skipped between slots.
-* **There is no per-job switch.** Today "enable the scheduler" means "start all 77 jobs". Only some jobs have their own feature switch (listed below). This pass adds one (`SCHEDULER_JOBS_ONLY`, section 5) so activation can be staged job by job; it is
+* One tick runs **all 78 registered jobs in order** (77 before the queued AI work runner was added on 2026-11-16; 45 when this was first written on 2026-10-22; section 2g covers the eight added by 2026-10-23 and section 2h the twelve Wave 1 jobs added since), each isolated (a failure in one is recorded and the rest still run), with a heartbeat per job and a tick lease so overlapping calls do nothing. Slow jobs declare `everyMinutes` and are skipped between slots.
+* **Jobs do not each have their own scheduler switch.** Without a staged list, "enable the scheduler" means "start all 78 jobs". Set `SCHEDULER_JOBS_ONLY` to exact names to stage activation (section 5); individual jobs may also have their own feature switches (listed below). The staged list is
   unset (all jobs) unless someone sets it.
 
-## 2. The 77 jobs, by what they can do
+## 2. The 78 jobs, by what they can do
 
 Cadence is every tick (the runbook recommends 1 to 2 minutes) unless a slot is given. "Outside" means anything that leaves iAcquire: an email, a message to a customer, a call to a provider or a customer's own site.
 
@@ -54,7 +54,8 @@ Cadence is every tick (the runbook recommends 1 to 2 minutes) unless a slot is g
 
 | Job | Slot | Gate |
 | --- | --- | --- |
-| `aiWorkRecovery` | 5 min | Re-queues work whose worker lease expired, or fails it honestly. Never runs provider work in the tick |
+| `aiWorkRecovery` | 5 min | Re-queues work whose worker lease expired, settles cancellations, and cancels never-claimed stale work. Does not run a work handler |
+| `aiWorkRunQueued` | tick | Starts queued AI work one job at a time, for up to a 45-second start budget, and only when the claim API's 30-second minimum lease window remains. A queued handler may call Hermes and its approved capability integrations; it runs under the requester's current permissions and workforce gates. The budget stops new starts, not an already-running handler |
 | `aiWorkSchedules` | tick | Creates durable jobs only when `WORKFORCE_SCHEDULES_ENABLED=true` **and** the schedule row is on |
 | `aiWorkTriggers` | tick | Creates durable jobs only when `WORKFORCE_TRIGGERS_ENABLED=true` **and** the trigger row is on |
 | `aiProactiveHeldReports` | 5 min | Releases a verified, already-held report after quiet hours; creates no work |
@@ -66,7 +67,7 @@ Cadence is every tick (the runbook recommends 1 to 2 minutes) unless a slot is g
 | `bookingConfirmationWatch` | 60 min | Bookings on a calendar that still wait for a person to confirm them: one that waited too long is noticed. Confirms, cancels and moves nothing and contacts no customer |
 | `aqiOperationsBriefings`, `aqiOperationsRetention`, `aqiTutorialEventRetention` | tick / 1440 | Briefings only for administrators who opted in; retention purges old stored briefings and tutorial events in bounded batches |
 
-The workforce jobs never run provider (Hermes) work themselves; the separate worker does, and it is not part of the tick.
+`aiWorkRunQueued` makes the scheduler tick an execution path for queued workforce work as well as a recovery path. The dedicated worker and request-time kick are separate ways to start the same queued jobs. The 45-second budget limits new starts; it does not interrupt a handler already running, so the tick's own host limit and lease still matter.
 
 ### 2e. The inbox
 
@@ -161,7 +162,7 @@ With the facts as of 2026-10-20 (**verify**): no queued messages, email, reminde
 2. **Order of activation for messages.** The dispatcher (`messagesDispatched`) turns a queued message into **`blocked` with the reason `provider_not_enabled`, which is final** (code: `finishBlocked`; only `queued` messages are ever picked up). So running the dispatcher while a provider write switch is still off does not leave messages waiting: it burns them, customers get no answer, and turning the switch on later does not release them (a person can use "Send again" in the inbox). The same tick also runs `repliesChecked` and `followUpsPrepared`, which make **model calls and charge usage** for each pending conversation. Therefore: keep `messagesDispatched`, `repliesChecked` and `followUpsPrepared` out of the first activation steps (section 5), and switch each provider on, supervised, before its dispatcher runs.
 3. **`calendarWriteBack` and `calendarBusySync`** touch customers' real calendars as soon as any are connected. `CALENDAR_SYNC_DISABLED=true` is the off switch.
 4. **No per-job switch** (section 1): the whole list starts together. This is the reason for `SCHEDULER_JOBS_ONLY`.
-5. **Database load**: 77 jobs every minute or two. The inbox's share is small; the Studio rehearsal and the new tick rehearsal run the real list on synthetic data without failures, but real concurrency on hosted Postgres is unmeasured (staging).
+5. **Database load**: 78 jobs every minute or two. The inbox's share is small; the Studio rehearsal and the new tick rehearsal run the real list on synthetic data without failures, but real concurrency on hosted Postgres is unmeasured (staging).
 6. A tick that overlaps the next is harmless (lease, idempotent jobs), and a stopped scheduler opens a critical incident after `SCHEDULER_STALE_MINUTES` (20).
 7. **The tick's 120 seconds can be oversubscribed.** Seven jobs wait on outside services or on a long pass of their own, under their own budgets: `reviewSync` 60 seconds, `socialPublisher` 20, `socialAccountHealth` 20, `socialMetrics` 40, `esignSync` 25, `customerPaymentReconcile` 30 and `launchWatch` 45 (every 10 minutes, registered after the dispatcher and before the invoice jobs), which come to 240 seconds if every one had work in the same tick. Five of them are registered before `messagesDispatched` (165 seconds), so in that worst case the dispatcher would wait for the next tick, and a tick that the host stops at 120 seconds keeps its lease for five minutes; the jobs after `launchWatch` (the invoice reminders among them) would wait too. With nothing connected each finds nothing to do and spends nothing. **Not measured**: read from the code; see [../production-scheduler.md](../production-scheduler.md), "Time budget of a tick".
 8. **`ESIGN_WRITES_ENABLED` is a write switch only.** `esignSync` checks the key of any working real signing connection every six hours whatever it says (and connecting a key checks it with the service), so a connected PandaDoc account is called even with the switch off.

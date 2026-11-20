@@ -64,7 +64,19 @@ async function assertLinks(db: Queryable, orgId: string, input: Pick<TaskInput, 
   await check("select 1 from appointment_refs where id = $1 and org_id = $2", input.appointmentId, "Appointment");
 }
 
-export async function createTaskInTx(db: Queryable, actor: CrmActor, input: TaskInput, opts: { source?: "user" | "agent" | "system" | "workflow"; causedBy?: { eventId: number; depth: number } | null } = {}): Promise<{ id: string }> {
+export async function createTaskInTx(
+  db: Queryable,
+  actor: CrmActor,
+  input: TaskInput,
+  opts: { source?: "user" | "agent" | "system" | "workflow"; causedBy?: { eventId: number; depth: number } | null; idempotencyKey?: string } = {},
+): Promise<{ id: string; created: boolean }> {
+  if (opts.idempotencyKey !== undefined && opts.idempotencyKey.length > 200) {
+    throw new AppError("invalid_input", "The task idempotency key is too long.");
+  }
+  if (opts.idempotencyKey !== undefined) {
+    const existing = await db.query<{ id: string }>("select id from tasks where org_id = $1 and idempotency_key = $2", [actor.orgId, opts.idempotencyKey]);
+    if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+  }
   const title = input.title.replace(/\s+/g, " ").trim();
   if (!title || title.length > 200) throw new AppError("invalid_input", "Give the task a title of up to 200 characters.");
   const priority = input.priority ?? "normal";
@@ -75,15 +87,22 @@ export async function createTaskInTx(db: Queryable, actor: CrmActor, input: Task
   if (input.assigneeId) await assertAssignable(db, actor.orgId, input.assigneeId);
   const { rows } = await db.query<{ id: string }>(
     `insert into tasks (org_id, title, description, category, due_at, remind_at, priority, status, assigned_user_id, contact_id, company_id, opportunity_id, appointment_id,
-       related_type, related_id, source, created_by)
-     values ($1, $2, $3, 'crm', $4, $5, $6, 'open', $7, $8, $9, $10, $11, $12, $13, $14, $15) returning id`,
+       related_type, related_id, source, created_by, idempotency_key)
+     values ($1, $2, $3, 'crm', $4, $5, $6, 'open', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing returning id`,
     [
       actor.orgId, title, input.description?.trim().slice(0, 2000) || null, due, remind, priority, input.assigneeId ?? null, input.contactId ?? null, input.companyId ?? null,
       input.opportunityId ?? null, input.appointmentId ?? null, input.opportunityId ? "opportunity" : input.contactId ? "contact" : null,
       input.opportunityId ?? input.contactId ?? null, opts.source ?? (actor.kind === "agent" ? "agent" : actor.kind === "member" || actor.kind === "agency" ? "user" : "system"),
-      actor.kind === "member" || actor.kind === "agency" ? actor.userId : null,
+      actor.kind === "member" || actor.kind === "agency" ? actor.userId : null, opts.idempotencyKey ?? null,
     ],
   );
+  if (!rows[0] && opts.idempotencyKey !== undefined) {
+    const existing = await db.query<{ id: string }>("select id from tasks where org_id = $1 and idempotency_key = $2", [actor.orgId, opts.idempotencyKey]);
+    if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+    throw new AppError("conflict", "The task could not be created. Try again.");
+  }
+  if (!rows[0]) throw new AppError("conflict", "The task could not be created. Try again.");
   const id = rows[0].id;
   await emitEvent(db, actor, { type: "task.created", entityType: "task", entityId: id, contactId: input.contactId ?? null, payload: { opportunityId: input.opportunityId ?? null, assigneeId: input.assigneeId ?? null }, dedupeKey: `task.created:${id}`, causedBy: opts.causedBy });
   if (input.contactId || input.opportunityId || input.companyId) {
@@ -92,13 +111,16 @@ export async function createTaskInTx(db: Queryable, actor: CrmActor, input: Task
   if (input.assigneeId && input.assigneeId !== actor.userId) {
     await notifyUser(db, input.assigneeId, actor.orgId, { kind: "crm_assigned", severity: "info", title: `New task for you: ${title.slice(0, 120)}`, body: due ? `Due ${due.toISOString().slice(0, 16).replace("T", " ")} UTC` : undefined, link: `/crm/tasks?task=${id}`, dedupeKey: `crm-task:${id}` });
   }
-  return { id };
+  return { id, created: true };
 }
 
-export async function createTask(actor: CrmActor, input: TaskInput): Promise<{ id: string }> {
+export async function createTask(actor: CrmActor, input: TaskInput, opts: { idempotencyKey?: string } = {}): Promise<{ id: string }> {
   assertCan(actor, "tasks.manage");
   if (input.contactId) assertCan(actor, "contacts.view");
-  return crmWrite(actor, (db) => createTaskInTx(db, actor, input));
+  return crmWrite(actor, async (db) => {
+    const { id } = await createTaskInTx(db, actor, input, opts);
+    return { id };
+  });
 }
 
 export async function updateTask(actor: CrmActor, id: string, patch: Partial<TaskInput>): Promise<void> {

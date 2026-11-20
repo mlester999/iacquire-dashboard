@@ -350,7 +350,7 @@ describe("a credential reads its own workspace and never another", () => {
       expect(toolText(rpc), `${tool} ${JSON.stringify(args)}`).not.toMatch(/Manilan|Manila Dental/);
       // Either nothing is found, or the id is simply not there: never the other workspace's record.
       if (tool === "find_contacts") expect(refused(rpc)).toBe(false);
-      else expect(`${refused(rpc)}${toolText(rpc)}`).toMatch(/not found|isn't one this AI employee handles|"conversation":null/i);
+      else expect(`${refused(rpc)}${toolText(rpc)}`).toMatch(/not found|isn't one this AI profile handles|"conversation":null/i);
     }
     const context = await post(a.credentials.appointment_setter, callBody("get_role_workspace_context"));
     expect(toolText(context)).not.toMatch(/Manilan/);

@@ -180,11 +180,11 @@ async function executeApprovedLeadImport(input: {
     const { rows: leads } = await db.query<{
       id: string; business_name: string; website: string | null; domain: string | null; industry: string | null; location: string | null;
       qualification_summary: string | null; qualification_state: string; duplicate_status: string; review_status: string; crm_sync_status: string;
-      evidence: unknown; public_contact: unknown; score: number | null; crm_company_id: string | null; crm_contact_id: string | null; org_name: string; timezone: string;
+      evidence: unknown; public_contact: unknown; score: number | null; crm_company_id: string | null; crm_contact_id: string | null; org_name: string; timezone: string; source_platform: string;
     }>(
       `select l.id, l.business_name, l.website, l.domain, l.industry, l.location, l.qualification_summary,
               l.qualification_state, l.duplicate_status, l.review_status, l.crm_sync_status, l.evidence, l.public_contact, l.score,
-              l.crm_company_id, l.crm_contact_id, o.name as org_name, o.timezone
+              l.crm_company_id, l.crm_contact_id, o.name as org_name, o.timezone, l.source_platform
          from leads l join organizations o on o.id = l.org_id
         where l.org_id = $1 and l.id = any($2::uuid[])
         order by l.id for update of l`,
@@ -199,7 +199,13 @@ async function executeApprovedLeadImport(input: {
     let contactCount = 0;
     let reusedCompanies = 0;
     for (const lead of leads) {
-      const location = companyLocation(lead.location);
+      const isUpload = lead.source_platform === "tenant_upload";
+      const evidence = Array.isArray(lead.evidence) ? lead.evidence.map(recordValue) : [];
+      const uploadedSource = isUpload ? evidence.find((item) => item.source === "tenant_upload") : null;
+      const country = textValue(uploadedSource?.country, 3);
+      const location = isUpload
+        ? { region: textValue(uploadedSource?.region, 100), country: country && /^[A-Z]{2}$/.test(country) ? country : null }
+        : companyLocation(lead.location);
       const company = lead.crm_company_id
         ? { id: lead.crm_company_id, created: false }
         : await createCompanyInTx(db, actor, {
@@ -213,9 +219,7 @@ async function executeApprovedLeadImport(input: {
       if (!company.created) reusedCompanies += 1;
 
       const publicContact = recordValue(lead.public_contact);
-      const savedEvidenceUrls = new Set(Array.isArray(lead.evidence)
-        ? lead.evidence.map((item) => recordValue(item).url).filter((url): url is string => typeof url === "string")
-        : []);
+      const savedEvidenceUrls = new Set(evidence.map((item) => item.url).filter((url): url is string => typeof url === "string"));
       const contactSourceUrl = textValue(publicContact.source_url, 2000);
       const hasSavedContactEvidence = Boolean(contactSourceUrl && savedEvidenceUrls.has(contactSourceUrl));
       const name = textValue(publicContact.name, 200);
@@ -223,7 +227,7 @@ async function executeApprovedLeadImport(input: {
       const phone = textValue(publicContact.phone, 40);
       const role = textValue(publicContact.role, 120);
       let contactId = lead.crm_contact_id;
-      if (!contactId && hasSavedContactEvidence && (name || email || phone)) {
+      if (!isUpload && !contactId && hasSavedContactEvidence && (name || email || phone)) {
         const contact = await createContactInTx(db, actor, {
           displayName: name ?? email ?? phone,
           email,
@@ -575,6 +579,12 @@ const BLOCKED_MESSAGING =
   "Approved, but not sent: customer messaging isn't enabled for this workspace. iAcquire only sends messages through a verified, approved messaging integration.";
 
 /** Claims the queued execution exactly once, then runs the kind-specific executor. */
+export function disconnectedApprovalRunDetail(roleKey: string | null | undefined): string {
+  return roleKey === "growth_partner"
+    ? "Your AI Growth Partner is no longer connected, so the step was not run."
+    : "The employee is no longer connected, so the step was not run.";
+}
+
 export async function executeApproval(orgId: string, approvalId: string, actorUserId: string): Promise<ExecOutcome | null> {
   const claimed = await withSystem(async (db) => {
     const { rows } = await db.query<{ kind: ApprovalKind; action: Record<string, unknown>; agent_instance_id: string | null; target_id: string | null }>(
@@ -668,8 +678,11 @@ async function runExecutor(
     }
     case "tool_action": {
       if (!a.agent_instance_id || typeof a.action.hermesRunId !== "string") return { status: "failed", detail: "The paused run could not be identified." };
-      const conn = await withSystem((db) => loadConnection(db, a.agent_instance_id as string));
-      if (!conn) return { status: "failed", detail: "The employee is no longer connected, so the step was not run." };
+      const { connection: conn, roleKey } = await withSystem(async (db) => {
+        const { rows } = await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [a.agent_instance_id, orgId]);
+        return { connection: await loadConnection(db, a.agent_instance_id as string), roleKey: rows[0]?.role_key ?? null };
+      });
+      if (!conn) return { status: "failed", detail: disconnectedApprovalRunDetail(roleKey) };
       await resolveRunApproval(conn, a.action.hermesRunId, "once", typeof a.action.hermesApprovalId === "string" ? a.action.hermesApprovalId : undefined);
       return { status: "succeeded", detail: "Hermes accepted the approval and resumed the run." };
     }

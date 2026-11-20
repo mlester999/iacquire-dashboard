@@ -12,6 +12,8 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field
 import { Dialog, Switch, Tabs } from "@/components/ui/overlays";
 import { PageHero } from "@/components/ui/workspace";
 import { ConfigReviewCard } from "@/components/admin/config-review-card";
+import { GrowthPartnerMigrationPlanStage } from "@/components/admin/growth-partner-migration-plan";
+import { GrowthPartnerOperationsPanel } from "@/components/admin/growth-partner-operations";
 import { RuntimeControls, type RuntimeControlsData } from "@/components/admin/runtime-controls";
 import { ResendInvitationButton, deliverySummary } from "@/components/admin/resend-invitation";
 import {
@@ -37,6 +39,7 @@ import {
 import { prepareGrowthPartnerMigrationCandidateAction, previewGrowthPartnerScheduleMigrationAction } from "@/app/(admin)/admin/migration-actions";
 import { PaymentRow, RecordPaymentDialog, RefundDialog, WaiveFeeDialog } from "@/components/admin/payments-workspace";
 import { setupStatusCopy } from "@/lib/billing-clearance";
+import { summarizeGrowthPartnerMigration } from "@/lib/growth-partner-migration-readiness";
 import type { AgencyPaymentView } from "@/server/billing/payments-view";
 import type { ProvisioningEvent, TenantDetail } from "@/server/admin/queries";
 import type { GrowthPartnerScheduleMigrationPreview } from "@/server/admin/growth-partner-migration";
@@ -100,7 +103,7 @@ export function ClientDetail({ data, superAdmin, initialTab, timeZone, runtime =
       {tab === "overview" && <OverviewTab data={data} superAdmin={superAdmin} />}
       {tab === "workforce" && (
         <div className="space-y-6">
-          <WorkforceTab data={data} superAdmin={superAdmin} />
+          <WorkforceTab key={data.org.id} data={data} superAdmin={superAdmin} timeZone={timeZone} />
           {/* Only ever given something for a Super Admin looking at a real client workspace (the page decides on the server); it renders nothing otherwise. */}
           <RuntimeControls data={runtime} />
         </div>
@@ -120,7 +123,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
   const { run, pending } = useAction();
   const [reason, setReason] = React.useState("");
   const [confirm, setConfirm] = React.useState(false);
-  const partnerOnline = data.growthPartner?.enabled === true && (data.growthPartner.runtime_status === "online" || data.growthPartner.runtime_status === "busy");
+  const partnerOnline = data.growthPartner?.status === "configured";
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2 overflow-hidden">
@@ -227,7 +230,7 @@ function OverviewTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }
   );
 }
 
-function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean }) {
+function WorkforceTab({ data, superAdmin, timeZone }: { data: Detail; superAdmin: boolean; timeZone: string }) {
   const { run, pending } = useAction();
   const [connectFor, setConnectFor] = React.useState<Detail["agents"][number] | null>(null);
   const [bundle, setBundle] = React.useState<ProvisioningBundle | null>(null);
@@ -236,6 +239,12 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
   const [prepareMigrationOpen, setPrepareMigrationOpen] = React.useState(false);
   const [schedulePreview, setSchedulePreview] = React.useState<GrowthPartnerScheduleMigrationPreview | null>(null);
   const migration = data.migrationInventory;
+  const migrationReadiness = superAdmin ? summarizeGrowthPartnerMigration({
+    workspace: data.org,
+    inventory: migration,
+    candidate: data.growthPartner,
+    schedulePreview,
+  }) : null;
   const candidatePrepared = Boolean(
     data.growthPartner?.status === "migration_required"
     && data.growthPartner.runtime_agent_instance_id === null
@@ -258,7 +267,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
               <CardTitle>AI Growth Partner</CardTitle>
               <CardDescription>Tenant-scoped partner runtime and Business Brain status. Conversation content stays private to the client workspace.</CardDescription>
             </div>
-            <Badge tone={data.growthPartner.status === "configured" ? "success" : data.growthPartner.status === "paused" ? "warning" : "neutral"}>
+            <Badge tone={data.growthPartner.status === "configured" ? "success" : data.growthPartner.status === "paused" || data.growthPartner.status === "migration_required" || data.growthPartner.status === "needs_attention" ? "warning" : "neutral"}>
               {data.growthPartner.status.replaceAll("_", " ")}
             </Badge>
           </CardHeader>
@@ -271,6 +280,45 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
             </dl>
             {data.growthPartner.last_health_detail && <p className="rounded-xl border border-line bg-surface px-3 py-2 text-[13px] text-ink-2">{data.growthPartner.last_health_detail}</p>}
             <p className="text-[12px] text-muted">Last partner conversation activity: {data.growthPartner.last_message_at ? relativeTime(data.growthPartner.last_message_at) : "No messages yet"}. This view contains status only and does not open the client conversation.</p>
+            {data.access.workforceManage && data.growthPartner.runtime_agent_instance_id && data.growthPartner.has_credential && (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={pending === `gp-hc-${data.growthPartner.runtime_agent_instance_id}`}
+                onClick={() => run(`gp-hc-${data.growthPartner!.runtime_agent_instance_id}`, () => healthCheckAction(data.growthPartner!.runtime_agent_instance_id!), (d) => (d && "status" in (d as object) ? `Health check: ${(d as { status: string }).status.replaceAll("_", " ")}` : "Health check complete"))}
+              >
+                <Stethoscope className="size-3.5" /> Health check
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {data.growthPartnerOperations && <GrowthPartnerOperationsPanel operations={data.growthPartnerOperations} timeZone={timeZone} />}
+      {(data.failedWorkJobs.length > 0 || data.failedApprovalExecutions.length > 0) && (
+        <Card aria-label="Growth Partner failures">
+          <CardHeader>
+            <div>
+              <CardTitle>Recent Growth Partner failures</CardTitle>
+              <CardDescription>Work job failure codes and approval execution statuses only. Private request and response text is not shown.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y divide-line text-[13px]">
+              {data.failedWorkJobs.map((job) => (
+                <li key={`job-${job.id}`} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="font-medium">Work job · {job.capability.replaceAll("_", " ")}</span>
+                  <span className="text-muted">Failure code: {job.failure_code ?? "not recorded"}</span>
+                  <span className="ml-auto text-faint">{job.finished_at ? relativeTime(job.finished_at) : ""}</span>
+                </li>
+              ))}
+              {data.failedApprovalExecutions.map((approval) => (
+                <li key={`approval-${approval.id}`} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="font-medium">Approval execution</span>
+                  <span className="text-muted">Status: {sentenceCase(approval.execution_status)}</span>
+                  <span className="ml-auto text-faint">{approval.executed_at ? relativeTime(approval.executed_at) : ""}</span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -319,6 +367,30 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
             <p className="rounded-xl border border-line bg-surface-2/60 px-3 py-2.5 text-[12px] leading-relaxed text-muted">
               These are persisted record counts only. Profile reachability, actual credential validity, runtime memory, external provider state, permissions and paid entitlements still need a separate review. Preparing the candidate below only adds an unbound identity in migration-required state; it does not copy Business Brain data, create a runtime or conversation, pause work, change access, or perform a cutover.
             </p>
+            {migrationReadiness && migrationReadiness.stage !== "not_applicable" && (
+              <section aria-labelledby="migration-readiness-heading" className="space-y-3 rounded-xl border border-line bg-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 id="migration-readiness-heading" className="text-[14px] font-semibold text-ink">Migration readiness</h3>
+                  <Badge tone="warning">{migrationReadiness.stage === "checks_open" ? "Checks open" : "Owner approval required"}</Badge>
+                </div>
+                {migrationReadiness.blockers.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-ink-2">
+                    {migrationReadiness.blockers.map(({ code, message, count }) => (
+                      <li key={code}>{message}{count !== undefined && <span className="ml-1 tabular-nums text-muted">({formatNumber(count)})</span>}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[13px] leading-relaxed text-ink-2">{migrationReadiness.approvalMessage}</p>
+                <dl className="grid gap-3 text-[12px] sm:grid-cols-3">
+                  <div><dt className="text-muted">Approved or released sources</dt><dd className="font-medium tabular-nums text-ink">{formatNumber(migrationReadiness.retainedKnowledge.recordedSources)}</dd></div>
+                  <div><dt className="text-muted">Held sources</dt><dd className="font-medium tabular-nums text-ink">{formatNumber(migrationReadiness.retainedKnowledge.heldSources)}</dd></div>
+                  <div><dt className="text-muted">Queued snapshot reviews</dt><dd className="font-medium tabular-nums text-ink">{migrationReadiness.retainedKnowledge.pendingSnapshotReviews === null ? "Preview required" : formatNumber(migrationReadiness.retainedKnowledge.pendingSnapshotReviews)}</dd></div>
+                </dl>
+                {migrationReadiness.schedulePreviewGeneratedAt && (
+                  <p className="text-[12px] text-muted">Schedule preview recorded {formatDateTime(migrationReadiness.schedulePreviewGeneratedAt, data.org.timezone ?? undefined)}.</p>
+                )}
+              </section>
+            )}
             {data.access.workforceManage && (
               <div className="space-y-3 border-t border-line pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -331,6 +403,7 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                     disabled={Boolean(pending)}
                     loading={pending === "schedule-migration-preview"}
                     onClick={async () => {
+                      setSchedulePreview(null);
                       const result = await run(
                         "schedule-migration-preview",
                         () => previewGrowthPartnerScheduleMigrationAction(data.org.id),
@@ -401,6 +474,9 @@ function WorkforceTab({ data, superAdmin }: { data: Detail; superAdmin: boolean 
                   </section>
                 )}
               </div>
+            )}
+            {superAdmin && data.access.workforceManage && data.org.status === "active" && !data.org.is_demo && data.growthPartner?.status === "migration_required" && (
+              <GrowthPartnerMigrationPlanStage orgId={data.org.id} />
             )}
             {candidatePrepared ? (
               <p className="rounded-xl border border-warning/25 bg-warning-soft/30 px-3 py-2.5 text-[13px] text-ink-2">The identity candidate is staged and inactive. Review and import of approved knowledge, owner choices, runtime setup, schedule reconciliation and cutover remain separate steps.</p>

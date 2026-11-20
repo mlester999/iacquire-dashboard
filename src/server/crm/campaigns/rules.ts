@@ -14,6 +14,7 @@ import {
   type CustomValueTokenDef, type TokenKey, type TokenValues,
 } from "@/lib/messaging/tokens";
 import { UNIT_LABELS, type UnitType } from "@/lib/billing";
+import { UNVERIFIED_FORM_CONSENT_SOURCES } from "@/lib/webchat/identity";
 
 // Shared rules for compliant campaigns (crm_campaigns, crm_campaign_recipients): who on a Smart List may receive a marketing message on a
 // channel right now, what an owner's approval is bound to, which templates a campaign may send, and what a message costs at the published
@@ -23,6 +24,7 @@ export const CAMPAIGN_STATUSES = ["draft", "awaiting_approval", "scheduled", "se
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 export const RECIPIENT_STATUSES = ["pending", "excluded", "queued", "sent", "delivered", "failed", "bounced", "unsubscribed"] as const;
 export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
+const UNVERIFIED_FORM_SOURCE_SQL = [...UNVERIFIED_FORM_CONSENT_SOURCES].map((source) => `'${source}'`).join(", ");
 
 /**
  * Why someone on the list was left out. Stored in crm_campaign_recipients.reason; a refusal of the send rules that has no code of its own is
@@ -283,6 +285,7 @@ function outcomeCase(ch: string, contactTokens: TokenKey[], opts: { lifecycle?: 
         when exists (select 1 from suppressions s where s.org_id = c.org_id and s.channel = ${ch} and s.address = a.value and s.lifted_at is null) then 'suppressed'
         when k.status = 'revoked' then 'consent_withdrawn'
         when k.status is distinct from 'granted' then 'no_marketing_consent'
+        when k.source in (${UNVERIFIED_FORM_SOURCE_SQL}) then 'no_marketing_consent'
         ${missing.length ? `when ${missing.join(" or ")} then 'missing_values'` : ""}
         else 'eligible'
       end`;
@@ -290,7 +293,7 @@ function outcomeCase(ch: string, contactTokens: TokenKey[], opts: { lifecycle?: 
 
 const outcomeJoins = (ch: string, kind: string) => `
     left join lateral (select i.value from contact_identities i where i.org_id = c.org_id and i.contact_id = c.id and i.kind = ${kind} order by i.verified desc, i.created_at limit 1) a on true
-    left join lateral (select e.status from contact_consent_events e where e.org_id = c.org_id and e.contact_id = c.id and e.channel = ${ch} and e.purpose = 'marketing' order by e.id desc limit 1) k on true`;
+    left join lateral (select e.status, e.source from contact_consent_events e where e.org_id = c.org_id and e.contact_id = c.id and e.channel = ${ch} and e.purpose = 'marketing' order by e.id desc limit 1) k on true`;
 
 /**
  * A query over the list's contacts with, for each, the first rule that leaves them out right now or "eligible". Deleted and archived contacts

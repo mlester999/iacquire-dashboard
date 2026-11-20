@@ -16,6 +16,12 @@ import { notifyOrgRoles } from "@/server/notifications";
 import { systemActor } from "@/server/crm/actor";
 import type { EscalationCategory } from "@/lib/escalation";
 
+export function noEnabledCustomerRuntimeNotice(hasGrowthPartner: boolean): string {
+  return hasGrowthPartner
+    ? "Your AI Growth Partner isn't switched on for this workspace. Open the conversation to take it or assign it."
+    : "Open the conversation to take it or choose an available assignee.";
+}
+
 /**
  * A deliberately blunt safety net. It only catches unmistakable requests, so a customer who plainly asks for a person is never
  * left talking to automation even if the AI is paused or misses it. Judgment calls stay with the AI and with people.
@@ -60,9 +66,9 @@ export interface InboundInput {
   receivedAt?: Date;
   threadKey?: string;
   /**
-   * Whether the sender's address is proven. Phone channels are (the carrier or Meta delivered it from that number), and so is GoHighLevel's
-   * own inbound, so it defaults to true. An inbound email is only proven when the receiving mail server authenticated its From domain
-   * (the Resend handler sets this from DMARC/DKIM). An unproven message is recorded, but it never changes consent or suppressions through
+   * Whether this inbound message's sender is proven. Signed non-email provider webhooks (carrier, Meta or GoHighLevel) default to true.
+   * An inbound email is only proven when the receiving mail server authenticated its From domain (the Resend handler sets this from
+   * DMARC/DKIM). An unproven message is recorded, but it never changes consent or suppressions through
    * a keyword, never counts as the customer asking to be contacted, and never gets an automatic reply.
    */
   senderVerified?: boolean;
@@ -207,8 +213,8 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
   // A proven sender writing from an address proves that address, including one a website visitor had only typed into the chat (src/lib/webchat/identity.ts). A number is
   // proven by the carrier or Meta. An email is proven only when the receiving mail server says it authenticated the From domain (senderVerified === true); anything
   // that does not say so, such as a GoHighLevel relay, leaves an email as unverified, as resolveContact already does for a new contact.
-  const proven = input.channel === "email" ? input.senderVerified === true : input.senderVerified !== false;
-  if (proven) await verifyIdentityOnInbound(db, { orgId, contactId, channel: input.channel, address: input.address });
+  const senderVerified = input.channel === "email" ? input.senderVerified === true : input.senderVerified !== false;
+  if (senderVerified) await verifyIdentityOnInbound(db, { orgId, contactId, channel: input.channel, address: input.address });
   if (input.ghlContactId) {
     // Link the CRM record unless another contact already holds it (that would be a duplicate for a person to merge).
     await db.query(
@@ -246,11 +252,15 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
     // (Only for a workspace that has the new inbox: the notice is the new inbox's, and would point at a screen the workspace is not on. The conversation itself
     // is created and kept either way.)
     if (conv.owner_kind === "unassigned" && (await inboxEnabledFor(orgId, db))) {
+      const hasGrowthPartner = (await db.query<{ present: boolean }>(
+        "select exists (select 1 from ai_growth_partners where org_id = $1) as present",
+        [orgId],
+      )).rows[0]?.present === true;
       await notifyOrgRoles(db, orgId, ["owner", "admin"], {
         kind: "conversation_new_inquiry",
         severity: "info",
         title: "A new inquiry has nobody handling it",
-        body: "No AI employee is switched on for this workspace. Open the conversation to take it or assign it.",
+        body: noEnabledCustomerRuntimeNotice(hasGrowthPartner),
         link: `/inbox?conversation=${conv.id}`,
         dedupeKey: `inquiry:${conv.id}`,
       });
@@ -260,9 +270,9 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
   // An inbound email keeps its own Message-ID, so the reply can carry In-Reply-To and References and stay in the customer's thread.
   const ownRef = input.channel === "email" ? (messageIds([input.threadRef])[0] ?? null) : null;
   const message = await db.query<{ id: string }>(
-    `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, provider, provider_message_id, dedupe_key, provider_thread_ref, created_at)
-     values ($1, $2, 'inbound', 'contact', $3, 'received', $4, $5, $6, $7, $8) returning id`,
-    [orgId, conv.id, body.slice(0, 5000), input.provider, input.providerMessageId, dedupeKey, ownRef, when],
+    `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, provider, provider_message_id, dedupe_key, provider_thread_ref, sender_verified, created_at)
+     values ($1, $2, 'inbound', 'contact', $3, 'received', $4, $5, $6, $7, $8, $9) returning id`,
+    [orgId, conv.id, body.slice(0, 5000), input.provider, input.providerMessageId, dedupeKey, ownRef, senderVerified, when],
   );
   await db.query(
     `update conversations set unread_count = unread_count + 1, last_inbound_at = $2, last_message_at = $2, last_message_preview = left($3, 200), status = 'open',
@@ -271,7 +281,6 @@ export async function ingestInbound(db: Queryable, input: InboundInput): Promise
   );
 
   // Only a proven sender's message changes consent, suppressions or gets an automatic reply (see InboundInput.senderVerified).
-  const senderVerified = input.senderVerified !== false;
   // A customer who writes to us is asking for service messages on that channel unless they have already opted out.
   if (senderVerified && (await getConsent(db, orgId, contactId, input.channel, "service")) === "unknown") {
     await recordConsent(db, { orgId, contactId, channel: input.channel, purpose: "service", status: "granted", source: "inbound_inquiry", evidence: "The customer contacted the business on this channel." });

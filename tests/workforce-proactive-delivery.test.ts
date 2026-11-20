@@ -5,12 +5,13 @@ import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fix
 import { createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { parseEvidenceMarker } from "@/lib/evidence-class";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { createWorkJob, getWorkJob } from "@/server/workforce/jobs";
+import { claimWorkJob, createWorkJob, finishWorkJob, getWorkJob } from "@/server/workforce/jobs";
 import {
   acknowledgeProactiveReport,
   getProactiveMonitoringStatus,
   listProactiveReports,
   publishReviewReport,
+  publishWorkJobFailureReport,
   releaseHeldProactiveReports,
   runProactiveBriefings,
   type ProactiveFinding,
@@ -54,6 +55,23 @@ async function reviewJob() {
     db.query("update ai_work_jobs set status = 'completed', stage = 'completed', started_at = now(), finished_at = now() where id = $1", [created.id]),
   );
   return (await withSystem((db) => getWorkJob(db, org.id, created.id)))!;
+}
+
+async function runningWorkJob(title = "Failure notice test", maxAttempts = 2) {
+  const created = await withSystem((db) => createWorkJob(db, {
+    orgId: org.id,
+    agentId: operationsManagerId,
+    requestedBy: owner.id,
+    capability: "proactive_review",
+    title,
+    idempotencyKey: `failure-notice-${crypto.randomUUID()}`,
+    input: {},
+    maxAttempts,
+  }));
+  const workerId = `failure-test-${crypto.randomUUID()}`;
+  const claimed = await withSystem((db) => claimWorkJob(db, { jobId: created.id, orgId: org.id, workerId }));
+  expect(claimed).toBeTruthy();
+  return { jobId: created.id, workerId };
 }
 
 async function publish(
@@ -160,6 +178,86 @@ afterAll(() => {
 });
 
 describe("proactive report delivery policy", () => {
+  it("notifies only workspace supervisors once when a work job fails", async () => {
+    const job = await runningWorkJob();
+    const input = {
+      jobId: job.jobId,
+      orgId: org.id,
+      workerId: job.workerId,
+      status: "failed" as const,
+      stage: "failed" as const,
+      failureCode: "provider_unavailable",
+      failureMessage: "The provider did not respond.",
+      event: { kind: "error" as const, stage: "failed" as const, message: "The work failed." },
+    };
+    await expect(withSystem((db) => finishWorkJob(db, input))).resolves.toBe(true);
+    await expect(withSystem((db) => finishWorkJob(db, input))).resolves.toBe(false);
+
+    expect(await notificationCount(owner.id)).toBe(1);
+    expect(await notificationCount(admin.id)).toBe(1);
+    expect(await notificationCount(member.id)).toBe(0);
+    const { rows } = await withSystem((db) => db.query<{ kind: string; severity: string; link: string }>(
+      "select kind, severity, link from notifications where org_id = $1 and user_id = $2 order by created_at desc limit 1",
+      [org.id, owner.id],
+    ));
+    expect(rows[0]).toMatchObject({ kind: "agent_status", severity: "warning" });
+    expect(rows[0].link).toContain(`/work?job=${job.jobId}`);
+  }, 30000);
+
+  it("holds a work failure during quiet hours and releases one supervisor notice afterward", async () => {
+    await setProactivePrefs(owner.id, { quietStart: "21:00", quietEnd: "07:00" });
+    const job = await runningWorkJob("Quiet-hours failure");
+    const now = new Date("2026-10-21T22:30:00.000Z");
+    await withSystem((db) => finishWorkJob(db, {
+      jobId: job.jobId,
+      orgId: org.id,
+      workerId: job.workerId,
+      status: "blocked",
+      stage: "blocked",
+      failureCode: "awaiting_connection",
+      failureMessage: "Connect Calendar.",
+      now,
+      event: { kind: "notice", stage: "blocked", message: "Waiting for Calendar." },
+    }));
+    expect(await notificationCount(owner.id)).toBe(0);
+    expect(await notificationCount(admin.id)).toBe(1);
+    const delivery = await withSystem((db) => db.query<{ status: string; reason: string }>(
+      `select d.status, d.reason from ai_work_report_deliveries d join ai_work_reports r on r.id = d.report_id
+        where r.job_id = $1 and d.user_id = $2`,
+      [job.jobId, owner.id],
+    ));
+    expect(delivery.rows[0]).toMatchObject({ status: "held", reason: "quiet_hours" });
+
+    await setProactivePrefs(owner.id, {});
+    await releaseHeldProactiveReports(new Date("2026-10-22T08:00:00.000Z"));
+    expect(await notificationCount(owner.id)).toBe(1);
+    const notifications = await withSystem((db) => db.query<{ kind: string; link: string }>(
+      "select kind, link from notifications where org_id = $1 and user_id = $2 order by created_at desc limit 1",
+      [org.id, owner.id],
+    ));
+    expect(notifications.rows[0].kind).toBe("agent_status");
+    expect(notifications.rows[0].link).toContain(`/work?job=${job.jobId}`);
+  }, 30000);
+
+  it("publishes a worker-lost report with the recorded job link", async () => {
+    const job = await runningWorkJob("Lost worker notice", 1);
+    await withSystem((db) => db.query(
+      `update ai_work_jobs set status = 'failed', stage = 'failed', failure_code = 'worker_lost',
+              failure_message = 'The worker stopped.', lease_owner = null, lease_expires_at = null, finished_at = now()
+        where id = $1 and org_id = $2`,
+      [job.jobId, org.id],
+    ));
+    const published = await withSystem((db) => publishWorkJobFailureReport(db, { jobId: job.jobId, orgId: org.id }));
+    expect(published?.created).toBe(true);
+    expect(await notificationCount(owner.id)).toBe(1);
+    const notifications = await withSystem((db) => db.query<{ severity: string; link: string }>(
+      "select severity, link from notifications where org_id = $1 and user_id = $2 order by created_at desc limit 1",
+      [org.id, owner.id],
+    ));
+    expect(notifications.rows[0]).toMatchObject({ severity: "critical" });
+    expect(notifications.rows[0].link).toContain(`/work?job=${job.jobId}`);
+  }, 30000);
+
   it("records one report and notifies the workspace's supervisors with a real job deep link", async () => {
     const published = await publish([finding()]);
     expect(published.created).toBe(true);

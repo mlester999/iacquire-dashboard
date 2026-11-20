@@ -56,9 +56,15 @@ const kindsOf = async (db: Db) => {
 const snapshot = async (db: Db) => ({
   conversations: (await db.query<{ n: string }>("select count(*)::text as n from conversations")).rows[0].n,
   messages: (await db.query<{ n: string }>("select count(*)::text as n from conversation_messages")).rows[0].n,
-  // The pre-existing columns of every row, so "changes nothing that exists" is a comparison of values, not of counts.
-  conversationRows: (await db.query("select id, status, priority, owner_kind, assigned_user_id, unread_count, last_inbound_at, last_outbound_at from conversations order by id")).rows,
-  messageRows: (await db.query("select id, direction, status, body, scope, created_at from conversation_messages order by id")).rows,
+  // Include every surviving column, including columns introduced by later migrations.
+  conversationRows: (await db.query(
+    "select to_jsonb(c) - $1::text[] as data from conversations c order by c.id",
+    [NEW_CONVERSATION_COLUMNS],
+  )).rows,
+  messageRows: (await db.query(
+    "select to_jsonb(m) - $1::text[] as data from conversation_messages m order by m.id",
+    [NEW_MESSAGE_COLUMNS],
+  )).rows,
 });
 
 let m: MessagingOrg;
@@ -160,7 +166,7 @@ describe("rolling migration 0083 back and forward on a populated database", () =
     expect(await withSystem((db) => columnsOf(db, "conversations"))).toEqual(expect.arrayContaining(NEW_CONVERSATION_COLUMNS));
   });
 
-  it("removes only what it added, keeps every existing row and value, and comes back identical", async () => {
+  it("removes only what it added, keeps every surviving row and value, and restores its columns", async () => {
     const out: Record<string, unknown> = {};
     await expect(withSystem(async (db) => {
       const before = { data: await snapshot(db), kinds: await kindsOf(db), conv: await columnsOf(db, "conversations"), msg: await columnsOf(db, "conversation_messages") };
@@ -174,18 +180,19 @@ describe("rolling migration 0083 back and forward on a populated database", () =
       throw new Done();
     })).rejects.toBeInstanceOf(Done);
     const { before, down, up } = out as Record<"before" | "down" | "up", { data: Awaited<ReturnType<typeof snapshot>>; kinds: string[]; conv: string[]; msg: string[]; events?: unknown; rollout?: unknown }>;
-    // Down: our columns, our table and our three notification kinds are gone; everything else is exactly as it was.
-    for (const c of NEW_CONVERSATION_COLUMNS) expect(down.conv).not.toContain(c);
-    for (const c of NEW_MESSAGE_COLUMNS) expect(down.msg).not.toContain(c);
+    expect(before.data.messageRows).toContainEqual({ data: expect.objectContaining({ sender_verified: true }) });
+    // Down: only the 0083 columns, tables and notification kinds are removed.
+    expect(down.conv).toEqual(before.conv.filter((column) => !NEW_CONVERSATION_COLUMNS.includes(column)));
+    expect(down.msg).toEqual(before.msg.filter((column) => !NEW_MESSAGE_COLUMNS.includes(column)));
     expect(down.events).toEqual({ t: null });
     // The rollout allowlist is current state only (its history is in audit_logs), so rolling back drops it and rolling forward brings it back empty: every workspace off.
     expect(down.rollout).toEqual({ t: null });
     expect(up.rollout).toEqual({ t: "inbox_rollout" });
     expect(down.kinds).toEqual(before.kinds.filter((k) => !OUR_KINDS.includes(k)));
     expect(down.data).toEqual(before.data);
-    // Up again: back to the same columns and the same allow-list, with the data untouched.
-    expect(up.conv).toEqual(before.conv);
-    expect(up.msg).toEqual(before.msg);
+    // PostgreSQL appends restored columns after surviving columns, including 0140's sender_verified.
+    expect(up.conv).toEqual([...down.conv, ...before.conv.filter((column) => NEW_CONVERSATION_COLUMNS.includes(column))]);
+    expect(up.msg).toEqual([...down.msg, ...before.msg.filter((column) => NEW_MESSAGE_COLUMNS.includes(column))]);
     expect(up.kinds).toEqual(before.kinds);
     expect(up.data).toEqual(before.data);
     // The probe was rolled back: the real database still has the migration.

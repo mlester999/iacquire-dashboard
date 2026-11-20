@@ -1,6 +1,7 @@
 // CRM tools for a client's own AI employees. Synthetic workspaces only: nothing here calls Hermes, a calendar provider or a messaging
 // provider, and nothing is sent.
 import * as React from "react";
+import * as audit from "@/server/audit";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -549,6 +550,45 @@ describe("rate limit, logging and replays", () => {
     expect(replay).toMatchObject({ ok: true, status: "done", result: { replayed: true } });
     expect(await count("select 1 from tasks where org_id = $1 and title = 'Confirm the visit'", [a.org.id])).toBe(1);
   });
+
+  it("dedupes a task replay when the post-commit audit write fails", async () => {
+    const originalMode = (await one<{ mode: Mode }>("select mode from agent_instances where org_id = $1 and role_key = 'crm_manager'", [a.org.id])).mode;
+    const agent = await ready(a, "crm_manager", "autonomous");
+    const t = await tokenFor(a, agent);
+    const args = { title: "Replay despite a failed audit write" };
+    const auditWrite = vi.spyOn(audit, "recordAudit").mockRejectedValue(new Error("simulated audit write failure"));
+    let first: Awaited<ReturnType<typeof call>> | undefined;
+    let replay: Awaited<ReturnType<typeof call>> | undefined;
+    try {
+      first = await call(t.token, "create_task", args, "audit-failure-task");
+      replay = await call(t.token, "create_task", args, "audit-failure-task");
+    } finally {
+      auditWrite.mockRestore();
+      await setMode(agent, originalMode);
+    }
+
+    expect(first).toMatchObject({ ok: true, status: "done", result: { created: true } });
+    expect(replay).toMatchObject({ ok: true, status: "done", result: { created: false } });
+    expect(replay?.ok ? replay.result.taskId : undefined).toBe(first?.ok ? first.result.taskId : undefined);
+    expect(await count("select 1 from tasks where org_id = $1 and title = $2", [a.org.id, args.title])).toBe(1);
+    expect(await count("select 1 from crm_events where org_id = $1 and type = 'task.created' and entity_id = (select id from tasks where org_id = $1 and title = $2)", [a.org.id, args.title])).toBe(1);
+    expect(await count("select 1 from audit_logs where org_id = $1 and action = 'crm.agent_tool.create_task' and metadata->>'callRef' = $2", [a.org.id, "audit-failure-task"])).toBe(0);
+  });
+
+  it("blocks a second open task with the same title, contact and due date", async () => {
+    const originalMode = (await one<{ mode: Mode }>("select mode from agent_instances where org_id = $1 and role_key = 'crm_manager'", [a.org.id])).mode;
+    const agent = await ready(a, "crm_manager", "autonomous");
+    try {
+      const t = await tokenFor(a, agent);
+      const contact = await createContact(a.actor("owner"), { firstName: "Duplicate", lastName: "Task" });
+      const args = { title: "Call after estimate", contactId: contact.id, dueAt: "2026-12-01T10:00:00.000Z" };
+      expect(await call(t.token, "create_task", args, "task-content-first")).toMatchObject({ ok: true, status: "done" });
+      expect(await call(t.token, "create_task", args, "task-content-second")).toMatchObject({ ok: false, httpStatus: 409, code: "conflict", error: "That task already exists" });
+      expect(await count("select 1 from tasks where org_id = $1 and title = $2", [a.org.id, args.title])).toBe(1);
+    } finally {
+      await setMode(agent, originalMode);
+    }
+  });
 });
 
 describe("conversations, drafts and appointments", () => {
@@ -661,7 +701,7 @@ describe("requestAgentTask (workflow AI step)", () => {
     const cred = await one<{ id: string }>("insert into integration_credentials (org_id, provider, label, ciphertext, fingerprint) values ($1, 'hermes', 'test', 'v1.a.b.c', 'test') returning id", [w.org.id]);
     await withSystem((db) => db.query("update agent_instances set hermes_base_url = 'https://hermes.example.com', credential_id = $2 where id = $1", [agent, cred.id]));
     const remote = await ask();
-    expect(remote).toMatchObject({ status: "blocked", detail: expect.stringMatching(/live AI employee runs stay switched off/) });
+    expect(remote).toMatchObject({ status: "blocked", detail: expect.stringMatching(/live AI runs stay paused/) });
     expect(await count("select 1 from agent_runs where agent_instance_id = $1", [agent])).toBe(0);
 
     await withSystem((db) => db.query(

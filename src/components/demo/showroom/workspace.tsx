@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/overlays";
 import { ROOM_COPY, type Notice } from "@/lib/demo/outcomes";
 import { REFUSAL_COPY } from "@/lib/demo/rules";
 import type { RoomChatState } from "@/lib/demo/room-types";
-import { VIEWS, isViewId, type ViewId } from "@/lib/demo/showroom/content";
+import { DEMO_AQI_SUGGESTIONS, VIEWS, isViewId, type ViewId } from "@/lib/demo/showroom/content";
 import { AqiDock } from "@/components/demo/showroom/aqi-dock";
 import { ShowroomProvider, useShowroom, type ShowroomState } from "@/components/demo/showroom/context";
 import { ConfirmHost, ConfirmStatic, ConsultCta } from "@/components/demo/showroom/cta";
@@ -32,18 +32,6 @@ import "@/components/demo/showroom/showroom.css";
 // AQi as the floating assistant in the corner. It is a public component set: it never mounts the portal's own shell, and nothing here reads a workspace. Everything shown is the record's:
 // the window, the messages, the conversation and the two requests come from the server's view of this one demo, and moving between views changes none of them and counts no message. The
 // address carries the view (?view=...), so a view can be opened directly and the page works without scripts.
-
-const SUGGESTIONS: Record<ViewId, string[]> = {
-  overview: ["What can the AI Growth Partner do for a business like mine?", "What is included in the implementation?", "Do I need to pay a monthly fee?"],
-  workforce: ["How does one partner coordinate the six capabilities?", "Which actions need my approval?", "What goes into the Business Brain?"],
-  crm: ["What is in the native CRM?", "How does a lead move through the pipeline?", "Can I use my own pipeline stages?"],
-  inbox: ["Which channels can the inbox bring together?", "How does the Growth Partner use my calendar?", "Who approves a reply before it is sent?"],
-  automation: ["What is Automation Studio?", "Is Automation Studio part of the core system?", "Can I use n8n or Zapier instead?"],
-  reports: ["What does the Growth Partner report on?", "Where do the numbers come from?", "Can I see reports for my own pipeline?"],
-  pricing: ["What does the implementation cost?", "What does Managed Maintenance add?", "What costs are separate?"],
-  why: ["Why not build this myself?", "How is this different from a normal CRM?", "What happens after I ask for a consultation?"],
-  summary: ["What happens after I book a consultation?", "What would you set up for me first?", "How long does setup take?"],
-};
 
 export interface WorkspaceProps {
   state: ShowroomState;
@@ -233,7 +221,7 @@ export function Workspace({ state, initialView, chat }: WorkspaceProps) {
             </div>
 
             {/* AQi and the consultation action. Below lg they share one bottom bar, so nothing floats over the page; from lg AQi is the button in the corner (the rail has the consultation action). */}
-            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} draft={draft} suggestions={SUGGESTIONS[view]} bar={<ConsultCta size="md" variant="bar" className="w-full" />} />
+            <AqiDock open={chatOpen} onOpenChange={setChatOpen} chat={chat} draft={draft} suggestions={DEMO_AQI_SUGGESTIONS[view]} bar={<ConsultCta size="md" variant="bar" className="w-full" />} />
 
             <ConfirmHost />
 

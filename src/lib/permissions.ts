@@ -356,7 +356,7 @@ export const AGENCY_TEAM_PERMISSION_VIEW_PARENT: Partial<Record<Permission, "pro
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
   owner: "Full control, including billing, autonomous mode and the final say on escalations.",
   admin: "Runs the workspace day to day: team, AI settings, inbox and approvals.",
-  member: "General teammate: works with the AI team, notes and tasks. Earlier role, kept for existing members.",
+  member: "General teammate who works with the AI Growth Partner, notes, and tasks. This role is retained for existing members.",
   sales_rep: "Takes sales conversations and ready-to-close leads.",
   support: "Handles customer questions, complaints and service requests.",
   viewer: "Read-only access to leads, appointments, reports and conversations assigned to them.",

@@ -50,7 +50,7 @@ export async function markActivated(orgId: string) {
  * with provisioning is the product's own code. The workspace has a verified owner and an unpaid setup fee unless the caller clears it first.
  */
 export async function submitRealOnboarding(opts: { name: string; clearPayment?: boolean; disableRoles?: string[]; extraAnswers?: Record<string, unknown>; withGrowthPartner?: boolean }) {
-  const { saveOnboardingStep, submitOnboarding } = await import("@/server/onboarding/service");
+  const { getOnboardingReview, saveOnboardingStep, submitOnboarding } = await import("@/server/onboarding/service");
   const org = await createOrg({ name: opts.name });
   if (opts.clearPayment) await clearSetupPayment(org.id);
   if (opts.withGrowthPartner) await withSystem((db) => ensureGrowthPartnerRuntime(org.id, db));
@@ -80,7 +80,8 @@ export async function submitRealOnboarding(opts: { name: string; clearPayment?: 
   };
   const saved = await saveOnboardingStep(ctx, { answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])), currentQuestionId: "f.review" });
   if (Object.keys(saved.rejected).length) throw new Error(`The test questionnaire was rejected: ${JSON.stringify(saved.rejected)}`);
-  const result = await submitOnboarding(ctx);
+  const confirmation = opts.withGrowthPartner ? (await getOnboardingReview(ctx)).businessBrain?.confirmation : undefined;
+  const result = await submitOnboarding(ctx, { confirmation });
   return { org, owner, ctx, result };
 }
 

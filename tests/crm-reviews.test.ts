@@ -252,6 +252,21 @@ describe("review requests", () => {
     await expectError(requestReview(a.owner, { contactId: smsOnly, templateId: a.emailTemplate.id, contentHash: a.emailTemplate.contentHash }), "conflict", /no consent on record/);
   });
 
+  it("leaves no review request or message when customer messaging is paused", async () => {
+    const contactId = await customer(a, "granted");
+    await withSystem((db) => db.query(
+      "insert into automation_pauses (org_id, scope, active, reason) values ($1, 'messaging', true, 'Reviewing customer messages') on conflict (org_id, scope) do update set active = true, reason = excluded.reason",
+      [a.m.org.id],
+    ));
+    try {
+      await expectError(requestReview(a.owner, { contactId, templateId: a.smsTemplate.id, contentHash: a.smsTemplate.contentHash, businessHoursOnly: false }), "conflict", /paused/i);
+    } finally {
+      await withSystem((db) => db.query("update automation_pauses set active = false where org_id = $1 and scope = 'messaging'", [a.m.org.id]));
+    }
+    expect(await count("select count(*)::text as n from crm_review_requests where org_id = $1 and contact_id = $2", [a.m.org.id, contactId])).toBe(0);
+    expect(await count("select count(*)::text as n from conversation_messages m join conversations c on c.id = m.conversation_id where c.org_id = $1 and c.contact_id = $2 and m.direction = 'outbound'", [a.m.org.id, contactId])).toBe(0);
+  });
+
   it("queues a service message with the customer's own link, stores only the token's hash, and records the event once", async () => {
     const contactId = await customer(a, "granted", { firstName: "Olga" });
     const preview = await previewReviewRequest(a.owner, { contactId, templateId: a.smsTemplate.id });

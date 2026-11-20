@@ -21,6 +21,11 @@ const LEGACY_COPY: Record<string, {
       "The details you shared about your business, goals and how your AI team should communicate.": "The details you shared about your business, goals and how AI should support your work.",
     },
   },
+  calendar: {
+    description: {
+      "We connect the calendar you already use (Google, Microsoft 365, CalDAV or a calendar feed), or set up your iAcquire calendar, so your AI Appointment Setter only offers times that are really free.": "We connect the calendar you already use (Google, Microsoft 365, CalDAV or a calendar feed), or set up your iAcquire calendar, so your AI Growth Partner only offers times that are really free.",
+    },
+  },
   ai_employees: {
     title: {
       "Six client-specific Hermes AI employees configured": "AI runtime verification",

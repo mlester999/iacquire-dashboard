@@ -8,6 +8,8 @@ on:
       - codex/internal-iacquire-activation
       - codex/ai-growth-partner
       - integration/hermes-bridge-final
+      - claude/ai-growth-partner-completion
+      - codex/growth-partner-release-candidate
     # Any change to the application or its tests runs the whole suite. Until 2026-10-31 only the worker files did, so a push that changed tests or source ran nothing at all.
     paths:
       - services/hermes-inference-worker/**
@@ -25,6 +27,11 @@ on:
       - next.config.ts
       - tsconfig*.json
       - eslint.config.mjs
+  # Every pull request to master runs all three jobs. There is deliberately no paths filter here, so the checks always report and can be made required.
+  # The candidate code runs with a read-only token and no secrets, so the trigger must stay the plain pull request event.
+  pull_request:
+    branches:
+      - master
   # GitHub exposes workflow_dispatch only when the workflow exists on the default branch.
   # Kept for future manual use after that separate approval; never targets production.
   workflow_dispatch:
@@ -42,7 +49,7 @@ jobs:
   # network behind a proxy that permits only the approved Google Fonts hosts and verifies the TLS server name.
   app-checks:
     name: Full regression, TypeScript, lint and font-allowlisted build
-    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
+    if: github.event_name == 'pull_request' || contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final","claude/ai-growth-partner-completion","codex/growth-partner-release-candidate"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     steps:
@@ -54,7 +61,19 @@ jobs:
 
       # Keep the blank-at-eol, blank-at-eof and space-before-tab checks while accepting CRLF line endings from Windows worktrees.
       # Check locally with: git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check 7d411f25 HEAD
+      # Pull requests get the whitespace check against their own base commit instead (next step). The base SHA reaches the script through an env variable, never inline.
+      - name: Check the pull request for whitespace errors against its base
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          echo "candidate: $(git rev-parse HEAD)"
+          git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --check "$PR_BASE_SHA" HEAD
+
       - name: Verify the candidate contains the approved changes
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           # Production master when this candidate was assembled (hardened snapshot, booking fix, chat quality and wording fixes).
@@ -214,11 +233,39 @@ jobs:
           print("FONT_EGRESS_ALLOWLIST_PASS hosts=fonts.googleapis.com,fonts.gstatic.com denied=other-hosts-and-mismatched-SNI")
           PY
 
+  onboarding-browser:
+    name: Growth Partner-only onboarding browser QA
+    if: github.event_name == 'pull_request' || contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final","claude/ai-growth-partner-completion","codex/growth-partner-release-candidate"]'), github.ref_name)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install isolated app and browser test dependencies
+        run: npm ci --no-fund --fetch-retries=5 --fetch-timeout=300000
+
+      - name: Install Chromium for the isolated browser check
+        run: npx playwright install --with-deps chromium
+
+      - name: Check Growth Partner-only onboarding in Chromium
+        env:
+          PLAYWRIGHT_MODULE: playwright
+        run: npm run onboarding:qa
+
   # The operator scripts and compose overlays of the client-only runtime (backup, restore, secrets, preflight, egress proxy, tunnel): pure Python tests with shimmed docker, age and gpg, so
   # no daemon, no network and no secret. They are the only thing that notices a later edit to a script or overlay that drops one of its safeguards.
   client-runtime-ops-tests:
     name: Client runtime operator scripts, overlays and preflight (no Docker daemon)
-    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
+    if: github.event_name == 'pull_request' || contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final","claude/ai-growth-partner-completion","codex/growth-partner-release-candidate"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -238,7 +285,7 @@ jobs:
 
   worker-build-and-smoke:
     name: Build pinned Hermes worker and run synthetic checks
-    if: contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final"]'), github.ref_name)
+    if: github.event_name == 'pull_request' || contains(fromJSON('["codex/internal-iacquire-activation","codex/ai-growth-partner","integration/hermes-bridge-final","claude/ai-growth-partner-completion","codex/growth-partner-release-candidate"]'), github.ref_name)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -248,7 +295,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The pull request variant of the ancestor check below: the whitespace diff against the base runs in app-checks, so this job only records the candidate.
+      - name: Record the pull request candidate
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "candidate: $(git rev-parse HEAD)"
+
       - name: Verify the candidate contains the approved changes
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           EXPECTED_MASTER_SHA: 7d411f250ec5f4df2e97282bdb4b8d36830b7355
@@ -397,6 +453,8 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges \
             --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m \
             -e IACQUIRE_REQUIRE_PINNED_HERMES=1 \
+            --mount "type=bind,src=$PWD/services/hermes-inference-worker/acceptance_proxy.py,dst=/opt/iacquire-hermes/inference/acceptance_proxy.py,readonly" \
+            --mount "type=bind,src=$PWD/services/hermes-inference-worker/test_acceptance_proxy.py,dst=/opt/iacquire-hermes/inference/test_acceptance_proxy.py,readonly" \
             --entrypoint /opt/hermes/.venv/bin/python \
             iacquire/hermes-inference-worker:ci -B -m unittest discover \
             -s /opt/iacquire-hermes/inference -p 'test_*.py' -v

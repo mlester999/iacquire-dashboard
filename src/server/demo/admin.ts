@@ -489,7 +489,7 @@ const CLAIM_HOLD_MS = 15 * 60_000;
 
 /**
  * Turns a confirmed prospect into a client workspace, on purpose. Needs agency.prospects.manage AND the permission to create clients (createClientTenant checks it again), and
- * does exactly what creating a client by hand does: a workspace in "invited" status, six AI employees that need setting up, and an invitation to the owner's address, which is how
+ * does exactly what creating a client by hand does: an invited workspace with one AI Growth Partner to prepare, and an invitation to the owner's address, which is how
  * the account comes to exist. The prospect's conversation is not copied anywhere: the workspace gets a name, an owner address, an industry label and a time zone, and nothing else.
  *
  * Two Super Admins pressing the button at once make one workspace: the first claims the prospect before anything is created, the second is refused. If the workspace is made but
@@ -506,7 +506,26 @@ export async function convertProspect(user: SessionUser, id: string, input: Conv
     const p = await lockProspect(db, prospectId);
     if (!p) throw new AppError("not_found", "That prospect was not found.");
     if (p.erased_at) throw new AppError("conflict", "This prospect's details were erased, so there is nothing to convert.");
-    if (p.status === "converted" || p.converted_org_id) throw new AppError("conflict", "This prospect is already a client.");
+    if (p.status === "converted" || p.converted_org_id) {
+      throw new AppError("conflict", p.converted_org_id
+        ? `This prospect is already a client with workspace (${p.converted_org_id}). Link that workspace instead of converting again.`
+        : "This prospect is already a client.");
+    }
+    const previousConversion = (await db.query<{ recorded: boolean; org_id: string | null }>(
+      `select
+         exists (select 1 from audit_logs where action = 'demo.convert_unrecorded' and target_type = 'demo_prospect' and target_id = $1::text)
+           or exists (select 1 from demo_events where prospect_id = $1::uuid and kind = 'converted') as recorded,
+         coalesce(
+           (select coalesce(metadata ->> 'orgId', org_id::text) from audit_logs where action = 'demo.convert_unrecorded' and target_type = 'demo_prospect' and target_id = $1::text order by created_at desc limit 1),
+           (select detail ->> 'orgId' from demo_events where prospect_id = $1::uuid and kind = 'converted' order by at desc limit 1)
+         ) as org_id`,
+      [prospectId],
+    )).rows[0];
+    if (previousConversion?.recorded) {
+      throw new AppError("conflict", previousConversion.org_id
+        ? `A workspace was already created for this prospect (${previousConversion.org_id}). Link that workspace instead of converting again.`
+        : "A workspace was created for this prospect in an earlier conversion. Ask a Super Admin to link it instead of converting again.");
+    }
     if (!p.verified_at || p.status === "blocked" || p.status === "declined" || p.status === "unverified") {
       throw new AppError("conflict", p.verified_at ? "Reopen this prospect before turning them into a client." : "This prospect has not confirmed their address, so the invitation could not be trusted.");
     }

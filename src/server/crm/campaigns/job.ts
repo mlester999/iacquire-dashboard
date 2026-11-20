@@ -14,6 +14,7 @@ import { evaluateSend, queueOutbound, type SendRequest } from "@/server/messagin
 import { describeMissing, renderMessage, type CustomValueTokenDef, type TokenKey } from "@/lib/messaging/tokens";
 import { CHANNEL_LABELS, type Channel } from "@/lib/messaging";
 import { formatDateTime } from "@/lib/utils";
+import { resolveActorAgent } from "@/server/workforce/partner-runtime";
 import {
   CAMPAIGN_COLUMNS, MAX_RECIPIENTS, MAX_WAIT_MS, audienceOutcomeSql, businessValuePhrase, businessValuesNow, campaignApprovalHash, changedBusinessValues, channelProblems,
   loadAudienceList, loadCampaignTemplate, messageProblems, personOutcome, publishedClientRate, providerLabel, templateProblems, unitFor, unitLabel, usedBusinessValues,
@@ -246,11 +247,12 @@ async function conversationFor(db: Queryable, orgId: string, contactId: string, 
   const found = await db.query<{ id: string }>("select id from conversations where org_id = $1 and contact_id = $2 and channel = $3 and thread_key = $4", [orgId, contactId, channel, thread]);
   if (found.rows[0]) return found.rows[0].id;
   // Like a conversation the customer starts: a reply is handled the way the workspace handles any inbound message.
-  const agent = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'sales_assistant' and enabled", [orgId]);
+  const actor = await resolveActorAgent(db, orgId, "sales_assistant");
+  const agentId = actor?.enabled ? actor.agentId : null;
   const { rows } = await db.query<{ id: string }>(
     `insert into conversations (org_id, contact_id, channel, thread_key, subject, ai_agent_id, owner_kind) values ($1, $2, $3, $4, $5, $6, $7)
      on conflict (org_id, contact_id, channel, thread_key) do update set updated_at = now() returning id`,
-    [orgId, contactId, channel, thread, subject?.slice(0, 300) ?? null, agent.rows[0]?.id ?? null, agent.rows[0] ? "ai" : "unassigned"],
+    [orgId, contactId, channel, thread, subject?.slice(0, 300) ?? null, agentId, agentId ? "ai" : "unassigned"],
   );
   return rows[0].id;
 }

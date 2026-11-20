@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import crypto from "node:crypto";
 import { withSystem } from "@/server/db";
 import { setAgentMode, setClientPause } from "@/server/automation/controls";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
@@ -141,6 +142,42 @@ describe("preparing a reply", () => {
     expect((await messages(a.conversationId)).length).toBe(1);
     expect(g.calls.filter((x) => x.orgId === org.org.id)).toHaveLength(g.calls.slice(0, callsAfterFirst).filter((x) => x.orgId === org.org.id).length);
   });
+
+  it("requires proof on the exact inbound email before an immediate or recovered AI reply", async () => {
+    const org = await messagingOrg({ name: "Email Sender Proof Co" });
+    const address = `known.${crypto.randomUUID()}@example.test`;
+    const firstAt = new Date(Date.now() - 90_000);
+    const first = await inbound(org.org.id, {
+      provider: "ghl", channel: "email", address, body: "Initial inquiry.", receivedAt: firstAt,
+    });
+    expect(first.aiShouldRespond).toBe(false);
+    expect((await withSystem((db) => db.query<{ sender_verified: boolean }>("select sender_verified from conversation_messages where id = $1", [first.messageId]))).rows[0].sender_verified).toBe(false);
+
+    const proven = await inbound(org.org.id, {
+      provider: "resend", channel: "email", address, body: "Authenticated inquiry.", senderVerified: true, receivedAt: new Date(firstAt.getTime() + 10_000),
+    });
+    expect(proven.aiShouldRespond).toBe(true);
+    expect((await withSystem((db) => db.query("select 1 from contact_identities where contact_id = $1 and kind = 'email' and verified", [proven.contactId]))).rows).toHaveLength(1);
+
+    const forged = await inbound(org.org.id, {
+      provider: "resend", channel: "email", address, body: "Forged follow-up.", senderVerified: false, receivedAt: new Date(firstAt.getTime() + 20_000),
+    });
+    expect(forged.conversationId).toBe(proven.conversationId);
+    expect(forged.aiShouldRespond).toBe(false);
+    expect((await withSystem((db) => db.query<{ sender_verified: boolean }>("select sender_verified from conversation_messages where id = $1", [forged.messageId]))).rows[0].sender_verified).toBe(false);
+
+    const g = stub({ kind: "reply", text: "This must not be used for the unproven sender." });
+    expect(await respondToConversation(org.org.id, forged.conversationId, { generate: g.generate })).toEqual({ status: "skipped", reason: "no_conversation" });
+    await respondToPending({ generate: g.generate, olderThanSeconds: 0, limit: 200 });
+    expect(g.calls.some((call) => call.conversationId === forged.conversationId)).toBe(false);
+
+    const safeAddress = `safe.${crypto.randomUUID()}@example.test`;
+    const recoverable = await inbound(org.org.id, {
+      provider: "resend", channel: "email", address: safeAddress, body: "Authenticated but missed webhook reply.", senderVerified: true, receivedAt: new Date(firstAt.getTime() + 30_000),
+    });
+    await respondToPending({ generate: g.generate, olderThanSeconds: 0, limit: 200 });
+    expect(g.calls.some((call) => call.conversationId === recoverable.conversationId)).toBe(true);
+  });
 });
 
 describe("through the employee's own Hermes profile", () => {
@@ -213,7 +250,7 @@ const heldAudits = async (orgId: string) =>
   (await withSystem((db) => db.query<{ metadata: { reason: string; topic?: string; channel: string } }>("select metadata from audit_logs where org_id = $1 and action = 'messaging.reply_held' order by created_at", [orgId]))).rows.map((r) => r.metadata);
 const approvalCount = async (orgId: string) => Number((await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from approval_requests where org_id = $1", [orgId]))).rows[0].n);
 const channelInbound = (orgId: string, channel: "sms" | "whatsapp" | "email", body: string) =>
-  inbound(orgId, channel === "email" ? { channel, address: `buyer-${Math.random().toString(36).slice(2, 10)}@example.test`, body } : { channel, body });
+  inbound(orgId, channel === "email" ? { channel, address: `buyer-${Math.random().toString(36).slice(2, 10)}@example.test`, body, senderVerified: true } : { channel, body });
 
 describe("a reply stating something the approved knowledge does not back", () => {
   it.each(["sms", "whatsapp", "email"] as const)("is held as an escalation on %s: nothing is queued, and a person is asked", async (channel) => {

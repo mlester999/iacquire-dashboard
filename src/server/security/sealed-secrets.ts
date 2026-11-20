@@ -33,6 +33,7 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
   { table: "esign_connections", column: "credentials", holds: "e-signature provider keys" },
   { table: "customer_payment_connections", column: "credentials", holds: "a client's own payment provider keys" },
   { table: "review_connections", column: "credentials", holds: "review-site refresh tokens" },
+  { table: "workspace_oauth_connections", column: "credentials", holds: "tenant Notion and Airtable OAuth tokens" },
   { table: "integration_credentials", column: "ciphertext", holds: "legacy app-sealed credentials (a vault reference is not sealed and is skipped)" },
 ];
 
@@ -42,6 +43,7 @@ export const NOT_RESEALED: Readonly<Record<string, string>> = {
   "social_oauth_states.pending": "a social sign-in in progress; it expires within minutes",
   "review_oauth_states.code_verifier": "a review-site sign-in in progress; it expires within minutes",
   "review_oauth_states.pending": "a review-site sign-in in progress; it expires within minutes",
+  "workspace_oauth_states.code_verifier": "an Airtable OAuth sign-in in progress; it expires within minutes",
 };
 
 export interface ResealReport {

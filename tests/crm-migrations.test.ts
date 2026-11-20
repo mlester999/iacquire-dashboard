@@ -97,8 +97,16 @@ const ROLLBACK_MIGRATION_NAMES = [
   "0133_ai_growth_partner_goals.sql",
   // Reviewed legacy knowledge snapshots depend on the Growth Partner identity and must be dropped first.
   "0134_ai_growth_partner_legacy_knowledge.sql",
+  // Migration plan receipts also reference the Growth Partner identity through a tenant-scoped foreign key.
+  "0142_growth_partner_migration_plans.sql",
+  "0144_growth_partner_migration_preparations.sql",
+  "0146_workspace_knowledge_sources.sql",
   // Aggregate site page-view reporting uses the statement-level policy helper from 0060 and must be removed before that helper rolls back.
   "0135_website_page_views.sql",
+  // Per-message inbound sender proof; historic email proof is unknown, while authenticated non-email and session-backed chat history is retained.
+  "0140_message_sender_verification.sql",
+  // Task idempotency adds only an indexed nullable column and is removed before the CRM tasks table.
+  "0137_task_idempotency_key.sql",
   // Lead qualification and source-budget migrations hang off leads, lead_research_requests and ai_work_jobs.
   "0127_lead_disqualification.sql", "0128_lead_research_source_budgets.sql", "0129_research_lead_crm_imports.sql",
 ];
@@ -145,12 +153,13 @@ describe("native CRM and dependent-feature migration rollbacks", () => {
           contactColumns: (await q("select column_name from information_schema.columns where table_name = 'contacts' and column_name in ('first_name', 'search_text', 'lead_status')")).length,
           oppProvider: (await q("select column_name from information_schema.columns where table_name = 'crm_opportunities' and column_name = 'provider'")).length,
           setterRole: (await q("select 1 from role_permissions where role = 'appointment_setter'")).length,
+          migrationPlanTable: (await q("select to_regclass('public.ai_growth_partner_migration_plans') as relation"))[0].relation,
           hasPermission: String((await q("select prosrc from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'app' and p.proname = 'has_permission'"))[0]?.prosrc ?? ""),
         };
         throw new Done();
       }),
     ).rejects.toBeInstanceOf(Done);
-    expect(report).toMatchObject({ crmTables: [], contactColumns: 0, oppProvider: 0, setterRole: 0 });
+    expect(report).toMatchObject({ crmTables: [], contactColumns: 0, oppProvider: 0, setterRole: 0, migrationPlanTable: null });
     expect(String(report.hasPermission)).not.toContain("member_permission_overrides");
     const still = await withSystem(async (db) => (await db.query("select 1 from information_schema.tables where table_name = 'crm_workspaces'")).rows.length);
     expect(still).toBe(1);
@@ -158,12 +167,23 @@ describe("native CRM and dependent-feature migration rollbacks", () => {
 
   it("refuses to roll back while Native CRM data exists", async () => {
     const c = await crmOrg();
-    await createTag(c.actor("owner"), { name: "Keep me" });
-    await createContact(c.actor("owner"), { firstName: "Keep", lastName: "Me" });
+    // This fixture needs the data guard. The general CRM fixture also seeds a staff role with its own earlier guard.
+    await withSystem((db) => db.query(
+      "update organization_memberships set role = 'member' where org_id = $1 and user_id = $2",
+      [c.org.id, c.people.setter.id],
+    ));
+    const tag = await createTag(c.actor("owner"), { name: "Keep me" });
+    const contact = await createContact(c.actor("owner"), { firstName: "Keep", lastName: "Me" });
     await expect(withSystem(async (db) => {
       await runAllDowns(db);
       throw new Done();
-    })).rejects.toThrow(/Rollback refused/);
+    })).rejects.toThrow(/Rollback refused: Native CRM data exists/);
+    const retained = await withSystem((db) => db.query(
+      `select exists (select 1 from crm_tags where org_id = $1 and id = $2 and name = 'Keep me') as tag,
+              exists (select 1 from contacts where org_id = $1 and id = $3 and first_name = 'Keep' and last_name = 'Me') as contact`,
+      [c.org.id, tag.id, contact.id],
+    ));
+    expect(retained.rows).toEqual([{ tag: true, contact: true }]);
   });
 
   it("applies and rolls back the researched-lead CRM links inside an isolated transaction", async () => {
@@ -302,5 +322,66 @@ describe("native CRM and dependent-feature migration rollbacks", () => {
       );
       for (const statement of statements(downFor("0134_ai_growth_partner_legacy_knowledge.sql"))) await db.query(statement);
     })).rejects.toThrow(/Rollback refused: AI Growth Partner legacy knowledge snapshots exist/);
+  });
+
+  it("refuses to discard persisted inbound sender proof during rollback", async () => {
+    const c = await crmOrg({ name: "Message Sender Proof Rollback Guard" });
+    const contact = await createContact(c.actor("owner"), { firstName: "Verified", lastName: "Sender" });
+    await expect(withSystem(async (db) => {
+      const conversation = await db.query<{ id: string }>(
+        "insert into conversations (org_id, contact_id, channel, thread_key) values ($1, $2, 'email', 'verified-fixture') returning id",
+        [c.org.id, contact.id],
+      );
+      await db.query(
+        `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, sender_verified)
+         values ($1, $2, 'inbound', 'contact', 'Synthetic verified inbound', 'received', true)`,
+        [c.org.id, conversation.rows[0].id],
+      );
+      for (const statement of statements(downFor("0140_message_sender_verification.sql"))) await db.query(statement);
+    })).rejects.toThrow(/Rollback refused: verified message sender proof exists/);
+  });
+
+  it("backfills sender proof only for historical non-email inbound messages", async () => {
+    const c = await crmOrg({ name: "Message Sender Verification Migration" });
+    const contact = await createContact(c.actor("owner"), { firstName: "Sender", lastName: "Proof" });
+    const migration = readFileSync("supabase/migrations/0140_message_sender_verification.sql", "utf8");
+    const rollback = downFor("0140_message_sender_verification.sql");
+    let verified: Array<{ channel: string; direction: string; sender_verified: boolean }> = [];
+    await expect(withSystem(async (db) => {
+      for (const statement of statements(rollback)) await db.query(statement);
+      const channels = ["sms", "web_chat", "email"] as const;
+      const conversations = new Map<string, string>();
+      for (const channel of channels) {
+        const conversation = await db.query<{ id: string }>(
+          "insert into conversations (org_id, contact_id, channel, thread_key) values ($1, $2, $3, $4) returning id",
+          [c.org.id, contact.id, channel, `sender-proof-${channel}`],
+        );
+        conversations.set(channel, conversation.rows[0].id);
+      }
+      for (const channel of channels) {
+        await db.query(
+          "insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status) values ($1, $2, 'inbound', 'contact', 'Historical inbound', 'received')",
+          [c.org.id, conversations.get(channel)],
+        );
+      }
+      await db.query(
+        "insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status) values ($1, $2, 'outbound', 'ai', 'Historical outbound', 'sent')",
+        [c.org.id, conversations.get("sms")],
+      );
+      for (const statement of statements(migration)) await db.query(statement);
+      verified = (await db.query<{ channel: string; direction: string; sender_verified: boolean }>(
+        `select c.channel, m.direction, m.sender_verified
+           from conversation_messages m join conversations c on c.id = m.conversation_id and c.org_id = m.org_id
+          where c.org_id = $1 and c.thread_key like 'sender-proof-%' order by c.channel, m.direction`,
+        [c.org.id],
+      )).rows;
+      throw new Done();
+    })).rejects.toBeInstanceOf(Done);
+    expect(verified).toEqual([
+      { channel: "email", direction: "inbound", sender_verified: false },
+      { channel: "sms", direction: "inbound", sender_verified: true },
+      { channel: "sms", direction: "outbound", sender_verified: false },
+      { channel: "web_chat", direction: "inbound", sender_verified: true },
+    ]);
   });
 });

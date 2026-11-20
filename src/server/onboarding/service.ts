@@ -27,6 +27,7 @@ import {
   confirmedAnswers,
   describeValue,
   effectiveAnswers,
+  effectiveStored,
   industryLabel,
   isRequired,
   legacyToAnswers,
@@ -320,6 +321,20 @@ export async function listOnboardingFiles(ctx: OrgContext) {
   return { assets, documents };
 }
 
+function firstBrainReviewFingerprint(orgId: string, stored: StoredAnswers): string {
+  const answers = Object.entries(effectiveStored(stored))
+    .filter(([id]) => id !== "f.review")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, { value, skipped, source, needsConfirmation }]) => [id, value, skipped, source, needsConfirmation]);
+  return crypto.createHash("sha256").update(JSON.stringify([orgId, QUESTIONNAIRE_VERSION, answers])).digest("hex");
+}
+
+function assertFirstBrainReview(confirmation: string | undefined, orgId: string, stored: StoredAnswers) {
+  if (confirmation !== firstBrainReviewFingerprint(orgId, stored)) {
+    throw new AppError("conflict", "The saved answers changed after this review. Review and approve the latest Business Brain details.");
+  }
+}
+
 export async function getOnboardingReview(ctx: OrgContext): Promise<ReviewModel> {
   const session = await getOnboardingSession(ctx);
   const { facts, entitlements } = await withSystem(async (db) => {
@@ -329,7 +344,9 @@ export async function getOnboardingReview(ctx: OrgContext): Promise<ReviewModel>
     ]);
     return { facts, entitlements };
   });
-  return buildReviewModel(session.answers, facts, session.enabledRoles, onboardingScope(session.enabledRoles, session.workforceModel), planAddOns(entitlements), session.workforceModel);
+  const review = buildReviewModel(session.answers, facts, session.enabledRoles, onboardingScope(session.enabledRoles, session.workforceModel), planAddOns(entitlements), session.workforceModel, !session.completedAt);
+  if (review.businessBrain) review.businessBrain.confirmation = firstBrainReviewFingerprint(ctx.org.orgId, session.answers);
+  return review;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,6 +591,7 @@ interface V2Extras {
   storedAnswers: StoredAnswers;
   firstSubmission: boolean;
   generated: Record<AgentRoleKey, GeneratedSettings> | null;
+  brainReviewConfirmation?: string;
 }
 
 /**
@@ -623,6 +641,26 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
   const outcome = await withSystem(async (db) => {
     // Locked from here to the end: a Settings edit of the same profile waits for this submission (src/server/onboarding/profile-sync.ts), and the reverse.
     const prior = await lockOnboardingRow(db, ctx.org.orgId);
+    let replayedBrainApproval = false;
+    if (v2?.brainReviewConfirmation !== undefined) {
+      const current = toStored(await loadAnswerRows(db, ctx.org.orgId));
+      assertFirstBrainReview(v2.brainReviewConfirmation, ctx.org.orgId, current);
+      const check = submitCheck(current);
+      if (!check.canSubmit) throw new AppError("conflict", check.blockers[0] ?? "Review and approve the latest Business Brain details.");
+      if (prior.status === "submitted") {
+        const { rows } = await db.query<{ confirmation: string | null }>(
+          `select metadata #>> '{businessBrainReview,confirmation}' as confirmation
+             from audit_logs where org_id = $1 and action = 'onboarding.completed' order by id desc limit 1`,
+          [ctx.org.orgId],
+        );
+        if (rows[0]?.confirmation !== v2.brainReviewConfirmation) {
+          throw new AppError("conflict", "This setup has already been updated. Reload to review its current details.");
+        }
+        // The approval action itself may have been saved again. The same reviewed answers
+        // and latest successful submission are the same operation even if timestamps changed.
+        replayedBrainApproval = true;
+      }
+    }
     if (v2) {
       const { rows: latest } = await db.query<{ changed_at: Date | null }>(
         "select max(updated_at) as changed_at from onboarding_answers where org_id = $1 and question_id <> $2",
@@ -632,7 +670,7 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       const appliedAt = appliedThrough(prior);
       const changedAt = latest[0]?.changed_at?.getTime() ?? 0;
       // An enabled employee with no configuration is not "unchanged" (one added to the plan after the last submission): that submission builds it.
-      if (prior.status === "submitted" && appliedAt >= changedAt && !(await hasUnconfiguredEnabledEmployee(db, ctx.org.orgId))) {
+      if (prior.status === "submitted" && (replayedBrainApproval || (appliedAt >= changedAt && !(await hasUnconfiguredEnabledEmployee(db, ctx.org.orgId))))) {
         const { rows } = await db.query<{ role_key: AgentRoleKey; display_name: string; summary: string | null; status: string }>(
           `select a.role_key, a.display_name, v.summary, a.status from agent_instances a
            left join agent_config_versions v on v.id = a.active_config_version_id
@@ -704,7 +742,9 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
          current_step = 6, updated_by = excluded.updated_by, submitted_snapshot = coalesce(excluded.submitted_snapshot, onboarding_responses.submitted_snapshot)`,
       [ctx.org.orgId, ctx.user.id, derived ? JSON.stringify(buildSnapshot(derived, stamp, derivedMessaging && derivedPrefs ? { messaging: derivedMessaging, prefs: derivedPrefs } : {})) : null],
     );
-    if (v2 && hasGrowthPartner) await draftGrowthPartnerBusinessBrainFromOnboarding(db, ctx, v2.storedAnswers, stamp, QUESTIONNAIRE_VERSION);
+    const businessBrain = v2 && hasGrowthPartner
+      ? await draftGrowthPartnerBusinessBrainFromOnboarding(db, ctx, v2.firstSubmission ? effectiveStored(v2.storedAnswers) : v2.storedAnswers, stamp, QUESTIONNAIRE_VERSION)
+      : null;
     // Booking rules become a draft calendar and appointment types, never a live one (src/server/onboarding/scheduling-drafts.ts).
     const scheduling = v2 ? await proposeSchedulingDrafts(db, { orgId: ctx.org.orgId, userId: ctx.user.id }, v2.answers) : NO_SCHEDULING;
     // The client's own words about who to look for become a first set of lead-targeting rules, only into an empty profile (src/server/onboarding/lead-targeting-draft.ts).
@@ -718,7 +758,15 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
       kind: "system",
       severity: "info",
       title: `${sanitizeClientText(b.companyName, 80)} ${v2 && !v2.firstSubmission ? "updated" : "finished"} company setup`,
-      body: hasGrowthPartner ? "AI Growth Partner onboarding saved. The Business Brain is ready for review." : `${out.length} AI employee configuration${out.length === 1 ? "" : "s"} prepared.`,
+      body: hasGrowthPartner
+        ? businessBrain?.activeVersionChanged
+          ? "AI Growth Partner onboarding saved. Its first Business Brain version is active."
+          : businessBrain?.reused
+            ? "AI Growth Partner onboarding saved. The previously saved Business Brain snapshot was reused."
+            : businessBrain
+              ? "AI Growth Partner onboarding saved. A Business Brain draft is waiting for approval."
+              : "AI Growth Partner onboarding saved, but its Business Brain was not created. Check workspace access and try again."
+        : `${out.length} retained profile configuration${out.length === 1 ? "" : "s"} prepared.`,
       link: `/admin/clients/${ctx.org.orgId}`,
     });
     // What this submission left as someone edited it elsewhere: a value it did not write because its answers had not changed, while the workspace holds something else.
@@ -737,7 +785,14 @@ async function applyOnboarding(ctx: OrgContext, data: OnboardingData, enabledRol
     await recordAudit(
       {
         orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "onboarding.completed", targetType: "organization", targetId: ctx.org.orgId, result: "success",
-        metadata: { employees: selected.length ? selected : hasGrowthPartner ? ["growth_partner"] : [], version: v2 ? QUESTIONNAIRE_VERSION : 1, profileFactsWritten: profile.changed, scheduling: scheduling.state, notes: notesForAudit(notes) },
+        metadata: {
+          employees: selected.length ? selected : hasGrowthPartner ? ["growth_partner"] : [],
+          version: v2 ? QUESTIONNAIRE_VERSION : 1,
+          profileFactsWritten: profile.changed, scheduling: scheduling.state, notes: notesForAudit(notes),
+          ...(businessBrain && v2?.brainReviewConfirmation ? {
+            businessBrainReview: { version: businessBrain.version, confirmation: v2.brainReviewConfirmation },
+          } : {}),
+        },
       },
       db,
     );
@@ -837,7 +892,7 @@ async function applyV2Extras(db: Queryable, ctx: OrgContext, v2: V2Extras, knowl
 }
 
 /** Final approval of the adaptive questionnaire. Requires every blocker cleared and the owner's explicit confirmation. */
-export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutcome> {
+export async function submitOnboarding(ctx: OrgContext, browserReview?: { confirmation?: string }): Promise<OnboardingOutcome> {
   if (!ctx.can("workspace.manage_profile")) throw new AppError("forbidden", "Only owners and managers can complete company setup.");
   if (!ctx.user.emailVerified) throw new AppError("forbidden", "Verify your email before activating your AI Growth Partner.");
   const session = await getOnboardingSession(ctx);
@@ -847,6 +902,11 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
   const confirmed = confirmedAnswers(session.answers, scope);
   const data = toLegacyData(confirmed, session.enabledRoles);
   const firstSubmission = !session.completedAt;
+  const brainReviewConfirmation = browserReview?.confirmation;
+  if ((firstSubmission && session.workforceModel === "growth_partner") || brainReviewConfirmation !== undefined) {
+    if (session.workforceModel !== "growth_partner") throw new AppError("conflict", "Workspace setup changed. Reload to review its current setup.");
+    assertFirstBrainReview(brainReviewConfirmation, ctx.org.orgId, session.answers);
+  }
   const approvedKnowledge = firstSubmission ? await withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<{ content: string }>(
       "select content from company_knowledge where org_id = $1 and review_status = 'approved' order by section limit 8",
@@ -855,7 +915,7 @@ export async function submitOnboarding(ctx: OrgContext): Promise<OnboardingOutco
     return rows.map((row) => row.content);
   }) : [];
   const generated = firstSubmission && session.workforceModel !== "growth_partner" ? await generateEmployeeSettings(data, approvedKnowledge, undefined, ctx.org.orgId) : null;
-  return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, storedAnswers: session.answers, firstSubmission, generated });
+  return applyOnboarding(ctx, data, session.enabledRoles, { answers: confirmed, storedAnswers: session.answers, firstSubmission, generated, brainReviewConfirmation });
 }
 
 /**

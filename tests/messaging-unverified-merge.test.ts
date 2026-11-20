@@ -113,9 +113,27 @@ describe("a typed chat contact merged into a customer entered by hand", () => {
     for (const k of automated().filter((x) => x.req.purpose !== "marketing")) expect((await decide(conv, k.req)).allow, k.name).toBe(true);
     const promo = await decide(conv, { scope: "human", actor: person(), purpose: "marketing" });
     expect(promo).toMatchObject({ allow: false, reason: "no_consent" });
-    expect((promo as { detail: string }).detail).toMatch(/ticked in the website chat/);
+    expect((promo as { detail: string }).detail).toMatch(/public form's promotional opt-in/);
     await withSystem((db) => recordConsent(db, { orgId: c.m.org.id, contactId: kept.id, channel: "sms", purpose: "marketing", status: "granted", source: "staff_recorded", evidence: "The customer agreed on the phone.", recordedBy: c.m.people.owner.id }));
     expect((await decide(conv, { scope: "human", actor: person(), purpose: "marketing" })).allow).toBe(true);
+  });
+
+  it("keeps website and CRM form marketing grants marked as form-entered through a merge", async () => {
+    for (const source of ["website_form", "crm_form"] as const) {
+      const lead = await typedLead(c, { email: null, marketing: true });
+      await withSystem((db) => recordConsent(db, { orgId: c.m.org.id, contactId: lead.contactId, channel: "sms", purpose: "marketing", status: "granted", source, evidence: "Public form marketing opt-in." }));
+      const kept = await manual();
+      await merge(kept.id, lead.contactId);
+      expect(await withSystem((db) => latestConsentSource(db, c.m.org.id, kept.id, "sms", "marketing"))).toBe(source);
+      const moved = await identityOf(c.m.org.id, "phone", lead.phone!);
+      expect(moved).toMatchObject({ contact_id: kept.id, verified: false });
+      expect((await rows<{ typed_by_visitor: boolean }>("select typed_by_visitor from contact_identities where id = $1", [moved.id]))[0].typed_by_visitor).toBe(true);
+      await confirmContactIdentity(owner(), { identityId: moved.id, how: "Confirmed with the customer on a call." });
+      const conv = await channelConversation(c, kept.id, "sms");
+      const promo = await decide(conv, { scope: "human", actor: person(), purpose: "marketing" });
+      expect(promo).toMatchObject({ allow: false, reason: "no_consent" });
+      expect((promo as { detail: string }).detail).toMatch(/public form's promotional opt-in/);
+    }
   });
 
   it("is the same for a typed email, and a withdrawal on the chat contact still wins", async () => {

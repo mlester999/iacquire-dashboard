@@ -15,7 +15,7 @@ import { withSystem } from "@/server/db";
 import { connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
 import { recommendedSettings } from "@/lib/role-playbooks";
 import { createResearchRequest, listLeads, retryResearchRequest } from "@/server/leads/service";
-import { appendWorkEvent, cancelWorkJob, claimWorkJob, createWorkJob, finishWorkJob, getWorkJobView, heartbeatWorkJob, recordWorkStage, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
+import { appendWorkEvent, cancelWorkJob, claimWorkJob, createWorkJob, finishWorkJob, getWorkJobView, heartbeatWorkJob, lockActiveWorkJobLease, recordWorkStage, recoverExpiredWorkJobs, retryWorkJobForUser } from "@/server/workforce/jobs";
 import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { sendChatMessage } from "@/server/chat/service";
@@ -429,6 +429,7 @@ describe("Lead Hunter durable research", () => {
     );
     const recovered = await recoverExpiredWorkJobs();
     expect(recovered.retried).toBeGreaterThanOrEqual(1);
+    expect(recovered.requeuedIds).toContain(created.id);
     const { rows } = await withSystem((db) => db.query<{ status: string }>("select status from ai_work_jobs where id=$1", [created.id]));
     expect(rows[0].status).toBe("queued");
   }, 30000);
@@ -568,6 +569,74 @@ describe("Lead Hunter durable research", () => {
     ));
     expect(events.some((event) => event.message === "Current worker completed")).toBe(true);
     expect(events.some((event) => event.message === "Stale worker event")).toBe(false);
+  }, 30000);
+
+  it("keeps a persisted stop request from being overwritten by a late completion", async () => {
+    const created = await withSystem((db) => createWorkJob(db, {
+      orgId: org.id,
+      agentId: hunterId,
+      requestedBy: owner.id,
+      capability: "proactive_review",
+      title: "Cancellation wins over late review",
+      idempotencyKey: `cancel-finish-${crypto.randomUUID()}`,
+      input: {},
+    }));
+    const claimed = await withSystem((db) => claimWorkJob(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-cancel-race",
+      leaseSeconds: 30,
+    }));
+    expect(claimed).toBeTruthy();
+    await withSystem((db) => db.query(
+      "update ai_work_jobs set cancel_requested_at = now() where id = $1 and org_id = $2",
+      [created.id, org.id],
+    ));
+    expect(await withSystem((db) => lockActiveWorkJobLease(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-cancel-race",
+    }))).toBe(false);
+
+    const finished = await withSystem((db) => finishWorkJob(db, {
+      jobId: created.id,
+      orgId: org.id,
+      workerId: "worker-cancel-race",
+      status: "completed",
+      stage: "completed",
+      resultCount: 2,
+      resultSummary: "Late review result",
+      result: { findings: [{ title: "Late result" }] },
+      event: { kind: "notice", stage: "completed", message: "Late review completed" },
+    }));
+    expect(finished).toBe(false);
+
+    const { rows } = await withSystem((db) => db.query<{
+      status: string;
+      stage: string;
+      result_count: number;
+      result_summary: string | null;
+      failure_code: string | null;
+    }>(
+      "select status, stage, result_count, result_summary, failure_code from ai_work_jobs where id = $1",
+      [created.id],
+    ));
+    expect(rows[0]).toMatchObject({
+      status: "cancelled",
+      stage: "cancelled",
+      result_count: 0,
+      result_summary: null,
+      failure_code: "cancelled",
+    });
+    const { rows: events } = await withSystem((db) => db.query<{ stage: string; message: string }>(
+      "select stage, message from ai_work_events where job_id = $1 order by id",
+      [created.id],
+    ));
+    expect(events).toContainEqual(expect.objectContaining({
+      stage: "cancelled",
+      message: "The work was stopped before it completed.",
+    }));
+    expect(events.some((event) => event.message === "Late review completed")).toBe(false);
   }, 30000);
 
   it("marks a running job without an active lease as recovery pending in its authorized view", async () => {

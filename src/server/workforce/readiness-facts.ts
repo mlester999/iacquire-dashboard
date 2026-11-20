@@ -137,8 +137,8 @@ async function loadRecordedToolNames(db: Queryable, agentIds: string[]): Promise
 }
 
 const SUSPENDED_TEXT: Record<string, string> = {
-  suspended: "This workspace is suspended, so its AI employees are paused. Contact iAcquire to reopen it.",
-  archived: "This workspace is archived, so its AI employees are not running.",
+  suspended: "AI work is paused while this workspace is suspended. Contact iAcquire to reopen it.",
+  archived: "AI work is paused while this workspace is archived.",
 };
 
 /** The readiness extras for every employee of one workspace. */

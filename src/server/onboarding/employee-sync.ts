@@ -748,9 +748,13 @@ export async function applyRolePlanChange(
     [agentId, orgId],
   );
   const agent = rows[0];
-  if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found.");
+  if (!agent || !isAgentRoleKey(agent.role_key)) throw new AppError("not_found", "Previous AI profile not found.");
   if (agent.org_kind !== "client" || agent.is_demo) throw new AppError("conflict", "Plan changes that set an employee up apply to client workspaces only.");
-  if (agent.hermes_profile && isReservedProfile(agent.hermes_profile)) throw new AppError("conflict", "This employee is mapped to one of iAcquire's own profiles, so it is not changed from a client's plan.");
+  if (agent.hermes_profile && isReservedProfile(agent.hermes_profile)) throw new AppError("conflict", "iAcquire manages this profile separately from the workspace plan.");
+  const hasGrowthPartner = (await db.query<{ present: boolean }>(
+    "select exists (select 1 from ai_growth_partners where org_id = $1) as present",
+    [orgId],
+  )).rows[0]?.present === true;
   const role = agent.role_key;
   const label = AGENT_BY_KEY[role].shortName;
   const base: PlanChangeResult = { changed: false, enabled, configuration: "existing", provisioning: "not_applicable", syncQueued: false, cancelledJobs: 0, runningJobs: 0 };
@@ -774,14 +778,16 @@ export async function applyRolePlanChange(
       orgId, actorUserId: input.actor.id, actorKind: "agency", agentInstanceId: agentId, action: "agent.disabled", targetType: "agent_instance", targetId: agentId, result: "success",
       metadata: { reason, planChange: true, cancelledJobs: result.cancelledJobs, runningJobs: result.runningJobs },
     }, db);
-    await notifyOrgRoles(db, orgId, ["owner", "admin"], {
-      kind: "agent_status",
-      severity: "info",
-      title: `${label} is no longer part of your plan`,
-      body: "Its setup was stopped and it will not take new work. Your conversations, knowledge and settings are kept, and it can be added back.",
-      link: "/employees",
-      dedupeKey: `plan-role-removed:${agentId}:${crypto.randomUUID()}`,
-    });
+    if (!hasGrowthPartner) {
+      await notifyOrgRoles(db, orgId, ["owner", "admin"], {
+        kind: "agent_status",
+        severity: "info",
+        title: `${label} is no longer part of your plan`,
+        body: "Its setup was stopped and it will not take new work. Your conversations, knowledge and settings are kept, and it can be added back.",
+        link: "/employees",
+        dedupeKey: `plan-role-removed:${agentId}:${crypto.randomUUID()}`,
+      });
+    }
     return result;
   }
 
@@ -859,7 +865,7 @@ export async function applyRolePlanChange(
       metadata: { reason, planChange: true, configuration: result.configuration, provisioning: result.provisioning, syncQueued: result.syncQueued },
     }, db);
   }
-  if (flipped) {
+  if (flipped && !hasGrowthPartner) {
     const heldNote = result.configuration === "held" ? " Its newest configuration is waiting for iAcquire's review; until then it uses the one already approved." : "";
     const next = result.provisioning === "requested" || result.provisioning === "already_open"
       ? `iAcquire is setting it up. It will show as ready once its own checks pass.${heldNote}`

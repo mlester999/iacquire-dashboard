@@ -250,6 +250,56 @@ describe("on-demand operations review", () => {
     expect(rows[0]).toMatchObject({ status: "blocked", failure_code: "capability_not_allowed" });
   });
 
+  it("keeps prepared work out of Completed and counts approval waits in attention", async () => {
+    const ctx = ctxFor(owner, org, "owner");
+    const beforeSummary = await workBoardSummary(ctx);
+    const beforeCompleted = await listWorkBoardJobs(ctx, "completed");
+    const beforeAttention = await listWorkBoardJobs(ctx, "attention");
+    const prepared = await withSystem(async (db) => {
+      const job = await createWorkJob(db, {
+        orgId: org.id,
+        agentId: operationsManagerId,
+        requestedBy: owner.id,
+        capability: "pipeline_followup_drafts",
+        title: "Prepared drafts are not completed work",
+        idempotencyKey: `prepared-board-${crypto.randomUUID()}`,
+        input: {},
+      });
+      await db.query(
+        `update ai_work_jobs set status='completed', stage='completed', result='{"drafts":[{}]}'::jsonb,
+                result_summary='One follow-up draft is waiting for review.', finished_at=now()
+          where id=$1`,
+        [job.id],
+      );
+      return job;
+    });
+    const waiting = await withSystem(async (db) => {
+      const job = await createWorkJob(db, {
+        orgId: org.id,
+        agentId: operationsManagerId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: "Approval wait belongs in attention",
+        idempotencyKey: `waiting-board-${crypto.randomUUID()}`,
+        input: {},
+      });
+      await db.query("update ai_work_jobs set status='waiting_for_approval', stage='waiting_for_approval' where id=$1", [job.id]);
+      return job;
+    });
+
+    const all = await listWorkBoardJobs(ctx, "all");
+    const completed = await listWorkBoardJobs(ctx, "completed");
+    const attention = await listWorkBoardJobs(ctx, "attention");
+    const summary = await workBoardSummary(ctx);
+    expect(all.find((job) => job.id === prepared.id)).toMatchObject({ status: "completed", statusLabel: "Ready for review", evidence: { class: "proposed_change" } });
+    expect(completed.some((job) => job.id === prepared.id)).toBe(false);
+    expect(completed.length).toBe(beforeCompleted.length);
+    expect(summary.completedToday).toBe(beforeSummary.completedToday);
+    expect(attention.some((job) => job.id === waiting.id)).toBe(true);
+    expect(attention.length).toBe(beforeAttention.length + 1);
+    expect(summary.needsAttention).toBe(beforeSummary.needsAttention + 1);
+  });
+
   it("routes a running job with no active lease to recovery attention, not Running now", async () => {
     const before = await workBoardSummary(ctxFor(owner, org, "owner"));
     const stale = await withSystem(async (db) => {

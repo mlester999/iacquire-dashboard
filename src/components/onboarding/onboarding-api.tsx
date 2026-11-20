@@ -17,7 +17,7 @@ import type { Suggestion, WebsiteAnalysisSummary } from "@/server/onboarding/ser
 import type { AssetView } from "@/server/assets/service";
 import type { AssistanceOptions } from "@/lib/onboarding/assistance";
 
-type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+type Result<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 
 /**
  * Everything the questionnaire needs from the server. The real implementation calls server actions
@@ -30,7 +30,7 @@ export interface OnboardingApi {
   readWebsite(url: string): Promise<Result<WebsiteAnalysisSummary>>;
   review(): Promise<Result<ReviewModel>>;
   /** `scheduling` is what the booking answers did: a draft calendar made or extended, or why not (never live). `notes` is what a re-submission kept, held, skipped or left unchanged. Both absent in the preview. */
-  submit(): Promise<Result<{ scheduling?: SchedulingDraftOutcome; notes?: OutcomeNote[] }>>;
+  submit(confirmation?: string): Promise<Result<{ scheduling?: SchedulingDraftOutcome; notes?: OutcomeNote[] }>>;
   uploadImage(kind: "logo" | "image" | "reference", file: File): Promise<Result<AssetView>>;
   uploadDocument(file: File): Promise<Result<{ id: string; filename: string }>>;
   removeAsset(id: string): Promise<Result<unknown>>;
@@ -63,7 +63,7 @@ export const serverApi: OnboardingApi = {
   },
   readWebsite: (url) => readOnboardingWebsiteAction(url),
   review: () => getOnboardingReviewAction(),
-  submit: () => submitOnboardingAction(),
+  submit: (confirmation) => submitOnboardingAction(confirmation),
   uploadImage(kind, file) {
     const form = new FormData();
     form.set("file", file);

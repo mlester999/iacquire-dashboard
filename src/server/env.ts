@@ -196,6 +196,12 @@ const schema = z.object({
   // Stops all background calendar sync and write-back (and "Sync now") without disconnecting anyone.
   CALENDAR_SYNC_DISABLED: bool,
 
+  // Optional tenant-owned connection checks. Provider app registrations use read-only capabilities.
+  NOTION_WORKSPACE_OAUTH_CLIENT_ID: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  NOTION_WORKSPACE_OAUTH_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  AIRTABLE_WORKSPACE_OAUTH_CLIENT_ID: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+  AIRTABLE_WORKSPACE_OAUTH_CLIENT_SECRET: z.preprocess(blankToUndefined, z.string().max(300).optional()),
+
   // Social media manager (Facebook Pages and Instagram professional accounts through Meta's Graph API). This is a different Meta app from the WhatsApp one
   // above. Connecting is offered only when both the app ID and secret are set; nothing is ever posted unless META_SOCIAL_WRITES_ENABLED is true (a founder-approved
   // switch, like the other provider write switches). GRAPH_VERSION is read from Meta's SDK at build time of this feature (v26.0) and can be changed without code.
@@ -262,12 +268,13 @@ const schema = z.object({
 
   // Native messaging transports (see docs/messaging-providers.md). Each has its own kill switch, off unless set to true, exactly like
   // GHL_WRITES_ENABLED: while it is off nothing is sent through that provider and the message is held with the reason.
-  // This environment-wide stop applies to customer-facing messaging transports and website-chat replies, checked when queued and again before sending.
-  // It defaults off. The separate email outbox remains available for authentication, security and account notices.
-  OUTBOUND_MESSAGING_ENABLED: bool,
   RESEND_WRITES_ENABLED: bool,
   TWILIO_WRITES_ENABLED: bool,
   META_WHATSAPP_WRITES_ENABLED: bool,
+  // The one master switch for messages to a prospect or a customer, above every provider switch: off (the default), no conversation message reaches any provider (including website-chat replies, checked when queued and again before sending) and the platform does not email a prospect or customer (a demo link, a proposal code, a
+  // purchase invitation, a support reply) even when EMAIL_PROVIDER is resend: those are stored as captured with a note that they were held. Sign-in and account mail (verify
+  // email, password reset, invitations, staff and setup notices) is NOT held by it, so a release can never lock people out. A founder-approved switch, like the provider ones.
+  OUTBOUND_MESSAGING_ENABLED: bool,
   // Resend signs webhooks through Svix; this is the endpoint's signing secret from the Resend dashboard (whsec_…).
   RESEND_WEBHOOK_SECRET: z.preprocess(blankToUndefined, z.string().regex(/^whsec_[A-Za-z0-9+/=]{16,}$/, "must be the Resend webhook signing secret (whsec_…)").optional()),
   // Twilio signs the exact public URL it called. Set this when the public origin differs from APP_URL (for example behind a proxy).

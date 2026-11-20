@@ -32,6 +32,13 @@ interface WaitingRow {
   last_inbound_at: Date;
   /** How many customers are waiting in this workspace in all (the rows read are at most the notice cap of them). */
   org_total: number;
+  has_growth_partner: boolean;
+}
+
+export function awaitingReplyBody(hasGrowthPartner: boolean): string {
+  return hasGrowthPartner
+    ? "Open the conversation to answer, or let your AI Growth Partner handle it."
+    : "Open the conversation to reply or assign it to AI.";
 }
 
 /**
@@ -41,9 +48,10 @@ interface WaitingRow {
  */
 export async function notifyAwaitingReplies(db: Queryable, now = new Date(), opts: { orgId?: string; limit?: number } = {}): Promise<number> {
   const { rows } = await db.query<WaitingRow>(
-    `select w.id, w.org_id, w.owner_user_id, w.assigned_user_id, w.last_inbound_at, w.org_total
+    `select w.id, w.org_id, w.owner_user_id, w.assigned_user_id, w.last_inbound_at, w.org_total, w.has_growth_partner
      from (
        select c.id, c.org_id, c.owner_user_id, c.assigned_user_id, c.last_inbound_at,
+              exists (select 1 from ai_growth_partners p where p.org_id = c.org_id) as has_growth_partner,
               row_number() over (partition by c.org_id order by c.last_inbound_at) as rn,
               (count(*) over (partition by c.org_id))::int as org_total
        from conversations c join organizations o on o.id = c.org_id and o.status not in ('suspended', 'archived')
@@ -64,7 +72,7 @@ export async function notifyAwaitingReplies(db: Queryable, now = new Date(), opt
     const key = `awaiting:${c.id}:${new Date(c.last_inbound_at).getTime()}`;
     totals.set(c.org_id, c.org_total);
     const link = `/inbox?conversation=${c.id}`;
-    const n = { kind: "conversation_awaiting_reply" as const, severity: "warning" as const, title: "A customer is waiting for a reply", body: "Open the conversation to answer, or let the AI employee handle it.", link, dedupeKey: key };
+    const n = { kind: "conversation_awaiting_reply" as const, severity: "warning" as const, title: "A customer is waiting for a reply", body: awaitingReplyBody(c.has_growth_partner), link, dedupeKey: key };
     const personal = c.owner_user_id ?? c.assigned_user_id;
     if (personal) {
       if (await notifyUser(db, personal, c.org_id, n)) sent += 1;

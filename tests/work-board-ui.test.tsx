@@ -161,9 +161,8 @@ describe("Work Board proactive reports", () => {
 describe("Work Board", () => {
   it("renders persisted status, stage and metrics without inventing progress", () => {
     render(<WorkBoard jobs={[job()]} summary={summary} filter="all" reviewActions={reviewActions} schedules={[]} canManageSchedules={false} scheduleOperatorEnabled={false} triggers={[]} canManageTriggers={false} triggerOperatorEnabled={false} timeZone="Asia/Manila" focusJobId={null} referenceTime="2026-10-24T00:00:00.000Z" />);
-    expect(screen.getByText("Work Board", { exact: true })).toBeTruthy();
-    expect(screen.queryByText("AI Work Board", { exact: true })).toBeNull();
-    expect(screen.getByText("See the work, not a spinner.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "AI Work Board", level: 1 })).toBeTruthy();
+    expect(screen.getByText(/Track running jobs, approval requests and completed work/)).toBeTruthy();
     expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
     expect(screen.getByText("Reviewing discovered company websites")).toBeTruthy();
     expect(screen.getByText(/3 source pages reviewed/)).toBeTruthy();
@@ -177,7 +176,7 @@ describe("Work Board", () => {
     expect(screen.getAllByText("Recovery pending").length).toBeGreaterThan(0);
     expect(screen.getByText("No active worker lease is recorded. Recovery is pending.")).toBeTruthy();
     expect(screen.queryByText("Working", { selector: "span" })).toBeNull();
-    expect(screen.getByText("Failed, blocked or awaiting recovery")).toBeTruthy();
+    expect(screen.getByText("Failed, blocked, awaiting approval or recovery")).toBeTruthy();
   });
 
   it("starts a real on-demand review when access allows it", async () => {
@@ -221,7 +220,7 @@ describe("Work Board", () => {
       updatedAt: "2026-10-21T07:00:00.000Z",
       lastRunAt: null,
       lastJobId: null,
-      lastSkippedReason: null,
+      lastSkippedReason: "invalid_recurrence_rule",
       lastSkippedAt: null,
       operatorEnabled: false,
     }];
@@ -229,6 +228,7 @@ describe("Work Board", () => {
     expect(screen.getByText("Scheduled work")).toBeTruthy();
     expect(screen.getByText("Operator switch off")).toBeTruthy();
     expect(screen.getByText(/It only runs when both the row and the operator switch are enabled/i)).toBeTruthy();
+    expect(screen.getByText(/Last schedule check: Paused because the saved recurrence rule is invalid/i)).toBeTruthy();
     await userEvent.click(screen.getByRole("switch", { name: /Pause On-demand operations review schedule/ }));
     await waitFor(() => expect(setScheduleEnabledAction).toHaveBeenCalledWith("s1", false));
   });

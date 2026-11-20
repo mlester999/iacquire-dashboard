@@ -100,17 +100,23 @@ describe("re-sealing every stored secret", () => {
     useKeys(KEY_A);
     const hook = await hookSealed("hook-secret-1", "Zapier rotation");
     const conn = await connectionSealed("https://hooks.example.test/slack", "Sales channel rotation");
+    const workspace = await withSystem((db) => db.query<{ id: string }>(
+      "insert into workspace_oauth_connections (org_id, provider, status, credentials, last_verified_at) values ($1, 'notion', 'connected', $2, now()) returning id",
+      [org.id, encryptSecret("synthetic-workspace-credentials")],
+    )).then((r) => r.rows[0].id);
     useKeys(KEY_B, KEY_A);
     const hookBefore = await stored("crm_webhook_subscriptions", "secret_ciphertext", hook);
 
     const dry = await report(false);
     expect(of(dry, "crm_webhook_subscriptions", "secret_ciphertext")).toMatchObject({ onRetiredKey: 1, resealed: 0, unreadable: 0 });
     expect(of(dry, "automation_connections", "secret_ciphertext")).toMatchObject({ onRetiredKey: 1, resealed: 0 });
+    expect(of(dry, "workspace_oauth_connections", "credentials")).toMatchObject({ onRetiredKey: 1, resealed: 0 });
     expect(await stored("crm_webhook_subscriptions", "secret_ciphertext", hook)).toBe(hookBefore);
 
     const applied = await report(true);
     expect(of(applied, "crm_webhook_subscriptions", "secret_ciphertext")).toMatchObject({ onRetiredKey: 1, resealed: 1 });
     expect(of(applied, "automation_connections", "secret_ciphertext")).toMatchObject({ onRetiredKey: 1, resealed: 1 });
+    expect(of(applied, "workspace_oauth_connections", "credentials")).toMatchObject({ onRetiredKey: 1, resealed: 1 });
     expect(await stored("crm_webhook_subscriptions", "secret_ciphertext", hook)).not.toBe(hookBefore);
 
     const after = await report(false);
@@ -119,6 +125,7 @@ describe("re-sealing every stored secret", () => {
     useKeys(KEY_B);
     expect(decryptSecret(await stored("crm_webhook_subscriptions", "secret_ciphertext", hook))).toBe("hook-secret-1");
     expect(decryptSecret(await stored("automation_connections", "secret_ciphertext", conn))).toBe("https://hooks.example.test/slack");
+    expect(decryptSecret(await stored("workspace_oauth_connections", "credentials", workspace))).toBe("synthetic-workspace-credentials");
   });
 
   it("counts a value no listed key opens as unreadable, names its row, and leaves it exactly as it is", async () => {
@@ -171,13 +178,15 @@ describe("the registry of sealed columns", () => {
       return statSync(full).isDirectory() ? walk(full) : /\.(ts|tsx)$/.test(name) ? [full] : [];
     });
     const sealers = walk("src").filter((f) => /\bencryptSecret\(/.test(readFileSync(f, "utf8"))).map((f) => f.split(path.sep).join("/")).sort();
-    // Each of these writes one of the registered columns (or an OAuth state row that expires). A new file here means a new place a secret is stored: register its column first.
+    // Each of these writes one of the registered columns or transient OAuth state or notices. A new durable column must be registered first.
     expect(sealers).toEqual([
       "src/server/automation-studio/connections.ts",
       "src/server/calendars/connections.ts",
       "src/server/crm/webhooks.ts",
       "src/server/customer-payments/credentials.ts",
       "src/server/esign/credentials.ts",
+      "src/server/integrations/workspace-oauth-notice.ts",
+      "src/server/integrations/workspace-oauth.ts",
       "src/server/reputation/connections.ts",
       "src/server/security/crypto.ts",
       "src/server/social/accounts.ts",

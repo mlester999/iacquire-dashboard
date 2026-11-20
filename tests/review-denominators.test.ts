@@ -22,7 +22,9 @@ type Examined = Array<{ label: string; count: number }>;
 type Source = { crmMode: string | null; provider: string | null };
 interface JobRow {
   status: string;
-  result: { examined?: Examined; source?: Source; limitations: string; metrics: Array<{ key: string }>; findings: Array<{ key: string }>; availability?: { reason?: string } };
+  stage: string | null;
+  failure_code: string | null;
+  result: { examined?: Examined; source?: Source; limitations: string; metrics: Array<{ key: string }>; findings: Array<{ key: string }>; availability?: { reason?: string }; awaitingConnection?: { connector: string; href: string } };
   result_count: number;
   result_summary: string | null;
 }
@@ -30,7 +32,7 @@ interface JobRow {
 async function waitForJob(jobId: string, timeoutMs = 15000): Promise<JobRow> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const { rows } = await withSystem((db) => db.query<JobRow>("select status, result, result_count, result_summary from ai_work_jobs where id = $1", [jobId]));
+    const { rows } = await withSystem((db) => db.query<JobRow>("select status, stage, failure_code, result, result_count, result_summary from ai_work_jobs where id = $1", [jobId]));
     if (rows[0] && ["completed", "failed", "cancelled", "blocked"].includes(rows[0].status)) return rows[0];
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -60,9 +62,9 @@ async function run(org: Org, user: User, role: OrgRole, agentRole: AgentRoleKey,
   return { ...(await waitForJob(dispatched.jobId)), id: dispatched.jobId };
 }
 
-async function noticeData(jobId: string): Promise<{ examined?: Examined; source?: Source }> {
+async function noticeData(jobId: string): Promise<{ examined?: Examined; source?: Source; href?: string }> {
   const { rows } = await withSystem((db) =>
-    db.query<{ data: { examined?: Examined; source?: Source } }>("select data from ai_work_events where job_id = $1 and kind = 'notice' and stage = 'completed' order by created_at desc limit 1", [jobId]),
+    db.query<{ data: { examined?: Examined; source?: Source; href?: string } }>("select data from ai_work_events where job_id = $1 and kind = 'notice' and stage in ('completed', 'awaiting_connection') order by created_at desc limit 1", [jobId]),
   );
   return rows[0]?.data ?? {};
 }
@@ -126,10 +128,28 @@ describe("an empty workspace is not described as clean", () => {
     expect((await noticeData(snapshot.id)).examined).toEqual(zeros);
 
     const availability = await run(org, owner, "owner", "appointment_setter", "appointment_availability", "Calendar availability check");
-    expect(availability.status).toBe("completed");
+    expect(availability).toMatchObject({ status: "blocked", stage: "awaiting_connection", failure_code: "awaiting_connection" });
     expect(availability.result.examined).toEqual([{ label: "active calendars", count: 0 }, { label: "appointment types", count: 0 }]);
     expect(availability.result.availability?.reason).toBeTruthy();
-    expect((await noticeData(availability.id)).examined).toEqual(availability.result.examined);
+    expect(availability.result.awaitingConnection).toMatchObject({ connector: "Calendar", href: "/crm/calendar" });
+    expect(availability.result_summary).toMatch(/^Waiting for Calendar:/);
+    expect(await noticeData(availability.id)).toMatchObject({ examined: availability.result.examined, href: "/crm/calendar" });
+
+    await withSystem(async (db) => {
+      const calendar = await db.query<{ id: string }>(
+        "insert into crm_calendars (org_id, name, slug, status, origin, created_by) values ($1, 'Empty active calendar', $2, 'active', 'manual', $3) returning id",
+        [org.id, `empty-${crypto.randomUUID().slice(0, 8)}`, owner.id],
+      );
+      await db.query(
+        `insert into crm_appointment_types (org_id, calendar_id, name, slug, duration_minutes, slot_interval_minutes, location_kind)
+         values ($1, $2, 'No host type', $3, 30, 30, 'none')`,
+        [org.id, calendar.rows[0].id, `no-host-${crypto.randomUUID().slice(0, 8)}`],
+      );
+    });
+    const noSlots = await run(org, owner, "owner", "appointment_setter", "appointment_availability", "Active calendar with no open times");
+    expect(noSlots.status).toBe("completed");
+    expect(noSlots.result.findings.map((finding) => finding.key)).toContain("no_available_slots");
+    expect(noSlots.result_summary).toMatch(/^Calendar availability checked:/);
   }, 120_000);
 
   it("gives the counts for a seeded workspace and says no signals only when there were records to check", async () => {

@@ -32,7 +32,8 @@ describe("agency dashboard", () => {
   });
 
   it("builds the system health report", async () => {
-    const health = await getSystemHealth();
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    const health = await getSystemHealth(agencyUser(admin, "agency_super_admin"));
     expect(health).toBeTruthy();
   });
 

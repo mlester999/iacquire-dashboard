@@ -246,22 +246,47 @@ describe("handing a missed caller to the AI Growth Partner", () => {
   it("assigns the conversation to the linked Growth Partner, never a ready legacy Setter, once, and records who did it", async () => {
     const r = await recoveryWorkspace({ mode: "manual", policy: { routeAppointmentSetter: true } });
     const setter = await readySetter(r.w);
-    const growthPartner = await readyGrowthPartner(r.w);
     const caller = callerNumber();
-    const contact = await createContact(r.owner, { displayName: "Booking Bea", phone: caller });
+    await createContact(r.owner, { displayName: "Booking Bea", phone: caller });
+    // The call predates the workspace's Partner binding. Newly opened conversations already use it.
     await recordCall(r.w.org.id, voice({ customerNumber: caller }));
     const c = await caseOf(r.w.org.id, caller);
     const before = await convOf(c.conversation_id!);
+    expect(before).toMatchObject({ owner_kind: "ai", ai_agent_id: r.w.salesAgentId });
+    const growthPartner = await readyGrowthPartner(r.w);
     await processMissedCalls({ now: minutesAfter(5), orgId: r.w.org.id });
     await processMissedCalls({ now: minutesAfter(40), orgId: r.w.org.id });
     const after = await convOf(c.conversation_id!);
     expect(after).toMatchObject({ owner_kind: "ai", ai_agent_id: growthPartner });
     expect(after.ai_agent_id).not.toBe(setter);
-    expect(after.ownership_version).toBeGreaterThan(before.ownership_version);
-    expect((await actionsOf(c.id)).filter((a) => a.kind === "appointment_setter")).toEqual([expect.objectContaining({ status: "done" })]);
+    expect(after.ownership_version).toBe(before.ownership_version + 1);
+    expect((await actionsOf(c.id)).filter((a) => a.kind === "appointment_setter")).toEqual([expect.objectContaining({ status: "done", reason: "assigned" })]);
     const ev = await rows<{ kind: string; actor_kind: string; detail: Record<string, unknown> }>("select kind, actor_kind, detail from conversation_events where conversation_id = $1 and kind = 'ai_assigned'", [c.conversation_id]);
     expect(ev).toEqual([expect.objectContaining({ actor_kind: "system", detail: expect.objectContaining({ agentId: growthPartner, roleKey: "growth_partner", by: "missed_call" }) })]);
-    void contact;
+  });
+
+  it.each([
+    ["online", "done", "already_assigned"],
+    ["offline", "blocked", "employee_not_ready"],
+  ] as const)("preserves canonical assignment and records readiness when the Partner is %s", async (status, outcome, reason) => {
+    const r = await recoveryWorkspace({ mode: "manual", policy: { routeAppointmentSetter: true } });
+    await readySetter(r.w);
+    const growthPartner = await readyGrowthPartner(r.w);
+    if (status === "offline") {
+      await withSystem((db) => db.query("update agent_instances set status = 'offline', last_health_ok = false where org_id = $1 and id = $2", [r.w.org.id, growthPartner]));
+    }
+    const caller = callerNumber();
+    await createContact(r.owner, { displayName: "Existing canonical assignment", phone: caller });
+    await recordCall(r.w.org.id, voice({ customerNumber: caller }));
+    const c = await caseOf(r.w.org.id, caller);
+    const conversationId = c.conversation_id!;
+    const before = await convOf(conversationId);
+    expect(before).toMatchObject({ owner_kind: "ai", ai_agent_id: growthPartner });
+    await processMissedCalls({ now: minutesAfter(5), orgId: r.w.org.id });
+    expect(await convOf(conversationId)).toEqual(before);
+    expect((await actionsOf(c.id)).filter((a) => a.kind === "appointment_setter"))
+      .toEqual([expect.objectContaining({ status: outcome, reason })]);
+    expect(await count("select count(*)::text as n from conversation_events where conversation_id = $1 and kind = 'ai_assigned'", [conversationId])).toBe(0);
   });
 
   it("leaves a conversation a person owns alone, and says it is not ready when the employee has not passed its check", async () => {
@@ -331,7 +356,7 @@ describe("the AI workforce's read-only reviews", () => {
     expect((await rows<{ priority_label: string }>("select priority_label from contacts where id = $1", [lead.id]))[0].priority_label).toBe("hot");
     expect((await caseOf(w.org.id, caller)).state).toBe("detected");
     // A role that does not hold the capability, and a viewer who may not see calls, are both refused.
-    await expect(dispatchCapabilityJob(w.ctx("owner"), { agentRole: "sales_assistant", capability: "missed_call_review", title: "x" })).rejects.toThrow(/role does not include/i);
+    await expect(dispatchCapabilityJob(w.ctx("owner"), { agentRole: "sales_assistant", capability: "missed_call_review", title: "x" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
     await expect(dispatchCapabilityJob(w.ctx("viewer"), { agentRole: "appointment_setter", capability: "missed_call_review", title: "x" })).rejects.toThrow();
     void T0;
   });

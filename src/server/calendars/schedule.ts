@@ -262,7 +262,7 @@ export async function getAppointmentDetail(actor: CrmActor, id: string): Promise
       ...Object.keys(raw).filter((k) => !questions.some((q) => q.key === k) && raw[k]).map((k) => ({ key: k, label: k.replace(/_/g, " "), value: String(raw[k]) })),
     ];
     const who = (kind: string, name: string | null) =>
-      kind === "user" ? name ?? "A teammate" : kind === "agency" ? "iAcquire support" : kind === "agent" ? "AI employee" : kind === "api" ? "API" : kind === "contact" ? "The customer" : null;
+      kind === "user" ? name ?? "A teammate" : kind === "agency" ? "iAcquire support" : kind === "agent" ? "AI activity" : kind === "api" ? "API" : kind === "contact" ? "The customer" : null;
     return {
       ...toItem(r),
       description: r.description,

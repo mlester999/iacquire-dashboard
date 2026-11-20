@@ -302,7 +302,7 @@ export const CAPTURE_ALWAYS_EXCLUDED = [
   "Connected accounts, OAuth credentials, API keys and provider tokens",
   "Payment details",
   "People (hosts, owners and assignees become roles each workspace maps)",
-  "AI employee memories",
+  "Previous AI profile memories",
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY, type AgentRoleKey } from "@/lib/agents";
 import { ROLE_ABILITIES } from "@/lib/employee-tool-policy";
 import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
@@ -15,8 +15,9 @@ import type { AgentToolName } from "@/server/crm/agent-tools/catalog";
 import { listPipelines } from "@/server/crm/pipelines";
 import { createTag } from "@/server/crm/tags";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { clientBusinessMcpToolNamesForRole } from "@/server/workforce/hermes-client-business-mcp-policy";
+import { clientBusinessMcpToolNamesForRole, clientBusinessProposalRequiredAbility } from "@/server/workforce/hermes-client-business-mcp-policy";
 import { clientToolGate } from "@/server/workforce/hermes-client-business-mcp-gate";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import {
   auditRows, callBody, clientSideEffects, endClientTurns, personContext, postClient, provisionedClient, refused, setClientProposals, setProposalsSwitch, startClientTurn, temporarily, toolJson,
   toolText, withoutAudit, type ClientTenant,
@@ -37,6 +38,7 @@ const WRITES: Record<AgentRoleKey, string[]> = {
 
 let a: ClientTenant;
 let b: ClientTenant;
+let growthPartnerAgentId = "";
 let dealId = "";
 let openStageId = "";
 let wonStageId = "";
@@ -96,6 +98,8 @@ async function switchOff(t: ClientTenant, role: AgentRoleKey, disabledTools: rea
 beforeAll(async () => {
   a = await provisionedClient({ name: "Chicago Roofing", timezone: "America/Chicago", tag: "Chicagoan", phone: "+13125550101" });
   b = await provisionedClient({ name: "Manila Dental", timezone: "Asia/Manila", tag: "Manilan", phone: "+639171234501", entitled: AGENT_ROLE_KEYS.filter((role) => role !== "sales_assistant") });
+  growthPartnerAgentId = await withSystem((db) => ensureGrowthPartnerRuntime(a.org.id, db));
+  await withSystem((db) => db.query("update agent_instances set enabled = true where id = $1", [growthPartnerAgentId]));
   for (const t of [a, b]) await createTag(t.crm.actor("owner"), { name: "VIP" });
   dealId = (await withSystem((db) => db.query<{ id: string }>("select id from crm_opportunities where org_id = $1 and name = $2", [a.org.id, a.dealName]))).rows[0].id;
   const pipeline = (await listPipelines(a.crm.actor("owner"), { ensureDefault: true }))[0];
@@ -123,6 +127,36 @@ afterAll(() => {
 });
 
 describe("what a client's employee is offered", () => {
+  it("ties a Growth Partner task proposal to the crm.request_update Allowed actions switch", async () => {
+    expect(clientBusinessProposalRequiredAbility(AI_GROWTH_PARTNER_ROLE_KEY, "create_task")).toBe("crm.request_update");
+    const initiallyAllowed = await withSystem((db) => clientToolGate(db, {
+      orgId: a.org.id, agentId: growthPartnerAgentId, roleKey: AI_GROWTH_PARTNER_ROLE_KEY, tool: "create_task",
+    }));
+    expect(initiallyAllowed).toEqual({ ok: true });
+
+    const prior = (await withSystem((db) => db.query<{ active_config_version_id: string | null }>("select active_config_version_id from agent_instances where id = $1", [growthPartnerAgentId]))).rows[0];
+    const version = await withSystem(async (db) => {
+      const inserted = await db.query<{ id: string }>(
+        `insert into agent_config_versions (org_id, agent_instance_id, version, settings, summary, compiled_instructions, policy_version, source, status)
+         values ($1, $2, (select coalesce(max(version), 0) + 1 from agent_config_versions where agent_instance_id = $2), $3, 'test switch', '# config', 'p', 'onboarding', 'applied') returning id`,
+        [a.org.id, growthPartnerAgentId, JSON.stringify({ ...defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY), disabledTools: ["crm.request_update"] })],
+      );
+      await db.query("update agent_instances set active_config_version_id = $2 where id = $1", [growthPartnerAgentId, inserted.rows[0].id]);
+      return inserted.rows[0].id;
+    });
+    try {
+      const switchedOff = await withSystem((db) => clientToolGate(db, {
+        orgId: a.org.id, agentId: growthPartnerAgentId, roleKey: AI_GROWTH_PARTNER_ROLE_KEY, tool: "create_task",
+      }));
+      expect(switchedOff).toMatchObject({ ok: false, reason: "abilities_off", detail: expect.stringMatching(/CRM updates are switched off/) });
+    } finally {
+      await withSystem(async (db) => {
+        await db.query("update agent_instances set active_config_version_id = $2 where id = $1", [growthPartnerAgentId, prior.active_config_version_id]);
+        await db.query("delete from agent_config_versions where id = $1", [version]);
+      });
+    }
+  });
+
   it("lists the role's reads and its changes, and never a message, a booking request or a send request", async () => {
     for (const role of AGENT_ROLE_KEYS) {
       await startClientTurn(a, role, a.owner.id);
@@ -295,10 +329,25 @@ describe("the person is the one who asks", () => {
     expect(reply(await call(a, "appointment_setter", "create_task", { title: "Owner task" }))).toMatchObject({ ok: true, status: "pending_approval" });
   });
 
+  it("requires contacts.view only when a task proposal links a contact", async () => {
+    await revoke("sales", "contacts.view");
+    await startClientTurn(a, "appointment_setter", a.crm.people.sales.id);
+    const before = { approvals: await approvalCount(a.org.id), tokens: (await clientSideEffects()).crm_agent_tokens };
+    const linked = await postClient(a.credentials.appointment_setter, callBody("create_task", { title: "Linked without contact access", contactId: a.contact.id }));
+    expect(toolJson(linked)).toMatchObject({ ok: false, code: "forbidden", httpStatus: 403 });
+    expect(await approvalCount(a.org.id)).toBe(before.approvals);
+    expect((await clientSideEffects()).crm_agent_tokens).toBe(before.tokens);
+
+    const unlinked = reply(await call(a, "appointment_setter", "create_task", { title: "Unlinked without contact access" }));
+    expect(unlinked).toMatchObject({ ok: true, status: "pending_approval" });
+  });
+
   it("writes one audit row per recorded request in the workspace, naming the person, the employee and the approval, and no row in another workspace", async () => {
     const before = (await auditRows("hermes.client_business_mcp.proposal_requested", a.org.id)).length;
-    const body = reply(await call(a, "crm_manager", "create_task", { title: "Audit this task", contactId: a.contact.id }, "manager"));
+    const body = reply(await call(a, "crm_manager", "create_task", { title: "Audit this task", contactId: a.contact.id, assigneeId: a.crm.people.manager.id }, "manager"));
     expect(body).toMatchObject({ ok: true, status: "pending_approval" });
+    const approval = await approvalRow(body.approvalId as string);
+    expect((approval.action.input as Record<string, unknown>)).not.toHaveProperty("assigneeId");
     const rows = await auditRows("hermes.client_business_mcp.proposal_requested", a.org.id);
     expect(rows).toHaveLength(before + 1);
     expect(rows.at(-1)).toMatchObject({
@@ -310,6 +359,9 @@ describe("the person is the one who asks", () => {
     // The shared engine's own row for the call names the person too.
     const engine = (await auditRows("crm.agent_tool.create_task", a.org.id)).at(-1);
     expect(engine).toMatchObject({ org_id: a.org.id, metadata: { outcome: "pending_approval", actingUserId: a.crm.people.manager.id } });
+    expect((await decideApproval(personContext(a), body.approvalId as string, "approve")).outcome).toMatchObject({ status: "succeeded" });
+    const created = await withSystem((db) => db.query<{ assigned_user_id: string | null }>("select assigned_user_id from tasks where org_id = $1 and title = 'Audit this task'", [a.org.id]));
+    expect(created.rows).toEqual([{ assigned_user_id: null }]);
   });
 });
 

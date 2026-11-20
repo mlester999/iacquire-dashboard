@@ -7,7 +7,7 @@ import { createApproval } from "@/server/approvals/service";
 import { assignConversation, ensureHumanOwner } from "@/server/messaging/handoff";
 import { assertConversationVisible } from "@/server/messaging/access";
 import { recordConversationEvent } from "@/server/messaging/events";
-import { evaluateSend, queueOutbound } from "@/server/messaging/send";
+import { evaluateSend, queueOutbound, type SendPurpose, type SendScope } from "@/server/messaging/send";
 import { maskCustomerLinks } from "@/server/messaging/redact";
 import { getConversationListItem, listConversationsPage, type ConversationFilters, type ConversationListItem } from "@/server/messaging/inbox-list";
 import { TRANSPORT_LABELS, type TransportName } from "@/server/messaging/transports/types";
@@ -305,12 +305,13 @@ export async function markConversationRead(ctx: OrgContext, conversationId: stri
  * A person's own reply. If the AI owns the conversation they take it over first (stopping the AI), then the message goes through
  * the same rule chain as any other. A reply that cannot be sent is refused with the reason instead of being left as a failed row.
  */
-export async function sendHumanReply(ctx: OrgContext, conversationId: string, body: string, opts: { templateId?: string | null } = {}) {
+export async function sendHumanReply(ctx: OrgContext, conversationId: string, body: string, opts: { purpose: SendPurpose; templateId?: string | null }) {
   const text = body.trim();
   if (!text || text.length > 5000) throw new AppError("invalid_input", "Write a message of up to 5,000 characters.");
+  if (opts.purpose !== "service" && opts.purpose !== "marketing") throw new AppError("invalid_input", "Choose whether this is a service or marketing message.");
   return withSystem(async (db) => {
     await ensureHumanOwner(db, ctx, conversationId, "Replied from the inbox");
-    const result = await queueOutbound(db, { orgId: ctx.org.orgId, conversationId, scope: "human", actor: { kind: "human", userId: ctx.user.id }, body: text, templateId: opts.templateId ?? null });
+    const result = await queueOutbound(db, { orgId: ctx.org.orgId, conversationId, scope: "human", actor: { kind: "human", userId: ctx.user.id }, body: text, templateId: opts.templateId ?? null, purpose: opts.purpose });
     await recordAudit({ orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "message.queued", targetType: "conversation", targetId: conversationId, result: "success", metadata: { scope: "human" } }, db);
     return result;
   });
@@ -336,14 +337,19 @@ export async function addInternalNote(ctx: OrgContext, conversationId: string, b
  * full rule chain again with that approval, so a pause, opt-out, takeover or lack of credit still stops it.
  */
 export async function queueApprovedDraft(db: Queryable, input: { orgId: string; messageId: string; approvalId: string }): Promise<{ status: "succeeded" | "blocked"; detail: string }> {
-  const { rows } = await db.query<{ id: string; conversation_id: string; body: string; agent_id: string | null; scope: "reply" | "followup" | "human" | null; status: string; template_id: string | null }>(
-    "select id, conversation_id, body, agent_id, scope, status, template_id from conversation_messages where id = $1 and org_id = $2 and direction = 'outbound' and author_kind = 'ai' for update",
+  const { rows } = await db.query<{ id: string; conversation_id: string; body: string; agent_id: string | null; scope: SendScope | null; status: string; template_id: string | null; purpose: SendPurpose; dedupe_key: string | null }>(
+    "select id, conversation_id, body, agent_id, scope, status, template_id, purpose, dedupe_key from conversation_messages where id = $1 and org_id = $2 and direction = 'outbound' and author_kind = 'ai' for update",
     [input.messageId, input.orgId],
   );
   const m = rows[0];
   if (!m) return { status: "blocked", detail: "The draft no longer exists." };
   if (m.status !== "draft") return { status: "blocked", detail: "The draft was already handled, so nothing more was sent." };
-  const decision = await evaluateSend(db, { orgId: input.orgId, conversationId: m.conversation_id, scope: m.scope ?? "reply", actor: { kind: "ai", agentId: m.agent_id, approvalId: input.approvalId }, body: m.body, templateId: m.template_id });
+  const decision = await evaluateSend(db, {
+    orgId: input.orgId, conversationId: m.conversation_id, scope: m.scope ?? "reply",
+    actor: { kind: "ai", agentId: m.agent_id, approvalId: input.approvalId },
+    body: m.body, templateId: m.template_id, purpose: m.purpose,
+    ...(m.scope === "retention" ? { dedupeKey: m.dedupe_key, approvedDraftMessageId: m.id } : {}),
+  });
   if (!decision.allow) {
     await db.query("update conversation_messages set status = 'blocked', blocked_reason = $2, status_detail = $3, approval_id = $4 where id = $1", [m.id, decision.reason, decision.detail.slice(0, 300), input.approvalId]);
     return { status: "blocked", detail: `Approved, but it cannot be sent right now. ${decision.detail}` };

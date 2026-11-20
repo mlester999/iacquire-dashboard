@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUpRight,
   Bot,
   CalendarCheck2,
   CalendarClock,
@@ -12,6 +13,7 @@ import {
   Handshake,
   HeartPulse,
   Info,
+  Plug,
   Radar,
   ShieldCheck,
   Target,
@@ -19,19 +21,17 @@ import {
   XCircle,
 } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
-import { getDashboard } from "@/server/queries/dashboard";
+import { getDashboard, getOverviewGrowthPartnerState } from "@/server/queries/dashboard";
 import { listIncidentsForClient } from "@/server/ops/incidents";
 import { ServiceNotices } from "@/components/overview/service-notices";
 import { ClosingNotice } from "@/components/offboarding/closing-notice";
 import { getOffboardingForOwner } from "@/server/offboarding/service";
 import { listAgents } from "@/server/workforce/service";
-import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
 import { growthPartnerPrimaryAction } from "@/lib/ai-growth-partner-navigation";
-import { AgentAvatar, AgentStatusBadge } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, ProgressBar } from "@/components/ui/primitives";
 import { ButtonLink } from "@/components/ui/button";
 import { ActivityChart, KpiGrid, OverviewFunnel } from "@/components/overview/overview-client";
-import { AGENT_BY_KEY, agentIdentityLabel } from "@/lib/agents";
+import { PartnerOverviewCard } from "@/components/overview/partner-overview-card";
 import { describeAction } from "@/lib/activity";
 import { SetupNudge } from "@/components/setup/setup-nudge";
 import { PageHero } from "@/components/ui/workspace";
@@ -51,7 +51,8 @@ function greeting(timeZone: string) {
 
 export default async function OverviewPage() {
   const ctx = await requireOrgContext();
-  const [data, agents, growthPartner, notices, closing] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId), getGrowthPartnerControlState(ctx), listIncidentsForClient(ctx), getOffboardingForOwner(ctx)]);
+  const [data, agents, growthPartner, notices, closing] = await Promise.all([getDashboard(ctx), listAgents(ctx.user.id, ctx.org.orgId), getOverviewGrowthPartnerState(ctx), listIncidentsForClient(ctx), getOffboardingForOwner(ctx)]);
+  const canUseGrowthPartner = ctx.org.kind === "client" && ctx.can("agents.use");
   const first = ctx.user.fullName.split(" ")[0] || "there";
   const setupDone = data.setup.filter((s) => s.done).length;
   const setupPct = Math.round((setupDone / data.setup.length) * 100);
@@ -62,6 +63,12 @@ export default async function OverviewPage() {
   // Workspaces on iAcquire's own CRM count native calendars and deals, managed under /crm; the others read their connected GoHighLevel copies.
   const nativeDeals = data.sources.native.opportunities;
   const nativeCalendar = data.sources.native.appointments;
+  const workSignals = [
+    { label: "Leads to review", value: data.work.leadReviews, href: "/leads?tab=review", icon: Radar, alert: true },
+    { label: "Enabled schedules", value: data.work.enabledSchedules, href: "/work/calendar", icon: CalendarClock, alert: false },
+    { label: "Failed work", value: data.work.failedJobs, href: "/work?status=attention", icon: AlertTriangle, alert: true },
+    { label: "Integration errors", value: data.work.integrationErrors, href: "/settings/integrations", icon: Plug, alert: true },
+  ].filter((signal) => signal.value !== null);
 
   const tiles = [
     { key: "newLeads", label: "New leads", icon: <Radar className="size-[18px]" />, definition: "Businesses researched into your review queue in the last 30 days.", href: "/leads", accent: "primary" as const },
@@ -79,18 +86,64 @@ export default async function OverviewPage() {
   return (
     <div className="space-y-6">
       <PageHero target="overview.hero" tone="dark" eyebrow={`${ctx.org.name} · ${formatDate(new Date(),ctx.org.timezone)}`} title={`${greeting(ctx.org.timezone)}, ${first}.`} description="Your AI Growth Partner, pipeline and the decisions that move your business forward — in one workspace." action={<>
-          <ButtonLink href="/approvals" variant="secondary" size="md">
+          {ctx.can("approvals.view") && <ButtonLink href="/approvals" variant="secondary" size="md">
             <ShieldCheck className="size-4" /> Approvals
-          </ButtonLink>
-          <ButtonLink href={growthPartnerAction.href} variant="brand" size="md">
+          </ButtonLink>}
+          {canUseGrowthPartner && <ButtonLink href={growthPartnerAction.href} variant="brand" size="md">
             {growthPartnerAction.label} <ArrowRight className="size-4" />
-          </ButtonLink>
-        </>} aside={<div className="rounded-2xl border border-white/15 bg-white/5 p-5"><p className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Your AI Growth Partner</p><p className="mt-3 text-[17px] font-semibold">{growthPartner?.status === "configured" ? "Business Brain ready" : growthPartner?.status === "paused" ? "Partner paused" : growthPartner ? "Partner setup in progress" : "Ready to set up"}</p><p className="mt-1 text-[13px] text-slate-300">{growthPartner?.currentVersion ? `Active Business Brain v${growthPartner.currentVersion}` : "One lasting conversation for coordinated business work."}</p><Link href="/growth-partner" className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-200">Open Partner Control Center<ArrowRight className="size-3"/></Link></div>}/>
+          </ButtonLink>}
+        </>}/>
 
       <ClosingNotice view={closing} />
       <ServiceNotices incidents={notices} />
 
-      {data.nextActions.length>0&&<section aria-label="What needs your attention" data-aqi-target="overview.next-actions" className="control-panel grid gap-3 p-4 md:grid-cols-3">{data.nextActions.map((action,index)=><Link key={action.title} href={action.href} className="flex items-start gap-3 rounded-xl px-2 py-2 transition hover:bg-surface"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-[12px] font-semibold text-primary-ink">0{index+1}</span><span className="min-w-0"><strong className="block text-[14px] font-semibold">{action.title}</strong><span className="mt-1 block text-[12px] leading-relaxed text-muted">{action.body}</span><span className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-blue-200">{action.cta}<ArrowRight className="size-3"/></span></span></Link>)}</section>}
+      <section aria-label="Partner and workspace priorities" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)]">
+        {canUseGrowthPartner && <PartnerOverviewCard
+          state={growthPartner}
+          hasEnabledLegacyProfile={agents.some((agent) => agent.enabled)}
+          canConfigure={ctx.can("agents.configure")}
+        />}
+
+        <Card className={cn("min-w-0", !canUseGrowthPartner && "xl:col-span-2")} data-aqi-target="overview.next-actions">
+          <CardHeader>
+            <div>
+              <CardTitle id="workspace-priorities">Workspace priorities</CardTitle>
+              <CardDescription>See what is scheduled and where your team needs to act.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {workSignals.length > 0 && <ul className="grid gap-2 min-[375px]:grid-cols-2">
+              {workSignals.map(({ label, value, href, icon: Icon, alert }) => (
+                <li key={label} className="min-w-0">
+                  <Link href={href} className="group flex min-h-16 items-center gap-2.5 rounded-xl border border-line bg-surface-2/55 px-3 py-2.5 transition-colors hover:border-primary/35 hover:bg-surface-2">
+                    <Icon className={cn("size-4 shrink-0", alert && value ? "text-warning-ink" : "text-primary")} aria-hidden />
+                    <span className="min-w-0 flex-1 text-[12px] font-medium leading-snug text-ink-2">{label}</span>
+                    <strong className="text-[17px] font-semibold tabular-nums text-ink">{value}</strong>
+                    <ArrowUpRight className="size-3.5 shrink-0 text-muted group-hover:text-primary" aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>}
+            {data.nextActions.length > 0 ? (
+              <ul className="divide-y divide-line">
+                {data.nextActions.map((action) => (
+                  <li key={action.title}>
+                    <Link href={action.href} className="group flex min-h-11 items-center justify-between gap-3 rounded-lg px-1 py-2.5 hover:text-primary">
+                      <span className="min-w-0">
+                        <strong className="block text-[13px] font-semibold">{action.title}</strong>
+                        <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">{action.body}</span>
+                      </span>
+                      <ArrowRight className="size-4 shrink-0 text-muted group-hover:text-primary" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="flex min-h-11 items-center gap-2 text-[13px] text-muted"><CheckCircle2 className="size-4 text-success-ink" aria-hidden /> No priority actions right now.</p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       <KpiGrid
         tiles={tiles.map((t) => ({
@@ -170,41 +223,7 @@ export default async function OverviewPage() {
         </Card>
       </div>
 
-      <div className={cn("grid gap-6", agents.length > 0 ? "xl:grid-cols-3" : "xl:grid-cols-1")}>
-        {agents.length > 0 && <Card className="xl:col-span-2" data-aqi-target="overview.ai-team">
-          <CardHeader>
-            <div>
-              <CardTitle>Previous role profiles</CardTitle>
-              <CardDescription>Saved role settings and history retained during the move to one AI Growth Partner.</CardDescription>
-            </div>
-            <ButtonLink href="/employees" variant="ghost" size="sm">
-              Review profiles <ArrowRight className="size-3.5" />
-            </ButtonLink>
-          </CardHeader>
-          <CardContent>
-            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {agents.map((a) => {
-                const meta = AGENT_BY_KEY[a.role_key];
-                return (
-                  <li key={a.id}>
-                    <Link
-                      href={a.enabled ? "/growth-partner/conversation" : `/employees/${meta.slug}`}
-                      className="group flex h-full items-center gap-3 rounded-xl border border-line bg-surface p-3 transition hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card"
-                    >
-                      <AgentAvatar role={meta} size="md" />
-                      <div className="min-w-0">
-                        <p className="truncate text-[14px] font-semibold text-ink" title={agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}>{agentIdentityLabel(a.display_name, AGENT_BY_KEY[a.role_key])}</p>
-                        <AgentStatusBadge status={a.enabled?a.status:"disabled"} />
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>}
-
-        <Card className={agents.length > 0 ? "" : "xl:col-span-3"}>
+      <Card>
           <CardHeader>
             <div>
               <CardTitle>Alerts</CardTitle>
@@ -235,8 +254,6 @@ export default async function OverviewPage() {
             )}
           </CardContent>
         </Card>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-2">
         <Card id="tasks">
           <CardHeader>

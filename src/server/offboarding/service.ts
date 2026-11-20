@@ -225,7 +225,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
     await db.query("update approval_requests set status = 'cancelled' where org_id = $1 and status = 'pending'", [orgId]);
     await db.query("update messaging_channels set enabled = false where org_id = $1", [orgId]);
   });
-  await record("automation", true, "Stopped all AI employees and cancelled queued messages, follow-ups, reminders, bookings and customer programs.");
+  await record("automation", true, "Stopped AI runtime activity and cancelled queued messages, follow-ups, reminders, bookings and customer programs.");
   await record("messaging", true, "Disconnected SMS, WhatsApp and email sending.");
 
   // 2. The services connected for this client. A failure here is reported, not swallowed: a live token would still be live.
@@ -331,7 +331,7 @@ export async function shutdownClient(user: SessionUser, requestId: string, input
         "runtime_profiles", runtime.failed.length === 0,
         runtime.failed.length
           ? `Could not ask for containment of: ${runtime.failed.join(", ")}. Contain these profiles by hand (replace the key, switch the tools off) before the data is deleted.`
-          : `Asked the client runtime to contain ${runtime.requested} AI employee profile${runtime.requested === 1 ? "" : "s"}${runtime.alreadyOpen ? ` (${runtime.alreadyOpen} already in progress)` : ""}: each key is replaced and each profile's tools are switched off. Nothing is deleted.`,
+          : `Asked the client runtime to contain ${runtime.requested} AI profile${runtime.requested === 1 ? "" : "s"}${runtime.alreadyOpen ? ` (${runtime.alreadyOpen} already in progress)` : ""}: each key is replaced and each profile's tools are switched off. Nothing is deleted.`,
       );
     }
   }
@@ -465,7 +465,7 @@ export async function executeDeletion(user: Pick<SessionUser, "id" | "platformRo
   if (stillSetUp.length > 0) {
     const leftBecause = (input.acknowledgeRuntimeProfiles ?? "").trim();
     if (leftBecause.length < 10) {
-      throw new AppError("conflict", `${stillSetUp.length} AI employee runtime profile${stillSetUp.length === 1 ? " is" : "s are"} still set up on the client runtime. Have ${stillSetUp.length === 1 ? "it" : "them"} contained first (the key is replaced and the tools are switched off), or write down why ${stillSetUp.length === 1 ? "it is" : "they are"} being left (at least 10 characters).`);
+      throw new AppError("conflict", `${stillSetUp.length} AI runtime profile${stillSetUp.length === 1 ? " is" : "s are"} still set up on the client runtime. Have ${stillSetUp.length === 1 ? "it" : "them"} contained first (the key is replaced and the tools are switched off), or write down why ${stillSetUp.length === 1 ? "it is" : "they are"} being left (at least 10 characters).`);
     }
     await withSystem((db) => recordAudit({
       orgId: r.org_id, actorUserId: user.id, actorKind: "agency", action: "offboarding.runtime_profiles_left", targetType: "offboarding_request", targetId: requestId, result: "success",

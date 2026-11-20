@@ -8,7 +8,7 @@ import { requireOrgContext, requireOrgContextOrThrow, type OrgContext } from "@/
 /** Internal iAcquire employee records are available only to an authenticated agency Super Admin. */
 export function assertWorkforceWorkspaceAccess(ctx: OrgContext): OrgContext {
   if (ctx.org.kind === "agency" && ctx.user.platformRole !== "agency_super_admin") {
-    throw new AppError("forbidden", "Only an iAcquire Super Admin can access internal AI employees.");
+    throw new AppError("forbidden", "Only an iAcquire Super Admin can access internal agency AI profiles.");
   }
   return ctx;
 }

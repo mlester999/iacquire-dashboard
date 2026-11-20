@@ -7,6 +7,7 @@ import { systemActor, type CrmActor } from "@/server/crm/actor";
 import { recordActivity } from "@/server/crm/events";
 import { createTaskInTx } from "@/server/crm/tasks";
 import { notifyOrgRoles } from "@/server/notifications";
+import { checkOrgAutomation } from "@/server/automation/gate";
 import { recordConversationEvent } from "@/server/messaging/events";
 import { recordConsent } from "@/server/messaging/contacts";
 import { queueOutbound } from "@/server/messaging/send";
@@ -233,8 +234,41 @@ export async function sendRecoveryMessage(db: Queryable, c: CaseRow, policy: Mis
 // Reconciling what is in flight
 // ---------------------------------------------------------------------------
 
-/** Reasons that mean a rule (not the platform) stopped the message: the case is held back, not failed. */
-const RULE_BLOCKS = new Set(["suppressed", "no_consent", "contact_unreachable", "human_owner", "stale_ownership", "ai_paused", "case_closed", "needs_approval", "followup_limit"]);
+/** Reasons that mean a rule (not the platform) stopped the message: the case is held back, not failed. A workspace pause or suspension is a rule: it is the team's or iAcquire's decision. */
+const RULE_BLOCKS = new Set(["suppressed", "no_consent", "contact_unreachable", "human_owner", "stale_ownership", "ai_paused", "case_closed", "needs_approval", "followup_limit", "automation_paused", "org_inactive"]);
+
+// ---------------------------------------------------------------------------
+// A paused workspace
+// ---------------------------------------------------------------------------
+
+type PauseReason = "automation_paused" | "org_inactive";
+const isPauseReason = (reason: string | null | undefined): reason is PauseReason => reason === "automation_paused" || reason === "org_inactive";
+
+/**
+ * The reason an automatic text must not be queued right now because of the workspace: the customer-messaging pause, the outbound pause, iAcquire's emergency pause (for this
+ * workspace or the whole platform) or a workspace that is suspended or archived. These are the same checks the send chain makes (evaluateSend and dispatchGate), read here first so
+ * a paused workspace holds the case instead of queueing, blocking and counting a text on every pass.
+ */
+async function pauseHold(db: Queryable, orgId: string): Promise<{ reason: PauseReason; gate: string } | null> {
+  for (const scope of ["messaging", "outbound"] as const) {
+    const gate = await checkOrgAutomation(db, orgId, scope);
+    if (!gate.allowed) return { reason: gate.reason === "org_inactive" ? "org_inactive" : "automation_paused", gate: gate.reason };
+  }
+  return null;
+}
+
+/**
+ * Writes the "paused" case event once per hold: the history says the case is waiting because the workspace's automation is paused, not because of the caller. A pass that finds the
+ * case already recorded as held for the same reason adds nothing, so a long pause does not fill the history. Ids and enum words only, never text.
+ */
+async function recordPauseHold(db: Queryable, c: CaseRow, reason: PauseReason, gate: string | null): Promise<void> {
+  const last = (await db.query<{ kind: string; actor_kind: string; reason: string | null }>(
+    "select kind, actor_kind, detail->>'reason' as reason from missed_call_case_events where org_id = $1 and case_id = $2 order by id desc limit 1",
+    [c.org_id, c.id],
+  )).rows[0];
+  if (last && last.kind === "paused" && last.actor_kind === "system" && last.reason === reason) return;
+  await addCaseEvent(db, { orgId: c.org_id, caseId: c.id, kind: "paused", actor: SYSTEM_ACTOR, detail: { by: "workspace", reason, ...(gate ? { gate } : {}) } });
+}
 
 async function reconcile(db: Queryable, input: CaseRow, policy: MissedCallPolicy, now: Date): Promise<{ row: CaseRow; changed: boolean }> {
   let c = input;
@@ -268,6 +302,7 @@ async function reconcile(db: Queryable, input: CaseRow, policy: MissedCallPolicy
   }
   if (failure && !reached && !isFinishedState(c.state) && ["in_progress", "scheduled", "eligible", "awaiting_eligibility", "awaiting_response"].includes(c.state)) {
     if (failure.rule) {
+      if (isPauseReason(failure.reason)) await recordPauseHold(db, c, failure.reason, null);
       c = await advance(db, c, "suppressed", `message_${failure.reason}`.slice(0, 60), { nextActionAt: later(now, minutes(REVISIT_MINUTES)) });
     } else {
       c = await advance(db, c, "failed", "message_failed", { lastError: failure.reason });
@@ -342,6 +377,14 @@ export async function processCase(db: Queryable, orgId: string, caseId: string, 
     return "draft";
   }
 
+  // Check before creating an action: while a workspace or platform pause is active this case waits, makes no new message row, and does not spend an attempt.
+  const paused = await pauseHold(db, orgId);
+  if (paused) {
+    await recordPauseHold(db, c, paused.reason, paused.gate);
+    await advance(db, c, "suppressed", paused.reason, { nextActionAt: later(now, minutes(REVISIT_MINUTES)) });
+    return "suppressed";
+  }
+
   // 5. The message.
   if (!elig.team.allowed) {
     const reason = elig.team.reason;
@@ -374,6 +417,8 @@ export async function processCase(db: Queryable, orgId: string, caseId: string, 
       await advance(db, c, "in_progress", "message_queued", { nextActionAt: later(now, minutes(RECONCILE_MINUTES)) });
       return "queued";
     }
+    // The pause landed between the check above and the send chain's own (the chain checks again, and refused): the case is held, and the history says why.
+    if (isPauseReason(sent.reason)) await recordPauseHold(db, c, sent.reason, null);
     await advance(db, c, "suppressed", `message_${sent.reason ?? "blocked"}`.slice(0, 60), { nextActionAt: later(now, minutes(REVISIT_MINUTES)) });
     return "suppressed";
   }

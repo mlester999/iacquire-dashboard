@@ -114,7 +114,7 @@ export interface AgencyHermesToolReview {
 
 function requireSuperAdmin(admin: SessionUser) {
   if (admin.platformRole !== "agency_super_admin") {
-    throw new AppError("forbidden", "Only a Super Admin can manage the internal AI workforce.");
+    throw new AppError("forbidden", "Only a Super Admin can manage internal agency AI profiles.");
   }
 }
 
@@ -136,7 +136,7 @@ async function getAgencyAgent(agentId: string) {
     [agentId],
   ));
   const agent = rows[0];
-  if (!agent || agent.kind !== "agency") throw new AppError("not_found", "Internal AI employee not found.");
+  if (!agent || agent.kind !== "agency") throw new AppError("not_found", "Internal agency AI profile not found.");
   return agent;
 }
 
@@ -423,7 +423,7 @@ export async function connectAgencyHermesProfile(
     [agent.org_id, agent.id],
   ));
   if (otherGateways.rows.some((row) => row.hermes_gateway_id !== input.gatewayId)) {
-    throw new AppError("conflict", "All six iAcquire employees must use the same approved shared Hermes gateway.");
+    throw new AppError("conflict", "Internal agency AI profiles must use the same approved shared Hermes gateway.");
   }
 
   // Verify the candidate against the existing role-specific identity before Vault rotation can

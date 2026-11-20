@@ -41,6 +41,7 @@ import { crmOrg } from "./support/crm";
 import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
 import { applyRealBlueprint, readyClient, settled } from "./support/launch";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
 
 const itemOf = (r: LaunchReadiness, key: string) => r.steps.flatMap((s) => s.items).find((i) => i.key === key)!;
 const stepOf = (r: LaunchReadiness, key: string) => r.steps.find((s) => s.key === key)!;
@@ -773,4 +774,24 @@ describe("what the calendar's re-check recorded, read into the facts", () => {
     expect((await loadLaunchFacts(a.ctx))!.appointments.calendar!.drift).toEqual({ checks: [{ key: "types", detail: "Nothing to book." }] });
     expect((await loadLaunchFacts(b.ctx))!.appointments.calendar!.drift).toBeUndefined();
   }, 240_000);
+});
+
+describe("launch readiness for a Growth-Partner-only workspace", () => {
+  it("reads the Business Brain, permanent conversation and runtime as required Partner items", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Readiness Facts", runtime: "setup_required" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+
+    const membership = { ...tenant.ownerCtx.org, onboardingCompletedAt: new Date().toISOString() };
+    const ctx = { ...tenant.ownerCtx, org: membership, memberships: [membership] };
+    const readiness = await getLaunchReadiness(ctx);
+    expect(readiness).not.toBeNull();
+    const keys = readiness!.steps.flatMap((step) => step.items).map((item) => item.key);
+    expect(keys).toEqual(expect.arrayContaining(["growth_partner.brain", "growth_partner.conversation", "growth_partner.runtime"]));
+    expect(itemOf(readiness!, "growth_partner.brain")).toMatchObject({ state: "done", required: true });
+    expect(itemOf(readiness!, "growth_partner.conversation").required).toBe(true);
+    expect(itemOf(readiness!, "growth_partner.runtime").required).toBe(true);
+    for (const role of AGENT_ROLE_KEYS) expect(keys).not.toContain(`employees.${role}`);
+    await expectNoLegacyEmployeeRows(tenant.org.id);
+  });
 });

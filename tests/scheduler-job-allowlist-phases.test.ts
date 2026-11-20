@@ -120,9 +120,9 @@ describe("the Phase 2 to 4 jobs through the real tick endpoint", () => {
     expect(before.cases).toHaveLength(3); // the work is really there ...
     expect(before.scoringQueue).toHaveLength(1);
     expect(before.publishJobs.map((j) => j.status)).toEqual(["queued", "queued"]);
-    setOnly("aiWorkRecovery, crmWorkflowRecovery, inboxAttention, studioEntitlementSweep");
+    setOnly("aiWorkRecovery, aiWorkRunQueued, crmWorkflowRecovery, inboxAttention, studioEntitlementSweep");
     const ran = await runTick();
-    expect(Object.keys(ran)).toEqual(inRegistryOrder(["aiWorkRecovery", "crmWorkflowRecovery", "inboxAttention", "studioEntitlementSweep"]));
+    expect(Object.keys(ran)).toEqual(inRegistryOrder(["aiWorkRecovery", "aiWorkRunQueued", "crmWorkflowRecovery", "inboxAttention", "studioEntitlementSweep"]));
     expect(Object.values(ran)).not.toContain("failed");
     // ... and nothing of it moved, and none of the eight (nor missedCallSweep, which runs inside missedCallRecovery) left a heartbeat.
     expect(await pending()).toEqual(before);
@@ -174,9 +174,9 @@ describe("the Phase 2 to 4 jobs through the real tick endpoint", () => {
     // The simulated post was already out; the real account's job never moved.
     expect((await socialRows<{ status: string; attempt: number }>("select status, attempt from social_publish_jobs where id = $1", [world.realJob]))[0]).toEqual({ status: "queued", attempt: 0 });
 
-    // Exactly these heartbeats exist: the eight, missedCallRecovery's own sweep, the four jobs the first test named, and the tick itself. No dispatcher, no campaigns, no reminders.
+    // Exactly these heartbeats exist: the eight, missedCallRecovery's own sweep, the five jobs the first test named, and the tick itself. No dispatcher, no campaigns, no reminders.
     const beats = (await heartbeatNames()).filter((n) => n !== "scheduler_tick" && n !== "tick");
-    expect(beats.sort()).toEqual([...PHASE_2_TO_4, "missedCallSweep", "aiWorkRecovery", "crmWorkflowRecovery", "inboxAttention", "studioEntitlementSweep"].sort());
+    expect(beats.sort()).toEqual([...PHASE_2_TO_4, "missedCallSweep", "aiWorkRecovery", "aiWorkRunQueued", "crmWorkflowRecovery", "inboxAttention", "studioEntitlementSweep"].sort());
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

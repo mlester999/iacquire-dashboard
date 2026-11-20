@@ -18,7 +18,7 @@ export default async function AddOnsPage() {
         icon={<Sparkles className="size-4" />}
         eyebrow="Grow with iAcquire"
         title="Custom Projects & Add-ons"
-        description="Extra automations, AI agents, websites and software built around your business. Everything here is optional, and you always see a written quote before anything is built."
+        description="Extra automations, custom AI workflows, websites and software built around your business. Everything here is optional, and you always see a written quote before anything is built."
         action={<>
           <ButtonLink href="/projects" variant="secondary">
             <FolderKanban className="size-4" /> My projects

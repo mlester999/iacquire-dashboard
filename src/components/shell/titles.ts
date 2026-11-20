@@ -6,6 +6,7 @@ export const FALLBACK_TITLE = "iAcquire";
 export const TITLES: Array<[RegExp, string]> = [
   [/^\/overview/, "Overview"],
   [/^\/setup/, "Setup"],
+  [/^\/growth-partner\/conversation/, "Permanent Conversation"],
   [/^\/growth-partner/, "AI Growth Partner"],
   [/^\/employees\/[^/]+\/configure/, "Configure role profile"],
   [/^\/employees/, "Previous role profiles"],
@@ -15,8 +16,8 @@ export const TITLES: Array<[RegExp, string]> = [
   [/^\/proposals/, "Proposals"],
   [/^\/invoices/, "Invoices"],
   [/^\/retention/, "Customer Retention"],
-  [/^\/analytics/, "Analytics"],
-  [/^\/approvals/, "Approval Center"],
+  [/^\/analytics/, "Performance Reporting"],
+  [/^\/approvals/, "Approvals"],
   [/^\/knowledge/, "Knowledge Center"],
   [/^\/activity/, "Activity"],
   [/^\/notifications/, "Notifications"],
@@ -33,6 +34,7 @@ export const TITLES: Array<[RegExp, string]> = [
   [/^\/crm\/reviews/, "Reviews"],
   [/^\/crm/, "CRM"],
   [/^\/inbox/, "Inbox"],
+  [/^\/settings\/ai/, "Growth Partner Settings"],
   [/^\/settings/, "Settings"],
   [/^\/add-ons/, "Custom Projects & Add-ons"],
   [/^\/projects/, "My Projects"],
@@ -41,7 +43,8 @@ export const TITLES: Array<[RegExp, string]> = [
   [/^\/automation-studio/, "Automation Studio"],
   [/^\/website/, "Website"],
   [/^\/social/, "Social Media"],
-  [/^\/work/, "Work Board"],
+  [/^\/work\/calendar/, "Schedules & Calendar"],
+  [/^\/work/, "AI Work Board"],
 ];
 
 export function titleFor(pathname: string): string {

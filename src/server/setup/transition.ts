@@ -4,6 +4,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { clientTitle, loadRuleTasks, recordSetupEvent, type InstanceRow, type TaskRow, type TxHelpers } from "@/server/setup/core";
 import { isApplicable, STATUS_LABEL, unmetDependencies, type TaskStatus } from "@/lib/setup";
+import { currentSetupCopy } from "@/lib/setup-copy";
 
 export type CompletionSource = "agency" | "connector" | "attestation" | "activation";
 
@@ -148,9 +149,17 @@ export async function applyTransition(db: Queryable, h: TxHelpers, inst: Instanc
   );
 
   if (t.notify !== false && isApplicable({ hidden: task.hidden, serviceExcluded: task.service_excluded }) && task.completion_mode !== "activation") {
-    const title = clientTitle(task);
+    const copy = currentSetupCopy({
+      key: task.template_key ?? "",
+      title: task.title,
+      clientTitle: task.client_title,
+      description: task.description,
+      completionNotice: task.completion_notice,
+      clientAction: task.client_action,
+    });
+    const title = copy.clientTitle?.trim() || clientTitle(task);
     if (to === "completed") {
-      await h.notifyClient({ kind: "setup_milestone", severity: "success", title: task.completion_notice || `${title} — completed`, body: t.clientText?.trim() || undefined, link: "/setup" });
+      await h.notifyClient({ kind: "setup_milestone", severity: "success", title: copy.completionNotice || `${title} — completed`, body: t.clientText?.trim() || undefined, link: "/setup" });
     } else if (to === "waiting_for_client") {
       await h.notifyClient({ kind: "setup_action_required", severity: "warning", title: `Action needed: ${task.client_action?.label ?? title}`, body: t.clientText?.trim() || task.client_note || undefined, link: "/setup" });
     } else if (to === "blocked") {

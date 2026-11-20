@@ -4,17 +4,27 @@ import { AppError } from "@/server/errors";
 import { agencyCanAccessOrg } from "@/server/tenancy/context";
 import { usageSummary, type UsageSummary } from "@/server/usage";
 import type { SessionUser } from "@/server/auth/service";
-import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
+import { AGENCY_HERMES_PROFILE_IDS, AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY, WORKFORCE_ROLE_KEYS, type WorkforceRoleKey, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { internalAcknowledgementIsCurrent, internalIdentityIsCurrent } from "@/lib/workforce-readiness";
 import { redactReviewText, type ReviewVersionView } from "@/lib/config-review";
 import { ensureAgencyWorkforceRegistry } from "@/server/workforce/agency-registry";
 import { listHeldConfigReviewsForOrg } from "@/server/workforce/reviews";
 import { listClientPayments, type AgencyPaymentView } from "@/server/billing/payments-view";
 import { runtimeReadySql } from "@/lib/employee-runtime";
-import { clientContentAccess } from "@/server/admin/client-content-policy";
+import { clientContentAccess, CONTENT_WITHHELD_NOTICE } from "@/server/admin/client-content-policy";
 import { readinessExtrasFor } from "@/server/workforce/readiness-facts";
 import { loadCapabilityActivity } from "@/server/workforce/capability-status";
 import type { CapabilityActivity } from "@/lib/employee-capability-status";
+import { readGrowthPartnerOperations, type GrowthPartnerOperations } from "@/server/admin/growth-partner-operations";
+
+/** The one source of truth for Partner readiness in the fleet KPI, card and tenant detail. */
+function growthPartnerStatusSql(partnerAlias: string, agentAlias: string): string {
+  return `case when ${partnerAlias}.status in ('paused','migration_required') then ${partnerAlias}.status
+              when ${partnerAlias}.current_version is not null and ${runtimeReadySql(agentAlias, { credentialRevocation: true })} then 'configured'
+              when ${agentAlias}.status in ('error','offline') then 'needs_attention'
+              when ${agentAlias}.status = 'provisioning' or ${partnerAlias}.status = 'provisioning' then 'provisioning'
+              else 'setup_required' end`;
+}
 
 /** One recorded step of a provisioning request, read from its audit rows. */
 export interface ProvisioningEvent {
@@ -121,11 +131,12 @@ export interface TenantDetail {
   }>;
   growthPartner: {
     id: string;
-    status: "setup_required" | "provisioning" | "configured" | "paused" | "migration_required";
+    status: "setup_required" | "provisioning" | "configured" | "needs_attention" | "paused" | "migration_required";
     runtime_agent_instance_id: string | null;
     enabled: boolean | null;
     runtime_status: AgentStatus | null;
     hermes_profile: string | null;
+    has_credential: boolean;
     last_health_check_at: Date | null;
     last_health_detail: string | null;
     current_version: number | null;
@@ -136,6 +147,7 @@ export interface TenantDetail {
   } | null;
   /** Available only to Super Admins with workforce access. This has no secrets or content. */
   migrationInventory: GrowthPartnerMigrationInventory | null;
+  growthPartnerOperations: GrowthPartnerOperations | null;
   heldVersions: ReviewVersionView[];
   /** A waiting section edit (content is the waiting text; the approved text is untouched and still in use) or text held by the older code. */
   heldKnowledge: Array<{ section: string; content: string; risk_flags: string[]; updated_at: Date }>;
@@ -148,7 +160,7 @@ export interface TenantDetail {
    */
   contentAccess: { sessionRequired: boolean; hasSession: boolean; permitted: boolean; heldKnowledgeHidden: number; runDetailsHidden: number };
   provisioning: Array<{
-    id: string; agent_id: string; agent_role: AgentRoleKey; kind: string; config_version: number | null; status: string; detail: string | null; created_at: Date; attempt_count: number;
+    id: string; agent_id: string; agent_role: WorkforceRoleKey; kind: string; config_version: number | null; status: string; detail: string | null; created_at: Date; attempt_count: number;
     next_retry_at: Date | null; lease_expires_at: Date | null;
     /** True for the newest request of its employee: the only one that can be requeued. */
     is_latest: boolean;
@@ -169,7 +181,9 @@ export interface TenantDetail {
   payments: AgencyPaymentView[];
   usage: UsageSummary;
   staff: Array<{ user_id: string; full_name: string; email: string; assigned: boolean }>;
-  failedRuns: Array<{ id: string; agent_role: AgentRoleKey; error_code: string | null; error_message: string | null; finished_at: Date | null }>;
+  failedRuns: Array<{ id: string; agent_role: WorkforceRoleKey; error_code: string | null; error_message: string | null; finished_at: Date | null }>;
+  failedWorkJobs: Array<{ id: string; agent_role: WorkforceRoleKey; capability: string; failure_code: string | null; finished_at: Date | null }>;
+  failedApprovalExecutions: Array<{ id: string; execution_status: string; executed_at: Date | null }>;
 }
 
 export async function getTenantDetail(user: SessionUser, orgId: string): Promise<TenantDetail> {
@@ -195,7 +209,7 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       integrations: accessRow?.integrations === true,
       setup: accessRow?.setup === true,
     };
-    const canViewMigrationInventory = access.workforce && user.platformRole === "agency_super_admin";
+    const canViewPartnerAdministration = access.workforce && user.platformRole === "agency_super_admin";
     const canViewPayments = accessRow?.billing === true;
     const { rows: org } = await db.query<TenantDetail["org"]>(
       "select id, name, slug, status, kind, is_demo, industry, website, timezone, created_at, onboarding_completed_at, suspended_reason from organizations where id = $1",
@@ -238,12 +252,10 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
     );
     const growthPartner = await db.query<NonNullable<TenantDetail["growthPartner"]>>(
       `select p.id,
-              case when p.status in ('paused','migration_required') then p.status
-                   when p.current_version is not null and ${runtimeReadySql("a", { credentialRevocation: true })} then 'configured'
-                   when a.status = 'provisioning' or p.status = 'provisioning' then 'provisioning'
-                   else 'setup_required' end as status,
+              ${growthPartnerStatusSql("p", "a")} as status,
               p.runtime_agent_instance_id, a.enabled, a.status as runtime_status,
-              a.hermes_profile, a.last_health_check_at, a.last_health_detail,
+              a.hermes_profile, (a.credential_id is not null and exists (select 1 from integration_credentials ic where ic.id = a.credential_id and ic.org_id = a.org_id and ic.provider = 'hermes' and ic.revoked_at is null)) as has_credential,
+              a.last_health_check_at, a.last_health_detail,
               p.current_version,
               (select max(v.version)::int from ai_growth_partner_versions v where v.org_id = p.org_id and v.partner_id = p.id) as latest_version,
               (select max(c.last_message_at) from chat_conversations c where c.org_id = p.org_id and c.growth_partner_id = p.id and c.deleted_at is null) as last_message_at,
@@ -254,7 +266,11 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
        where p.org_id = $1`,
       [orgId],
     );
-    const migrationInventory = canViewMigrationInventory
+    const partner = growthPartner.rows[0];
+    const growthPartnerOperations = canViewPartnerAdministration && org[0].kind === "client"
+      ? await readGrowthPartnerOperations(db, orgId, Boolean(partner), partner?.runtime_status ? partner.runtime_agent_instance_id : null)
+      : null;
+    const migrationInventory = canViewPartnerAdministration
       ? await db.query<GrowthPartnerMigrationInventory>(
           `with legacy_profiles as (
              select id, enabled, hermes_profile, credential_id, active_config_version_id
@@ -321,12 +337,14 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
         )
       : [];
     const provisioningRows = await db.query<Omit<TenantDetail["provisioning"][number], "history">>(
-      `select j.id, j.agent_instance_id as agent_id, a.role_key as agent_role, j.kind, v.version as config_version, j.status, j.detail, j.created_at, j.attempt_count, j.next_retry_at, j.lease_expires_at,
+      `select j.id, j.agent_instance_id as agent_id, a.role_key as agent_role, j.kind, v.version as config_version, j.status,
+              case when a.role_key = 'growth_partner' then null else j.detail end as detail,
+              j.created_at, j.attempt_count, j.next_retry_at, j.lease_expires_at,
               j.id = (select l.id from agent_provisioning_jobs l where l.agent_instance_id = j.agent_instance_id and l.org_id = j.org_id order by l.created_at desc, l.id desc limit 1) as is_latest
        from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
        left join agent_config_versions v on v.id=j.config_version_id
        where j.org_id = $1 and a.role_key = any($2::text[]) order by j.created_at desc limit 30`,
-      [orgId, AGENT_ROLE_KEYS],
+      [orgId, WORKFORCE_ROLE_KEYS],
     );
     // The last five audit rows of each listed request, for this workspace only.
     const provisioningEvents = provisioningRows.rows.length
@@ -376,7 +394,21 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       `select r.id, a.role_key as agent_role, r.error_code, r.error_message, r.finished_at
        from agent_runs r join agent_instances a on a.id = r.agent_instance_id
        where r.org_id = $1 and a.role_key = any($2::text[]) and r.status in ('failed', 'timeout', 'interrupted') order by r.finished_at desc nulls last limit 10`,
-      [orgId, AGENT_ROLE_KEYS],
+      [orgId, WORKFORCE_ROLE_KEYS],
+    );
+    const failedWorkJobs = await db.query<TenantDetail["failedWorkJobs"][number]>(
+      `select j.id, a.role_key as agent_role, j.capability, j.failure_code, j.finished_at
+         from ai_work_jobs j join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
+        where j.org_id = $1 and a.role_key = $2 and j.status = 'failed'
+        order by j.finished_at desc nulls last limit 10`,
+      [orgId, AI_GROWTH_PARTNER_ROLE_KEY],
+    );
+    const failedApprovalExecutions = await db.query<TenantDetail["failedApprovalExecutions"][number]>(
+      `select r.id, r.execution_status, r.executed_at
+         from approval_requests r join agent_instances a on a.id = r.agent_instance_id and a.org_id = r.org_id
+        where r.org_id = $1 and a.role_key = $2 and r.execution_status in ('failed', 'blocked')
+        order by r.executed_at desc nulls last limit 10`,
+      [orgId, AI_GROWTH_PARTNER_ROLE_KEY],
     );
     // Founder decision D70: while the stricter rule is on, a held knowledge entry's text and a failed run's error text are content, and this reader bypasses
     // row-level security. It withholds them unless the person has an active support session on this client (the same condition the database applies), and keeps
@@ -390,8 +422,16 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       members: access.team ? members.rows : [],
       invitations: access.team ? invitations.rows : [],
       agents: access.workforce ? agents.rows : [],
-      growthPartner: access.workforce ? growthPartner.rows[0] ?? null : null,
-      migrationInventory: canViewMigrationInventory ? migrationInventory?.rows[0] ?? null : null,
+      growthPartner: access.workforce && growthPartner.rows[0]
+        ? {
+            ...growthPartner.rows[0],
+            last_health_detail: contentAccess.permitted || !growthPartner.rows[0].last_health_detail
+              ? growthPartner.rows[0].last_health_detail
+              : CONTENT_WITHHELD_NOTICE,
+          }
+        : null,
+      growthPartnerOperations,
+      migrationInventory: canViewPartnerAdministration ? migrationInventory?.rows[0] ?? null : null,
       heldVersions,
       heldKnowledge: access.workforce && contentAccess.permitted
         ? heldKnowledge.rows.map((item) => ({ ...item, content: redactReviewText(item.content) }))
@@ -412,8 +452,10 @@ export async function getTenantDetail(user: SessionUser, orgId: string): Promise
       usage: await usageSummary(db, orgId),
       staff: access.team ? staff.rows : [],
       failedRuns: access.workforce
-        ? failedRuns.rows.map((r) => (contentAccess.permitted ? r : { ...r, error_message: r.error_message ? "Hidden until you open a support session on this client." : null }))
+        ? failedRuns.rows.map((r) => (contentAccess.permitted ? r : { ...r, error_message: r.error_message ? CONTENT_WITHHELD_NOTICE : null }))
         : [],
+      failedWorkJobs: access.workforce ? failedWorkJobs.rows : [],
+      failedApprovalExecutions: access.workforce ? failedApprovalExecutions.rows : [],
     };
   });
 }
@@ -484,14 +526,14 @@ export async function getAdminOverview(user: SessionUser): Promise<AdminOverview
     preparing: number;
     needs_attention: number;
   }>(
-    `select count(*) filter (where ${runtimeReadySql("a")})::int as online,
+    `select count(*) filter (where ${growthPartnerStatusSql("gp", "a")} = 'configured')::int as online,
             count(*) filter (where a.enabled)::int as enabled,
-            count(*) filter (where a.enabled and a.status in ('provisioning','setup_required'))::int as preparing,
-            count(*) filter (where a.enabled and a.status in ('error','offline'))::int as needs_attention
+            count(*) filter (where ${growthPartnerStatusSql("gp", "a")} in ('provisioning','setup_required'))::int as preparing,
+            count(*) filter (where ${growthPartnerStatusSql("gp", "a")} in ('needs_attention','paused','migration_required'))::int as needs_attention
        from organizations o
        join ai_growth_partners gp on gp.org_id = o.id
-       join agent_instances a on a.id = gp.runtime_agent_instance_id and a.org_id = o.id and a.role_key = 'growth_partner'
-       where o.kind = 'client' and app.user_can_access_org($1,o.id)`,
+       left join agent_instances a on a.id = gp.runtime_agent_instance_id and a.org_id = o.id and a.role_key = 'growth_partner'
+       where o.kind = 'client' and app.user_has_agency_permission($1,'agency.workforce.view') and app.user_can_access_org($1,o.id)`,
     [user.id],
   ))).rows[0];
 
@@ -542,17 +584,23 @@ export async function listAllAgents(user: SessionUser) {
 
 /** Tenant-scoped operational status for the unified partner. Conversation content is never selected here. */
 export async function listGrowthPartners(user: SessionUser) {
-  return withUser(user.id, async (db) => {
+  const allowed = await withUser(user.id, async (db) => {
     const access = await db.query<{ allowed: boolean }>(
       "select coalesce(app.user_has_agency_permission($1,'agency.workforce.view'),false) as allowed",
       [user.id],
     );
-    if (access.rows[0]?.allowed !== true) throw new AppError("forbidden", "Your agency role does not allow viewing client workforce status.");
+    return access.rows[0]?.allowed === true;
+  });
+  if (!allowed) throw new AppError("forbidden", "Your agency role does not allow viewing client workforce status.");
+
+  // The agency app role cannot read ai_growth_partners directly. Use a trusted read only after
+  // checking the viewer permission, then repeat the per-client assignment rule in SQL.
+  return withSystem(async (db) => {
     const { rows } = await db.query<{
       id: string;
       org_id: string;
       org_name: string;
-      status: "setup_required" | "provisioning" | "configured" | "paused" | "migration_required";
+      status: "setup_required" | "provisioning" | "configured" | "needs_attention" | "paused" | "migration_required";
       runtime_agent_instance_id: string | null;
       enabled: boolean | null;
       runtime_status: AgentStatus | null;
@@ -565,12 +613,11 @@ export async function listGrowthPartners(user: SessionUser) {
       active_run: boolean;
       runs_30d: number;
       failed_30d: number;
+      failed_work_jobs_30d: number;
+      failed_approval_executions_30d: number;
     }>(
       `select p.id, p.org_id, o.name as org_name,
-              case when p.status in ('paused','migration_required') then p.status
-                   when p.current_version is not null and ${runtimeReadySql("a", { credentialRevocation: true })} then 'configured'
-                   when a.status = 'provisioning' or p.status = 'provisioning' then 'provisioning'
-                   else 'setup_required' end as status,
+              ${growthPartnerStatusSql("p", "a")} as status,
               p.runtime_agent_instance_id,
               a.enabled, a.status as runtime_status, a.hermes_profile, a.last_health_check_at, a.last_health_detail,
               p.current_version,
@@ -578,13 +625,24 @@ export async function listGrowthPartners(user: SessionUser) {
               (select max(c.last_message_at) from chat_conversations c where c.org_id = p.org_id and c.growth_partner_id = p.id and c.deleted_at is null) as last_message_at,
               exists(select 1 from agent_runs running where running.agent_instance_id = a.id and running.status = 'running') as active_run,
               (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.started_at > now() - interval '30 days') as runs_30d,
-              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d
+              (select count(*)::int from agent_runs r where r.agent_instance_id = a.id and r.status in ('failed','timeout','interrupted') and r.started_at > now() - interval '30 days') as failed_30d,
+              (select count(*)::int from ai_work_jobs j where j.agent_instance_id = a.id and j.status = 'failed' and j.finished_at > now() - interval '30 days') as failed_work_jobs_30d,
+              (select count(*)::int from approval_requests r where r.agent_instance_id = a.id and r.execution_status in ('failed','blocked') and coalesce(r.executed_at, r.created_at) > now() - interval '30 days') as failed_approval_executions_30d
        from ai_growth_partners p
        join organizations o on o.id = p.org_id
        left join agent_instances a on a.id = p.runtime_agent_instance_id and a.org_id = p.org_id and a.role_key = 'growth_partner'
-       where o.kind = 'client' order by o.name`,
+       where o.kind = 'client' and app.user_has_agency_permission($1,'agency.workforce.view') and app.user_can_access_org($1, o.id) order by o.name`,
+      [user.id],
     );
-    return rows;
+    const visible: typeof rows = [];
+    for (const partner of rows) {
+      const contentAccess = await clientContentAccess(db, user.id, partner.org_id);
+      visible.push({
+        ...partner,
+        last_health_detail: contentAccess.permitted || !partner.last_health_detail ? partner.last_health_detail : CONTENT_WITHHELD_NOTICE,
+      });
+    }
+    return visible;
   });
 }
 

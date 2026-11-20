@@ -122,6 +122,28 @@ describe("WorkJobPanel", () => {
     expect(screen.queryByText(/Saved with execution evidence/i)).toBeNull();
   });
 
+  it("shows a blocked connection prerequisite with a direct fix link", async () => {
+    stubJob(job({
+      capability: "appointment_availability",
+      status: "blocked",
+      statusLabel: "Waiting for connection",
+      stage: "awaiting_connection",
+      stageLabel: "Waiting for a connection",
+      failureCode: "awaiting_connection",
+      failureMessage: "No active calendar is set up yet.",
+      failureHref: "/crm/calendar",
+      resultSummary: "Waiting for Calendar: No active calendar is set up yet.",
+      canCancel: false,
+      canRetry: true,
+      events: [],
+    }));
+    render(<WorkJobPanel jobId="job-1" />);
+    expect(await screen.findByText("Waiting for connection")).toBeTruthy();
+    expect(screen.getByText("No active calendar is set up yet.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Fix connection" }).getAttribute("href")).toBe("/crm/calendar");
+    expect(screen.queryByText(/Saved with execution evidence/i)).toBeNull();
+  });
+
   it("shows real bookable availability returned by the job", async () => {
     stubJob(job({
       capability: "appointment_availability",

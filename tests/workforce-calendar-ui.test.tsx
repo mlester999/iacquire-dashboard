@@ -79,13 +79,23 @@ function data(): WorkforceCalendarData {
 describe("workforce calendar UI", () => {
   it("renders scheduled occurrences separately from recorded jobs with workspace-local times", () => {
     vi.stubGlobal("fetch", vi.fn());
-    render(<WorkforceCalendar initialData={data()} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules />);
+    const calendar = data();
+    calendar.schedules[0].lastSkippedReason = "consecutive_failures";
+    calendar.schedules[0].lastSkippedAt = "2027-03-14T22:00:00.000Z";
+    render(<WorkforceCalendar initialData={calendar} initialDateKey={initialDateKey} referenceTime="2027-03-15T14:00:00.000Z" canManageSchedules />);
+
+    expect(screen.getByRole("heading", { name: "Schedules & Calendar" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Work Board sections" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Work Board" }).getAttribute("href")).toBe("/work");
+    expect(screen.getByRole("link", { name: "Schedules & Calendar" }).getAttribute("href")).toBe("/work/calendar");
+    expect(screen.getByRole("group", { name: "Filter work source" })).toBeTruthy();
 
     const occurrence = screen.getAllByRole("button", { name: /CRM quality review, Previous profile · CRM Manager, scheduled occurrence, not a job/ })[0];
     expect(occurrence).toBeTruthy();
     expect(occurrence.textContent).toContain("9:00 AM");
     expect(screen.getByText("Future occurrence · not a job")).toBeTruthy();
     expect(screen.getByText(/No job will be created from this occurrence/)).toBeTruthy();
+    expect(screen.getByText(/Last schedule check: Paused after three consecutive scheduled jobs failed or were blocked/i)).toBeTruthy();
     expect(screen.getByText("Schedule time zone")).toBeTruthy();
     expect(screen.getByText("Last actual run")).toBeTruthy();
     expect(screen.getByText("Next recurrence")).toBeTruthy();

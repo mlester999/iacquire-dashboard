@@ -88,8 +88,10 @@ export async function getAnalytics(ctx: OrgContext, range: Range) {
       p,
     );
     const bySource = await db.query<{ source: string; total: number; approved: number; avg_score: string | null }>(
-      `select source_platform as source, count(*)::int as total, count(*) filter (where review_status = 'approved')::int as approved, avg(score)::numeric(6,1)::text as avg_score
-       from leads where org_id = $1 and created_at between $2 and $3 group by 1 order by 2 desc`,
+      `select case when source_platform = 'approved_source' and evidence -> 0 ->> 'source' in ('openstreetmap', 'fsa_directory')
+                   then evidence -> 0 ->> 'source' else source_platform end as source,
+              count(*)::int as total, count(*) filter (where review_status = 'approved')::int as approved, avg(score)::numeric(6,1)::text as avg_score
+       from leads where org_id = $1 and created_at between $2 and $3 group by 1 order by 2 desc, 1`,
       p,
     );
 

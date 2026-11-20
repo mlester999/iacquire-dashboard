@@ -26,13 +26,25 @@ beforeAll(async () => {
   await addMember(org.id, owner.id, "owner");
   ownerContext = ctxFor(owner, org, "owner");
 
+  await withSystem((db) => db.query(
+    "update company_profiles set ideal_customers = $2, goals = $3 where org_id = $1",
+    [org.id, "PRIVATE_HEAD_IDEAL_CUSTOMER_MARKER", ["PRIVATE_HEAD_BUSINESS_GOAL_MARKER"]],
+  ));
+
   runtimeId = await withSystem((db) => ensureGrowthPartnerRuntime(org.id, db));
   const identity = await ensureGrowthPartnerIdentity(ownerContext);
   partnerId = identity.id;
+  const settings = {
+    ...defaultSettings("growth_partner"),
+    responsibilities: "PRIVATE_HEAD_RESPONSIBILITY_MARKER",
+    goals: "PRIVATE_HEAD_EMPLOYEE_GOAL_MARKER",
+    targetCustomers: "PRIVATE_HEAD_TARGET_CUSTOMER_MARKER",
+    escalationContact: "PRIVATE_HEAD_ESCALATION_CONTACT_MARKER",
+  };
   await withSystem((db) => createConfigVersion(db, {
     orgId: org.id,
     agentId: runtimeId,
-    settings: defaultSettings("growth_partner"),
+    settings,
     source: "onboarding",
     userId: owner.id,
     apply: true,
@@ -80,7 +92,19 @@ describe("AI Growth Partner unified runtime context", () => {
       key: "cancellation",
       valueText: "Appointment cancellations require 24 hours notice.",
     });
-    await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: 3, version: cancellation.version });
+    const minimumBudget = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: cancellation.version,
+      section: "idealCustomers",
+      key: "minimumBudget",
+      valueText: "PRIVATE_MINIMUM_BUDGET_MARKER: $5,000 monthly.",
+    });
+    const escalationContact = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: minimumBudget.version,
+      section: "businessOperations",
+      key: "escalationContacts",
+      valueText: "PRIVATE_ESCALATION_CONTACT_MARKER: call the owner directly.",
+    });
+    await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: 3, version: escalationContact.version });
 
     const otherOrg = await createOrg({ name: "Separate Unified Context Tenant" });
     const otherOwner = await createUser({ name: "Separate Context Owner" });
@@ -140,7 +164,7 @@ describe("AI Growth Partner unified runtime context", () => {
     await reviewGrowthPartnerLegacyKnowledge(ownerContext, { importId: rejectedImport.id, status: "rejected" });
 
     const built = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "How should I research roofing prospects?"));
-    expect(built.instructions).toContain("## Active Business Brain (version 5)");
+    expect(built.instructions).toContain(`## Active Business Brain (version ${escalationContact.version})`);
     expect(built.instructions).toContain("businessIdentity.companyName: Synthetic Roofing Co.");
     expect(built.instructions).toContain("businessIdentity.industry: Residential roofing");
     expect(built.instructions).not.toContain("Roof inspections start at $150.");
@@ -149,11 +173,40 @@ describe("AI Growth Partner unified runtime context", () => {
     expect(built.instructions).toContain("Leads created: 5 per week.");
     expect(built.instructions).toContain("WORKSPACE MEMORY CONTEXT");
     expect(built.instructions).toContain("Keep roofing prospect evidence summaries concise");
+    expect(built.instructions).toContain("PRIVATE_HEAD_IDEAL_CUSTOMER_MARKER");
+    expect(built.instructions).toContain("PRIVATE_HEAD_BUSINESS_GOAL_MARKER");
+    expect(built.instructions).toContain("PRIVATE_HEAD_RESPONSIBILITY_MARKER");
+    expect(built.instructions).toContain("PRIVATE_HEAD_EMPLOYEE_GOAL_MARKER");
+    expect(built.instructions).toContain("PRIVATE_HEAD_TARGET_CUSTOMER_MARKER");
+    expect(built.instructions).toContain("PRIVATE_HEAD_ESCALATION_CONTACT_MARKER");
     expect(built.instructions).toContain("For storm-damaged roofs, route the qualified inquiry to the service manager before estimating.");
     expect(built.instructions).not.toContain("PENDING_SOURCE_MARKER");
     expect(built.instructions).not.toContain("REJECTED_SOURCE_MARKER");
     expect(built.instructions).not.toContain("RAW_SHARED_KNOWLEDGE_MARKER");
     expect(built.instructions).not.toContain("CROSS_TENANT_PRIVATE_MARKER");
+
+    const privateContext = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "minimum budget and escalation contacts"));
+    expect(privateContext.instructions).toContain("PRIVATE_MINIMUM_BUDGET_MARKER");
+    expect(privateContext.instructions).toContain("PRIVATE_ESCALATION_CONTACT_MARKER");
+
+    const customerContext = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "minimum budget escalation contact roof inspection cancellation", { audience: "customer" }));
+    expect(customerContext.instructions).toContain("businessIdentity.companyName: Synthetic Roofing Co.");
+    expect(customerContext.instructions).toContain("productsServicesOffers.pricing: Roof inspections start at $150.");
+    expect(customerContext.instructions).toContain("policies.cancellation: Appointment cancellations require 24 hours notice.");
+    expect(customerContext.instructions).not.toContain("PRIVATE_MINIMUM_BUDGET_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_ESCALATION_CONTACT_MARKER");
+    expect(customerContext.instructions).not.toContain("WORKSPACE GROWTH GOALS");
+    expect(customerContext.instructions).not.toContain("WORKSPACE MEMORY CONTEXT");
+    expect(customerContext.instructions).not.toContain("For storm-damaged roofs");
+    expect(customerContext.instructions).not.toContain("Business goals:");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_IDEAL_CUSTOMER_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_BUSINESS_GOAL_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_RESPONSIBILITY_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_EMPLOYEE_GOAL_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_TARGET_CUSTOMER_MARKER");
+    expect(customerContext.instructions).not.toContain("PRIVATE_HEAD_ESCALATION_CONTACT_MARKER");
+    expect(customerContext.instructions).not.toContain("sourceId:");
+    expect(customerContext.instructions).not.toContain("evidenceUrl:");
 
     const pricingContext = await withSystem((db) => buildRunInstructions(db, org.id, runtimeId, "What do we charge for a roof inspection?"));
     expect(pricingContext.instructions).toContain("productsServicesOffers.pricing: Roof inspections start at $150.");

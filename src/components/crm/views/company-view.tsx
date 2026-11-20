@@ -11,7 +11,7 @@ import { listPipelines } from "@/server/crm/pipelines";
 import type { CrmScope } from "@/server/crm/page";
 import { CompanyProfile } from "@/components/crm/company-profile";
 
-export async function CompanyView({ actor, scope, id }: { actor: CrmActor; scope: CrmScope; id: string }) {
+export async function CompanyView({ actor, scope, id, initialTab }: { actor: CrmActor; scope: CrmScope; id: string; initialTab?: "activity" | "tasks" }) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   let detail;
   try {
@@ -34,6 +34,7 @@ export async function CompanyView({ actor, scope, id }: { actor: CrmActor; scope
     <CompanyProfile
       scope={scope}
       {...data}
+      initialTab={initialTab}
       tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
       members={members}
       pipelines={pipelines.map((p) => ({ id: p.id, name: p.name, isDefault: p.isDefault, stages: p.stages.filter((s) => s.kind === "open").map((s) => ({ id: s.id, name: s.name })) }))}

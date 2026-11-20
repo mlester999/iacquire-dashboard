@@ -9,6 +9,8 @@ import {
 } from "@/server/websites/domains";
 import { listSubmissions, markSubmissionSpam, processSubmissions } from "@/server/websites/forms";
 import { createWebsite, getWebsite, publishWebsite } from "@/server/websites/service";
+import { createContact } from "@/server/crm/contacts";
+import { memberActor } from "@/server/crm/actor";
 import type { ProbeFetcher } from "@/server/websites/probe";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { updateAgencyUserPermission } from "@/server/admin/team";
@@ -273,8 +275,8 @@ describe("website enquiries", () => {
 
     const pat = (await withSystem((db) => db.query<{ id: string; display_name: string; email: string; lifecycle_stage: string; source: string }>("select c.id, c.display_name, c.email::text as email, c.lifecycle_stage, c.source from contacts c join contact_identities i on i.contact_id = c.id and i.kind = 'email' and i.value = 'pat@lee.test' where c.org_id = $1", [org.id]))).rows[0];
     expect(pat).toMatchObject({ display_name: "Pat Lee", email: "pat@lee.test", lifecycle_stage: "lead_captured", source: "website_form" });
-    const ids = await withSystem((db) => db.query<{ kind: string; verified: boolean }>("select kind, verified from contact_identities where contact_id = $1 order by kind", [pat.id]));
-    expect(ids.rows).toEqual([{ kind: "email", verified: false }, { kind: "phone", verified: false }]); // a web form proves nothing about who typed it
+    const ids = await withSystem((db) => db.query<{ kind: string; verified: boolean; typed_by_visitor: boolean }>("select kind, verified, typed_by_visitor from contact_identities where contact_id = $1 order by kind", [pat.id]));
+    expect(ids.rows).toEqual([{ kind: "email", verified: false, typed_by_visitor: true }, { kind: "phone", verified: false, typed_by_visitor: true }]); // a web form proves nothing about who typed it
     const consent = await withSystem((db) => db.query<{ channel: string; purpose: string; status: string; evidence: string }>("select channel, purpose, status, evidence from contact_consent_events where contact_id = $1 order by id", [pat.id]));
     expect(consent.rows.map((r) => `${r.channel}/${r.purpose}/${r.status}`)).toEqual(["email/service/granted", "email/marketing/granted"]); // wording didn't mention texting: no SMS consent
     expect(consent.rows[0].evidence).toContain("I agree to be contacted about my enquiry.");
@@ -307,6 +309,27 @@ describe("website enquiries", () => {
     expect(Number(rows.rows[0].n)).toBe(2); // the first enquiry's contact, plus a separate Pat Lee; the repeat address was matched, not duplicated
     const conv = await withSystem((db) => db.query<{ unread_count: number }>("select c.unread_count from conversations c join contact_identities i on i.contact_id = c.contact_id and i.value = 'pat@lee.test' where c.org_id = $1", [org.id]));
     expect(conv.rows[0].unread_count).toBe(2);
+  });
+
+  it("marks an existing unverified identity typed when a public website form submits it", async () => {
+    const host = "domain-co-new.sites.test.example";
+    const email = "existing-unverified@lee.test";
+    const contact = await createContact(memberActor(as(owner)), { firstName: "Existing", lastName: "Lead", email });
+    expect((await withSystem((db) => db.query<{ typed_by_visitor: boolean }>("select typed_by_visitor from contact_identities where contact_id = $1", [contact.id]))).rows[0].typed_by_visitor).toBe(false);
+    await submit(host, { name: "Existing Lead", email, message: "Checking in" });
+    expect(await processSubmissions()).toMatchObject({ processed: 1 });
+    expect((await withSystem((db) => db.query<{ verified: boolean; typed_by_visitor: boolean }>("select verified, typed_by_visitor from contact_identities where contact_id = $1", [contact.id]))).rows[0]).toEqual({ verified: false, typed_by_visitor: true });
+  });
+
+  it("does not attach or consent to a phone number that belongs to a different contact", async () => {
+    const host = "domain-co-new.sites.test.example";
+    const emailContact = await createContact(memberActor(as(owner)), { firstName: "Email", lastName: "Owner", email: "email-owner@lee.test" });
+    const phoneContact = await createContact(memberActor(as(owner)), { firstName: "Phone", lastName: "Owner", phone: "+15125550199" });
+    await submit(host, { email: "email-owner@lee.test", phone: "+15125550199", consentText: "Text me about my enquiry." });
+    await processSubmissions();
+    expect(await withSystem((db) => db.query("select 1 from contact_identities where org_id = $1 and contact_id = $2 and kind = 'phone'", [org.id, emailContact.id]))).toMatchObject({ rows: [] });
+    expect((await withSystem((db) => db.query<{ channel: string; purpose: string }>("select channel, purpose from contact_consent_events where contact_id = $1", [emailContact.id]))).rows).toEqual([{ channel: "email", purpose: "service" }]);
+    expect((await withSystem((db) => db.query<{ typed_by_visitor: boolean }>("select typed_by_visitor from contact_identities where contact_id = $1", [phoneContact.id]))).rows).toEqual([{ typed_by_visitor: false }]);
   });
 
   it("drops link-spam, flags unusable contact details, and lets the team mark spam", async () => {

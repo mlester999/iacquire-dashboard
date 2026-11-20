@@ -47,7 +47,7 @@ export function AgencyPauseCard({ orgId, clientName, paused, canLift }: { orgId:
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">{paused ? "Emergency pause is active" : "Automation pause is off"}</h2>
-            <StatusPill tone={paused ? "danger" : "success"} size="sm">{paused ? "Automation paused" : "Automation running"}</StatusPill>
+            <StatusPill tone={paused ? "danger" : "neutral"} size="sm">{paused ? "Emergency pause active" : "Emergency pause inactive"}</StatusPill>
           </div>
           <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-muted">
             {paused

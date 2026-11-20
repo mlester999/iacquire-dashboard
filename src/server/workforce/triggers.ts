@@ -49,10 +49,10 @@ async function resolveAgent(ctx: OrgContext, role: WorkforceRoleKey, capability:
     );
     return rows[0] ?? null;
   });
-  if (!agent) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
-  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
-  if (!canChat(agent.status as AgentStatus)) throw new AppError("agent_unavailable", "This AI employee is not available for triggered work yet.");
+  if (!agent) throw new AppError("not_found", "AI runtime not found.");
+  if (!agent.enabled) throw new AppError("agent_unavailable", "The AI runtime is paused.");
+  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "The AI runtime needs an applied configuration.");
+  if (!canChat(agent.status as AgentStatus)) throw new AppError("agent_unavailable", "The AI runtime is unavailable for triggered work yet.");
   return agent;
 }
 

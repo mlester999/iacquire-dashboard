@@ -11,7 +11,7 @@ import { recordConsent } from "@/server/messaging/contacts";
 import { confirmContactIdentity } from "@/server/messaging/consent-identity";
 import { evaluateSend, queueOutbound, type SendRequest } from "@/server/messaging/send";
 import { BLOCK_REASON_LABELS } from "@/lib/messaging";
-import { IDENTITY_UNVERIFIED_DETAIL, TYPED_CONSENT_SOURCE, typedByVisitorOnly, typedConsentEvidence, unverifiedIdentityRefusal, type DestinationFacts, type SendFacts } from "@/lib/webchat/identity";
+import { IDENTITY_UNVERIFIED_DETAIL, TYPED_CONSENT_SOURCE, isUnverifiedFormConsentSource, typedByVisitorOnly, typedConsentEvidence, unverifiedIdentityRefusal, type DestinationFacts, type SendFacts } from "@/lib/webchat/identity";
 import { channelConversation, identityOf, nativeChatOrg, typedLead } from "./support/unverified";
 import type { ChatOrg } from "./support/webchat";
 
@@ -104,6 +104,11 @@ describe("the pure rule", () => {
     expect(evidence).toContain("www.example.test");
     expect(BLOCK_REASON_LABELS.identity_unverified).toMatch(/visitor typed/);
   });
+
+  it("recognizes all public form consent sources as unverified until recorded again", () => {
+    for (const source of ["website_chat_form", "website_form", "crm_form"]) expect(isUnverifiedFormConsentSource(source)).toBe(true);
+    for (const source of ["staff_recorded", "provider_inbound", "contact_merge", null]) expect(isUnverifiedFormConsentSource(source)).toBe(false);
+  });
 });
 
 describe("what the details form records", () => {
@@ -174,7 +179,7 @@ describe("evaluateSend to an address a visitor typed", () => {
     // The tick was made by whoever typed the number. Confirming the number does not make it the customer's own agreement.
     const after = await decide(conv, promo);
     expect(after).toMatchObject({ allow: false, reason: "no_consent" });
-    expect((after as { detail: string }).detail).toMatch(/ticked in the website chat/);
+    expect((after as { detail: string }).detail).toMatch(/public form's promotional opt-in.*Record the customer's agreement again/);
     // A person recording the agreement with the customer is what makes promotional messages possible.
     await withSystem((db) => recordConsent(db, { orgId: c.m.org.id, contactId: lead.contactId, channel: "sms", purpose: "marketing", status: "granted", source: "staff_recorded", evidence: "The customer agreed on the phone.", recordedBy: c.m.people.owner.id }));
     expect((await decide(conv, promo)).allow).toBe(true);
@@ -192,13 +197,30 @@ describe("evaluateSend to an address a visitor typed", () => {
     expect((d as { detail: string }).detail).toMatch(/has not agreed to promotional messages/);
   });
 
-  it("leaves every other contact alone: an address someone typed into the CRM, or a form, is reachable as before", async () => {
+  it("leaves an address entered directly by the team reachable as before", async () => {
     const actor = memberActor(owner());
     const manual = await createContact(actor, { firstName: "Mina", lastName: "Cruz", phone: "+639178880001" });
     await setContactConsent(actor, manual.id, { channel: "sms", purpose: "service", status: "granted", evidence: "Asked to be texted at the counter." });
     expect((await rows<{ verified: boolean }>("select verified from contact_identities where contact_id = $1", [manual.id]))[0].verified).toBe(false);
     const conv = await channelConversation(c, manual.id, "sms");
     for (const k of cases().filter((x) => x.req.purpose !== "marketing")) expect((await decide(conv, k.req)).allow, k.name).toBe(true);
+  });
+
+  it("blocks public website and CRM form identity sends until verified and keeps each form's marketing tick unaccepted", async () => {
+    for (const source of ["website_form", "crm_form"] as const) {
+      const lead = await typedLead(c, { marketing: true });
+      const conv = await channelConversation(c, lead.contactId, "sms");
+      await withSystem(async (db) => {
+        await recordConsent(db, { orgId: c.m.org.id, contactId: lead.contactId, channel: "sms", purpose: "service", status: "granted", source, evidence: "Public form service consent." });
+        await recordConsent(db, { orgId: c.m.org.id, contactId: lead.contactId, channel: "sms", purpose: "marketing", status: "granted", source, evidence: "Public form marketing checkbox." });
+      });
+      expect(await decide(conv, { scope: "followup", actor: ai() })).toMatchObject({ allow: false, reason: "identity_unverified" });
+      const identity = await identityOf(c.m.org.id, "phone", lead.phone!);
+      await confirmContactIdentity(owner(), { identityId: identity.id, how: "Confirmed with the customer on a call." });
+      const promo = await decide(conv, { scope: "human", actor: person(), purpose: "marketing" });
+      expect(promo).toMatchObject({ allow: false, reason: "no_consent" });
+      expect((promo as { detail: string }).detail).toMatch(/public form's promotional opt-in/);
+    }
   });
 });
 

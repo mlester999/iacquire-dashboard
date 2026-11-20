@@ -4,6 +4,7 @@ import { withSystem } from "@/server/db";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { createConfigVersion, ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { defaultSettings } from "@/server/workforce/compiler";
+import { createWorkJob, finishWorkJob } from "@/server/workforce/jobs";
 import type { Permission } from "@/lib/permissions";
 import { deleteSchedule, listSchedules, runDueSchedules, saveSchedule, setScheduleEnabled, schedulesOperatorEnabled } from "@/server/workforce/schedules";
 import { getWorkforceCalendarData } from "@/server/workforce/calendar";
@@ -391,6 +392,24 @@ describe("tenant AI workforce schedules", () => {
     await withSystem((db) => db.query("update ai_work_jobs set status = 'cancelled', finished_at = now() where id = $1", [active.rows[0].id]));
   }, 30000);
 
+  it("keeps a fresh queued job active for schedule overlap checks", async () => {
+    process.env.WORKFORCE_SCHEDULES_ENABLED = "true";
+    const saved = await saveSchedule(ctxFor(owner, org, "owner"), { capability: "proactive_review", cadence: "hourly", enabled: true });
+    const queued = await withSystem((db) => db.query<{ id: string }>(
+      `insert into ai_work_jobs (org_id, agent_instance_id, requested_by, capability, title, status, idempotency_key)
+       values ($1, $2, $3, 'proactive_review', 'Fresh queued scheduled review', 'queued', $4) returning id`,
+      [org.id, operationsManagerId, owner.id, `queued-schedule-${crypto.randomUUID()}`],
+    ));
+    await withSystem((db) => db.query("update ai_work_schedules set last_job_id = $2, next_run_at = now() - interval '1 minute' where id = $1", [saved.id, queued.rows[0].id]));
+
+    const run = await runDueSchedules({ now: new Date() });
+    expect(run.created).toBe(0);
+    expect(run.skipped).toBeGreaterThanOrEqual(1);
+    const status = await withSystem((db) => db.query<{ status: string }>("select status from ai_work_jobs where id = $1", [queued.rows[0].id]));
+    expect(status.rows[0].status).toBe("queued");
+    await withSystem((db) => db.query("update ai_work_jobs set status = 'cancelled', finished_at = now() where id = $1", [queued.rows[0].id]));
+  }, 30000);
+
   it("refuses schedule management to a member and refuses non-review capabilities", async () => {
     await expect(
       saveSchedule(ctxFor(member, org, "member"), { capability: "proactive_review", cadence: "daily", enabled: false }),
@@ -453,6 +472,96 @@ describe("tenant AI workforce schedules", () => {
       ));
     }
   });
+
+  it("pauses a schedule after three consecutive failed jobs and sends one supervisor notice", async () => {
+    await withSystem((db) => db.query(
+      "delete from ai_work_schedules where org_id = $1 and agent_instance_id = $2 and capability = 'proactive_review'",
+      [org.id, operationsManagerId],
+    ));
+    const schedule = await saveSchedule(ctxFor(owner, org, "owner"), {
+      capability: "proactive_review",
+      cadence: "daily",
+      enabled: true,
+    });
+    const jobIds: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const createdAt = new Date(Date.now() - (3 - index) * 60_000);
+      const job = await withSystem((db) => createWorkJob(db, {
+        orgId: org.id,
+        agentId: operationsManagerId,
+        requestedBy: owner.id,
+        capability: "proactive_review",
+        title: `Scheduled failure ${index + 1}`,
+        idempotencyKey: `schedule:${schedule.id}:${createdAt.toISOString()}`,
+        input: { scheduleId: schedule.id, scheduled: true },
+      }));
+      jobIds.push(job.id);
+      await withSystem((db) => db.query(
+        `update ai_work_jobs
+            set created_at = $2::timestamptz,
+                status = case when $3::boolean then 'running' else 'failed' end,
+                stage = case when $3::boolean then 'analyzing' else 'failed' end,
+                failure_code = case when $3::boolean then null else 'provider_unavailable' end,
+                failure_message = case when $3::boolean then null else 'The review provider was unavailable.' end,
+                finished_at = case when $3::boolean then null else $2::timestamptz end,
+                lease_owner = case when $3::boolean then 'schedule-failure-test-worker' else null end,
+                lease_expires_at = case when $3::boolean then now() + interval '10 minutes' else null end
+          where id = $1`,
+        [job.id, createdAt.toISOString(), index === 2],
+      ));
+    }
+    await withSystem((db) => db.query(
+      "update ai_work_schedules set last_job_id = $2 where id = $1",
+      [schedule.id, jobIds[2]],
+    ));
+
+    await expect(withSystem((db) => finishWorkJob(db, {
+      jobId: jobIds[2],
+      orgId: org.id,
+      workerId: "schedule-failure-test-worker",
+      status: "failed",
+      stage: "failed",
+      failureCode: "provider_unavailable",
+      failureMessage: "The review provider was unavailable.",
+    }))).resolves.toBe(true);
+
+    const persisted = await withSystem((db) => db.query<{ enabled: boolean; last_skipped_reason: string | null }>(
+      "select enabled, last_skipped_reason from ai_work_schedules where id = $1",
+      [schedule.id],
+    ));
+    expect(persisted.rows[0]).toMatchObject({ enabled: false, last_skipped_reason: "consecutive_failures" });
+
+    const notices = await withSystem((db) => db.query<{ user_id: string; title: string; link: string }>(
+      `select user_id, title, link from notifications
+        where org_id = $1 and user_id = any($2::uuid[])
+          and (link like $3 or link like $4)`,
+      [org.id, [owner.id, member.id], `/work?job=${jobIds[2]}%`, `/work?schedule=${schedule.id}%`],
+    ));
+    expect(notices.rows.filter((row) => row.user_id === owner.id && row.link.startsWith(`/work?job=${jobIds[2]}`))).toHaveLength(1);
+    expect(notices.rows.filter((row) => row.user_id === owner.id && row.link.startsWith(`/work?schedule=${schedule.id}`))).toHaveLength(1);
+    expect(notices.rows.some((row) => row.user_id === member.id)).toBe(false);
+
+    await expect(withSystem((db) => finishWorkJob(db, {
+      jobId: jobIds[2],
+      orgId: org.id,
+      workerId: "schedule-failure-test-worker",
+      status: "failed",
+      stage: "failed",
+      failureCode: "provider_unavailable",
+    }))).resolves.toBe(false);
+    const repeatNotice = await withSystem((db) => db.query<{ n: number }>(
+      "select count(*)::int as n from notifications where org_id = $1 and user_id = $2 and link like $3",
+      [org.id, owner.id, `/work?schedule=${schedule.id}%`],
+    ));
+    expect(repeatNotice.rows[0].n).toBe(1);
+
+    await withSystem(async (db) => {
+      await db.query("delete from ai_work_reports where org_id = $1 and job_id = any($2::uuid[])", [org.id, jobIds]);
+      await db.query("delete from notifications where org_id = $1 and (link like $2 or link like $3)", [org.id, `/work?job=${jobIds[2]}%`, `/work?schedule=${schedule.id}%`]);
+      await db.query("delete from ai_work_schedules where id = $1", [schedule.id]);
+      await db.query("delete from ai_work_jobs where id = any($1::uuid[])", [jobIds]);
+    });
+  }, 30000);
 
   it("enables, disables and deletes a schedule with audit evidence", async () => {
     const saved = await saveSchedule(ctxFor(owner, org, "owner"), { capability: "proactive_review", cadence: "weekly", enabled: false });

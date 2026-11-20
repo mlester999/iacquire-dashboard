@@ -131,6 +131,23 @@ describe("a type that needs a person to confirm each booking", () => {
     expect(await messagesFor(m.org.id, "booking-confirm:%")).toHaveLength(1);
   });
 
+  it("blocks the host confirmation message while customer messaging is paused", async () => {
+    const { m, actor } = await bookingOrg("Needs Yes Paused Confirm Co", { requiresConfirmation: true });
+    await askToBook(m);
+    const booking = await bookingOf(m.org.id);
+    const appt = booking.appointment_id as string;
+    await withSystem((db) => db.query(
+      "insert into automation_pauses (org_id, scope, active, reason) values ($1, 'messaging', true, 'Reviewing customer messages') on conflict (org_id, scope) do update set active = true, reason = excluded.reason",
+      [m.org.id],
+    ));
+
+    await setNativeAppointmentStatus(actor, appt, "confirmed");
+
+    expect(await messagesFor(m.org.id, "booking-confirm:%")).toMatchObject([
+      { status: "blocked", blocked_reason: "automation_paused", dedupe_key: bookingMessageKey(booking.id, "confirmed") },
+    ]);
+  });
+
   it("stays inside the approval policy: an employee that needs approval only drafts the confirmation message", async () => {
     const { m, actor, ownerCtx } = await bookingOrg("Needs Yes Approval Co", { requiresConfirmation: true, autonomous: false });
     const { out } = await askToBook(m);

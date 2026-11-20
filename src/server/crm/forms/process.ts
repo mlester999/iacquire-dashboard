@@ -234,12 +234,19 @@ export async function processSubmissionInTx(db: Queryable, id: string, orgId: st
             addressLine1: mapped.contact.addressLine1 ?? null, city: mapped.contact.city ?? null, region: mapped.contact.region ?? null, postalCode: mapped.contact.postalCode ?? null,
             source: `Form: ${form.name}`.slice(0, 60), customFields: customValues,
           },
-          { via: "form", onDuplicate: "return_existing", tagSource: "form" },
+          { via: "form", onDuplicate: "return_existing", tagSource: "form", typedByVisitor: true },
         );
     contactId = created.id;
     createdContact = created.created;
     // Someone else added one of these addresses a moment ago: it is that contact's now.
     if (!created.created && !matched.length) owners = await ownersOf(db, orgId, email, phone);
+
+    // Public forms can be completed by anyone. Mark only an exact address already owned by this contact, and only while it remains unverified.
+    for (const [kind, value] of [["email", email], ["phone", phone]] as const) {
+      if (value && owners[kind] === contactId) {
+        await db.query("update contact_identities set typed_by_visitor = true where org_id = $1 and contact_id = $2 and kind = $3 and value = $4 and not verified", [orgId, contactId, kind, value]);
+      }
+    }
 
     if (!created.created) {
       // An existing contact: what the person typed fills in what the contact is missing, never overwrites what the team recorded. Their

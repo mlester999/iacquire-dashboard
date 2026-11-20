@@ -41,8 +41,8 @@ export async function dispatchCapabilityJob(
   // The tool policy table decides (src/lib/employee-tool-policy.ts); a refusal is recorded, because a request for another role's work is what a prompt trying to reach past its role looks like.
   const policy = authorizeEmployeeAction(input.agentRole, `capability:${input.capability}`);
   if (!policy.allowed || !definition.allowedRoles.includes(input.agentRole)) {
-    await recordActionDenied({ orgId: ctx.org.orgId, agentId: null, actionId: `capability:${input.capability}`, actorUserId: ctx.user.id, actorKind: "user", role: input.agentRole, reason: policy.allowed ? "This employee's role does not include that capability." : policy.reason });
-    throw new AppError("forbidden", "This employee's role does not include that capability.");
+    await recordActionDenied({ orgId: ctx.org.orgId, agentId: null, actionId: `capability:${input.capability}`, actorUserId: ctx.user.id, actorKind: "user", role: input.agentRole, reason: policy.allowed ? "The assigned AI profile cannot use this capability." : policy.reason });
+    throw new AppError("forbidden", "The assigned AI profile cannot use this capability.");
   }
   // Only a member of the workspace's AI workforce can dispatch AI work. Capability permissions
   // (contacts.view, sales.view, etc.) are additional, not a replacement for this baseline.
@@ -61,12 +61,12 @@ export async function dispatchCapabilityJob(
     );
     return rows[0] ?? null;
   });
-  if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
+  if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", "AI runtime not found.");
+  if (!agent.enabled) throw new AppError("agent_unavailable", "The AI runtime is paused.");
   if (!canChat(agent.status as AgentStatus)) {
-    throw new AppError("agent_unavailable", "This AI employee is not available for authorized work yet.");
+    throw new AppError("agent_unavailable", "The AI runtime is unavailable for authorized work yet.");
   }
-  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
+  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "The AI runtime needs an applied configuration.");
   // A paused employee, an agency pause or a suspended workspace: no new work, and the person is told why.
   await withSystem((db) => assertJobAllowed(db, { orgId: ctx.org.orgId, agentId: agent.id }));
   // The owner's "Allowed actions" switches: an ability switched off means the work is refused here and no job exists. (A job queued before the switch was turned off is blocked when it runs.)
@@ -124,7 +124,7 @@ export async function dispatchSystemCapabilityJob(input: {
   if (!definition) throw new AppError("invalid_input", "That capability is not available.");
   if (definition.risk !== "read_only") throw new AppError("forbidden", "Only read-only work can be started without a person.");
   const policy = authorizeEmployeeAction(input.agentRole, `capability:${input.capability}`);
-  if (!policy.allowed || !definition.allowedRoles.includes(input.agentRole)) throw new AppError("forbidden", "This employee's role does not include that capability.");
+  if (!policy.allowed || !definition.allowedRoles.includes(input.agentRole)) throw new AppError("forbidden", "The assigned AI profile cannot use this capability.");
 
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ id: string; enabled: boolean; status: string; active_config_version_id: string | null }>(
@@ -133,10 +133,10 @@ export async function dispatchSystemCapabilityJob(input: {
     );
     return rows[0] ?? null;
   });
-  if (!agent) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
-  if (!canChat(agent.status as AgentStatus)) throw new AppError("agent_unavailable", "This AI employee is not available for authorized work yet.");
-  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
+  if (!agent) throw new AppError("not_found", "AI runtime not found.");
+  if (!agent.enabled) throw new AppError("agent_unavailable", "The AI runtime is paused.");
+  if (!canChat(agent.status as AgentStatus)) throw new AppError("agent_unavailable", "The AI runtime is unavailable for authorized work yet.");
+  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "The AI runtime needs an applied configuration.");
 
   const job = await withSystem(async (db) => {
     await assertJobAllowed(db, { orgId: input.orgId, agentId: agent.id });

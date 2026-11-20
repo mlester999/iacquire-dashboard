@@ -69,7 +69,7 @@ describe("shutting a workspace down", () => {
     const bystander = await tenant();
     const request = await requestOffboardingAsAgency(superAdmin, t.org.id, "The client asked to close their account.");
     const view = await shutdownClient(superAdmin, request.id, { websitePlan: "keep_until_deletion", retentionDays: 30 });
-    expect(view.steps.find((s) => s.key === "runtime_profiles")).toMatchObject({ ok: true, text: expect.stringMatching(/Asked the client runtime to contain 6 AI employee profiles.*Nothing is deleted\./) });
+    expect(view.steps.find((s) => s.key === "runtime_profiles")).toMatchObject({ ok: true, text: expect.stringMatching(/Asked the client runtime to contain 6 AI profiles.*Nothing is deleted\./) });
     expect(await containmentJobs(t.org.id)).toEqual(Array.from({ length: 6 }, () => ({ status: "requested", requested_by: superAdmin.id })));
     const audit = await rows<{ metadata: { reason: string } }>("select metadata from audit_logs where org_id = $1 and action = 'agent.profile_deprovision_requested'", [t.org.id]);
     expect(audit).toHaveLength(6);
@@ -85,7 +85,7 @@ describe("deleting a workspace's data", () => {
     stub(false, true);
     const t = await tenant();
     const { request } = await shutDown(t);
-    await expect(purge(t, request.id)).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/6 AI employee runtime profiles are still set up/) });
+    await expect(purge(t, request.id)).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/6 AI runtime profiles are still set up/) });
     await expect(purge(t, request.id, { acknowledgeRuntimeProfiles: "later" })).rejects.toMatchObject({ code: "conflict" });
     expect((await rows("select 1 from agent_instances where org_id = $1", [t.org.id])).length).toBe(6);
     expect(await rows("select 1 from audit_logs where org_id = $1 and action = 'offboarding.runtime_profiles_left'", [t.org.id])).toHaveLength(0);

@@ -170,6 +170,39 @@ describe("checklist creation", () => {
     });
   });
 
+  it("uses current completion copy in notifications while retaining the legacy task snapshot", async () => {
+    const { org } = await fresh("Legacy Completion Notice Co");
+    const id = await taskId(org.id, "ai_employees");
+    const oldAction = {
+      type: "approve",
+      label: "Approve your AI employee configuration",
+      instructions: "Review how each AI employee will work and communicate in AI Workforce, then approve so we can finish and test them.",
+    };
+    await withSystem((db) => db.query(
+      `update client_setup_tasks set title = $2, client_title = $3, description = $4, completion_notice = $5, client_action = $6::jsonb
+       where id = $1`,
+      [id, "Six client-specific Hermes AI employees configured", "Your six AI employees are configured", "Each AI employee gets its own private environment and is checked live before it is marked ready.", "Your AI team is ready", JSON.stringify(oldAction)],
+    ));
+    await withSystem((db) => db.query(
+      "update client_setup_tasks set status = 'completed', completed_at = now(), completion_source = 'agency' where org_id = $1 and template_key = 'ai_profiles'",
+      [org.id],
+    ));
+    await withSystem((db) => db.query(
+      "update client_setup_tasks set status = 'pending', completion_mode = 'manual', check_key = null, requires_client_response = false, requires_evidence = false where id = $1",
+      [id],
+    ));
+
+    await updateTaskStatus(await admin(), org.id, id, { status: "completed" });
+    const notice = (await withSystem((db) => db.query<{ title: string }>(
+      "select title from notifications where org_id = $1 and kind = 'setup_milestone' order by created_at desc limit 1",
+      [org.id],
+    ))).rows[0];
+    expect(notice.title).toBe("Your AI workspace is ready");
+    expect((await withSystem((db) => db.query<{ completion_notice: string }>(
+      "select completion_notice from client_setup_tasks where id = $1", [id],
+    ))).rows[0].completion_notice).toBe("Your AI team is ready");
+  });
+
   it("keeps new Partner setup status neutral until the runtime has passed its checks", async () => {
     const org = await createOrg({ name: "Partner Setup Copy Co" });
     const owner = await createUser();
@@ -900,13 +933,11 @@ describe("provisioning and verification contracts", () => {
     }
   });
 
-  it("says only what is true about who prepares an AI employee: a restricted worker prepares it, and it is ready only after the portal's own health check", () => {
+  it("requires a restricted worker and a passing portal connection check for the AI runtime", () => {
     const text = PROVISIONERS.hermes_employees.unavailableReason;
-    expect(text).toMatch(/restricted worker prepares each client employee/);
-    expect(text).toMatch(/ready only after the portal's own health check passes/);
-    expect(text).toMatch(/a queued job or a created profile proves nothing/);
-    // The old text sent the team to a hand-run runbook on a named host, which is no longer how a client employee is prepared and no longer all the portal says.
-    expect(text).not.toMatch(/runbook|VPS/);
+    expect(text).toMatch(/restricted worker prepares the dedicated runtime/);
+    expect(text).toMatch(/readiness requires a passing portal connection check/i);
+    expect(text).not.toMatch(/AI employee|runbook|VPS/);
     // A claim of readiness, or of work done on the client's behalf, is never in it.
     expect(text).not.toMatch(/is created|are created|has been created|is ready\.|are ready\./i);
   });

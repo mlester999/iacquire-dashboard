@@ -163,7 +163,7 @@ export async function executeApprovedAppointmentChange(
     if (!(await withSystem((db) => bookingIsNative(db, orgId)))) return { status: "blocked", detail: "The workspace's appointment provider changed after the request. No calendar change was made." };
     const org = await withSystem(async (db) => (await db.query<{ id: string; name: string; timezone: string }>("select id, name, timezone from organizations where id = $1", [orgId])).rows[0] ?? null);
     if (!org) return { status: "failed", detail: "The workspace could not be verified. No calendar change was made." };
-    const actor = systemActor(org, "Approved Appointment Setter request");
+    const actor = systemActor(org, "Approved AI appointment request");
     if (action.operation === "cancel") {
       await cancelNativeAppointment(actor, row.id, { by: "agent", reason: "Approved in iAcquire", expectedVersion: action.expected.version, now });
     } else {

@@ -7,7 +7,7 @@ import { recordAudit } from "@/server/audit";
 import { env } from "@/server/env";
 import { sha256 } from "@/server/security/crypto";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
-import { AGENT_TOOLS, SCOPE_INFO, type AgentToolName } from "@/server/crm/agent-tools/catalog";
+import { AGENT_TOOLS, SCOPE_INFO, type AgentToolName, type AgentToolScope } from "@/server/crm/agent-tools/catalog";
 import { issueAgentToolToken, revokeAgentToolToken } from "@/server/crm/agent-tools/tokens";
 import { callAgentTool, type AgentToolReply } from "@/server/crm/agent-tools/service";
 import { loadOrgContextForUser } from "@/server/tenancy/context";
@@ -226,6 +226,9 @@ const unavailable = (tool: AgentToolName, detail: string): AgentToolReply => ({ 
 async function callClientTool(profile: InternalProfile, name: AgentToolName, args: Record<string, unknown>, callId: string): Promise<AgentToolReply> {
   const run = await requireClientRun(profile, name);
   const def = AGENT_TOOLS[name];
+  const input = name === "create_task" ? { ...args } : args;
+  if (name === "create_task") delete input.assigneeId;
+  const linksContact = name === "create_task" && typeof args.contactId === "string" && args.contactId.trim().length > 0;
   const person = await loadOrgContextForUser(run.userId, run.orgId);
   if (!person) {
     await auditClientCall(run, name, "denied", { reason: "membership" });
@@ -233,6 +236,7 @@ async function callClientTool(profile: InternalProfile, name: AgentToolName, arg
   }
   // The person's role and per-person overrides must cover everything the tool and its scope need. The shared engine checks this again, but it only sees the token that already exists.
   const needed = new Set([...SCOPE_INFO[def.scope].permissions, ...def.permissions]);
+  if (linksContact) needed.add("contacts.view");
   if ([...needed].some((permission) => !person.can(permission))) {
     await auditClientCall(run, name, "denied", { reason: "person_permission" });
     return { ok: false, httpStatus: 403, code: "forbidden", error: PERSON_MESSAGE };
@@ -242,12 +246,14 @@ async function callClientTool(profile: InternalProfile, name: AgentToolName, arg
     await auditClientCall(run, name, "denied", { reason: gate.reason });
     return unavailable(name, gate.detail);
   }
-  const issued = await withSystem((db) => issueAgentToolToken(db, { orgId: run.orgId, agentInstanceId: run.agentId, runId: run.runId, scopes: [def.scope], ttlMinutes: 1 }));
+  const contactReadScope: AgentToolScope[] = linksContact ? ["contacts:read"] : [];
+  const scopes: AgentToolScope[] = [def.scope, ...contactReadScope];
+  const issued = await withSystem((db) => issueAgentToolToken(db, { orgId: run.orgId, agentInstanceId: run.agentId, runId: run.runId, scopes, ttlMinutes: 1 }));
   try {
     // forceApprovalWrites is always true: whatever the employee's own mode, a change asked for here can only become an approval request and never runs. A change is called without the
     // gateway's request id, so the engine keys its approval by the arguments: the same request twice in one turn (a retry, a replay) is one approval, not two for a person to answer.
     const reply = await callAgentTool({
-      token: issued.token, tool: name, callId: def.kind === "write" ? null : callId, forceApprovalWrites: true, onBehalfOfUserId: run.userId, readArgs: async () => args,
+      token: issued.token, tool: name, callId: def.kind === "write" ? null : callId, forceApprovalWrites: true, onBehalfOfUserId: run.userId, readArgs: async () => input,
     });
     if (!reply.ok) await auditClientCall(run, name, reply.httpStatus < 500 ? "denied" : "failure", { code: reply.code });
     else if (def.kind === "write") await auditClientProposal(run, name, reply);

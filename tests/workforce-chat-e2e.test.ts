@@ -345,7 +345,7 @@ describe("AI Growth Partner chat to native workflow", () => {
       const pauseReply = (await withSystem((db) => db.query<{ content: string }>(
         "select content from chat_messages where id = $1 and org_id = $2", [pauseConfirm.assistantMessageId, org.id],
       ))).rows[0].content;
-      expect(pauseReply).toMatch(/Paused Lead research.*No future scheduled jobs.*already created remains on the Work Board/i);
+      expect(pauseReply).toMatch(/Paused Lead research.*No future scheduled jobs.*already created remains on the AI Work Board/i);
       const pauseAuditCount = (await withSystem((db) => db.query<{ count: string }>(
         "select count(*)::text as count from audit_logs where org_id = $1 and target_id = $2 and action = 'workforce.schedule_disabled'",
         [org.id, created.id],
@@ -2085,6 +2085,256 @@ describe("AI Growth Partner chat to native workflow", () => {
     await resetAgentMessageRateLimit(member.id);
   });
 
+  it("previews a follow-up task, confirms it once, and supports cancelling a later preview", async () => {
+    await resetAgentMessageRateLimit(member.id);
+    expect(await runHealthCheck(growthPartnerAgentId, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+    const ctx = ctxFor(member, org, "member");
+    const token = crypto.randomUUID().slice(0, 8);
+    const contactName = `Task Contact ${token}`;
+    const title = `call ${token} about the estimate`;
+    const contactId = await withSystem(async (db) => (await db.query<{ id: string }>(
+      "insert into contacts (org_id, display_name) values ($1, $2) returning id",
+      [org.id, contactName],
+    )).rows[0].id);
+    const before = Number((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from tasks where org_id = $1 and title = $2", [org.id, title],
+    ))).rows[0].count);
+
+    const preview = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: `Schedule a follow-up task to call ${token} about the estimate for tomorrow for contact ${contactName}`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const previewReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [preview.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(previewReply).toContain("Task preview");
+    expect(previewReply).toContain("Nothing has been created");
+    const pending = (await withSystem((db) => db.query<{ pending_workforce_task: Record<string, unknown> }>(
+      "select pending_workforce_task from chat_conversations where id = $1 and org_id = $2", [growthPartnerConversationId, org.id],
+    ))).rows[0].pending_workforce_task;
+    expect(pending).toMatchObject({ status: "pending", title, contactId, timezone: "UTC" });
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from tasks where org_id = $1 and title = $2", [org.id, title],
+    ))).rows[0].count).toBe(before);
+
+    const confirm = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "confirm task",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const task = (await withSystem((db) => db.query<{ id: string; title: string; due_at: Date; contact_id: string; idempotency_key: string }>(
+      "select id, title, due_at, contact_id, idempotency_key from tasks where org_id = $1 and title = $2",
+      [org.id, title],
+    ))).rows[0];
+    expect(task).toMatchObject({ title, contact_id: contactId });
+    expect(task.idempotency_key).toMatch(/^growth-partner-chat-task:/);
+    expect(new Date(task.due_at).toISOString()).toBe(pending.dueAt);
+    const confirmReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [confirm.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(confirmReply).toContain(`[Open the task](/crm/tasks?task=${task.id})`);
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from audit_logs where org_id = $1 and action = 'crm.task_created_from_growth_partner_chat' and target_id = $2",
+      [org.id, task.id],
+    ))).rows[0].count).toBe(1);
+
+    const repeatedConfirm = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "confirm task",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const repeatedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [repeatedConfirm.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatedReply).toContain("already created");
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from tasks where org_id = $1 and title = $2", [org.id, title],
+    ))).rows[0].count).toBe(1);
+    const cancelCreated = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "cancel task",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const cancelCreatedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [cancelCreated.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(cancelCreatedReply).toContain("already created");
+    expect((await withSystem((db) => db.query<{ status: string }>("select status from tasks where id = $1 and org_id = $2", [task.id, org.id]))).rows[0].status).toBe("open");
+
+    const cancelledTitle = `review ${token} quote`;
+    await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: `Schedule a follow-up task to review ${token} quote for tomorrow`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const cancelled = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "cancel task",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const cancelReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [cancelled.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(cancelReply).toContain("Cancelled the task preview");
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from tasks where org_id = $1 and title = $2", [org.id, cancelledTitle],
+    ))).rows[0].count).toBe(0);
+    const ambiguousName = `Ambiguous Task Contact ${token}`;
+    await withSystem((db) => db.query(
+      "insert into contacts (org_id, display_name) values ($1, $2), ($1, $2)", [org.id, ambiguousName],
+    ));
+    const ambiguousTitle = `review ${token} quote`;
+    const ambiguous = await sendChatMessage(ctx, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: `Schedule a follow-up task to review ${token} quote for tomorrow for contact ${ambiguousName}`,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const ambiguousReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [ambiguous.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(ambiguousReply).toContain("More than one active CRM contact");
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from tasks where org_id = $1 and title = $2", [org.id, ambiguousTitle],
+    ))).rows[0].count).toBe(0);
+    await resetAgentMessageRateLimit(member.id);
+  });
+
+  it("requests approval before importing one approved prospect from the latest Growth Partner research result", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    await resetAgentMessageRateLimit(member.id);
+    expect(await runHealthCheck(growthPartnerAgentId, { userId: admin.id, kind: "agency" })).toMatchObject({ ok: true, status: "online" });
+    const token = crypto.randomUUID().slice(0, 8);
+    let reportSequence = 0;
+    const addResearchLead = async (
+      label: string,
+      businessName: string,
+      reviewStatus: "pending" | "approved",
+      qualificationState: "evidence_backed" | "needs_evidence",
+      duplicateStatus: "not_checked" | "no_match" | "duplicate",
+    ) => {
+      const reportTime = new Date(Date.now() - 60_000 + reportSequence * 10_000).toISOString();
+      reportSequence += 1;
+      return withSystem(async (db) => {
+      const jobId = (await db.query<{ id: string }>(
+        `insert into ai_work_jobs (org_id, agent_instance_id, requested_by, capability, title, status, stage, idempotency_key, conversation_id, finished_at)
+         values ($1, $2, $3, 'lead_research', 'Synthetic lead research', 'completed', 'completed', $4, $5, now()) returning id`,
+        [org.id, growthPartnerAgentId, owner.id, `chat-import-${token}-${label}`, growthPartnerConversationId],
+      )).rows[0].id;
+      const requestId = (await db.query<{ id: string }>(
+        `insert into lead_research_requests (org_id, requested_by, prompt, campaign_type, criteria, status, agent_role, work_job_id, completed_at)
+         values ($1, $2, 'Synthetic approved prospect for the chat import test', 'business', '{}'::jsonb, 'completed', 'growth_partner', $3, now()) returning id`,
+        [org.id, owner.id, jobId],
+      )).rows[0].id;
+      const createdLead = (await db.query<{ id: string }>(
+        `insert into leads (org_id, research_request_id, business_name, evidence, qualification_summary, qualification_state,
+                            duplicate_status, review_status, crm_sync_status)
+         values ($1, $2, $3, '[{"url":"https://example.test/source","title":"Public source"}]'::jsonb,
+                 'Synthetic lead acceptance fixture', $4, $5, $6, 'not_synced') returning id`,
+        [org.id, requestId, businessName, qualificationState, duplicateStatus, reviewStatus],
+      )).rows[0].id;
+      await db.query(
+        `insert into chat_messages (conversation_id, org_id, role, content, status, work_job_id, created_at)
+         values ($1, $2, 'notice', 'Synthetic research report', 'complete', $3, $4::timestamptz)`,
+        [growthPartnerConversationId, org.id, jobId, reportTime],
+      );
+      return createdLead;
+      });
+    };
+    const noApprovalFor = async (id: string) => withSystem((db) => db.query(
+      "select id from approval_requests where org_id = $1 and kind = 'lead_import' and action -> 'leadIds' = $2::jsonb",
+      [org.id, JSON.stringify([id])],
+    ));
+    const beforeContacts = Number((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from contacts where org_id = $1", [org.id],
+    ))).rows[0].count);
+
+    const pendingLeadId = await addResearchLead(`pending-${token}`, `Pending Import Prospect ${token}`, "pending", "needs_evidence", "not_checked");
+    const pendingRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Create a CRM contact for this approved prospect",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const pendingReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [pendingRequest.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(pendingReply).toContain("still needs lead review");
+    expect((await noApprovalFor(pendingLeadId)).rows).toHaveLength(0);
+
+    const duplicateLeadId = await addResearchLead(`duplicate-${token}`, `Duplicate Import Prospect ${token}`, "approved", "evidence_backed", "duplicate");
+    const duplicateRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Create a CRM contact for this approved prospect",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const duplicateReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [duplicateRequest.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(duplicateReply).toContain("duplicate-free");
+    expect((await noApprovalFor(duplicateLeadId)).rows).toHaveLength(0);
+
+    const businessName = `Approved Import Prospect ${token}`;
+    const leadId = await addResearchLead(`approved-${token}`, businessName, "approved", "evidence_backed", "no_match");
+
+    const denied = await sendChatMessage(ctxFor(member, org, "member"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Create a CRM contact for this approved prospect",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const deniedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [denied.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(deniedReply).toContain("Only a workspace owner or admin");
+    expect((await noApprovalFor(leadId)).rows).toHaveLength(0);
+
+    const requested = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Create a CRM contact for this approved prospect",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const requestedReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [requested.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(requestedReply).toContain(businessName);
+    expect(requestedReply).toContain("must approve it before any CRM record is created");
+    expect(requestedReply).toContain("[Review the CRM import approval](/approvals)");
+    expect((await withSystem((db) => db.query<{ count: number }>(
+      "select count(*)::int as count from contacts where org_id = $1", [org.id],
+    ))).rows[0].count).toBe(beforeContacts);
+    expect((await withSystem((db) => db.query<{ status: string; kind: string; action: Record<string, unknown> }>(
+      "select status, kind, action from approval_requests where org_id = $1 and kind = 'lead_import' and action -> 'leadIds' = $2::jsonb",
+      [org.id, JSON.stringify([leadId])],
+    ))).rows).toMatchObject([{ status: "pending", kind: "lead_import", action: { leadIds: [leadId] } }]);
+    expect((await withSystem((db) => db.query<{ crm_sync_status: string }>(
+      "select crm_sync_status from leads where id = $1 and org_id = $2", [leadId, org.id],
+    ))).rows[0].crm_sync_status).toBe("awaiting_approval");
+
+    const repeatedRequest = await sendChatMessage(ctxFor(owner, org, "owner"), {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: "Create a CRM contact for this approved prospect",
+      clientMessageId: crypto.randomUUID(),
+    });
+    const repeatedRequestReply = (await withSystem((db) => db.query<{ content: string }>(
+      "select content from chat_messages where id = $1 and org_id = $2", [repeatedRequest.assistantMessageId, org.id],
+    ))).rows[0].content;
+    expect(repeatedRequestReply).toContain("already waiting for an owner or admin");
+    expect((await noApprovalFor(leadId)).rows).toHaveLength(1);
+    await resetAgentMessageRateLimit(owner.id);
+    await resetAgentMessageRateLimit(member.id);
+  });
+
   it("saves bounded persistent preferences from the permanent chat on the Growth Partner only", async () => {
     await resetAgentMessageRateLimit(owner.id);
     const ctx = ctxFor(owner, org, "owner");
@@ -2177,4 +2427,6 @@ describe("AI Growth Partner chat to native workflow", () => {
     expect(afterActivation.instructions).toContain("policies.customerPolicies: Consultations are paid; do not offer free consultations.");
     expect(afterActivation.instructions).toContain("Active Business Brain (version 2)");
   });
+
+
 });

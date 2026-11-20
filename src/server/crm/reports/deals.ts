@@ -5,7 +5,7 @@ import { byCurrency, num, ownerNote, pct, type ReportScope } from "@/server/crm/
 import type { DealsReport, PipelineReport, SectionResult } from "@/components/crm/reports/types";
 
 const VIA_LABELS: Record<string, string> = {
-  manual: "Added by hand", import: "Import", form: "Form", booking: "Booking", api: "API", agent: "AI employee", workflow: "Automation", ghl_migration: "GoHighLevel migration", unknown: "Not recorded",
+  manual: "Added by hand", import: "Import", form: "Form", booking: "Booking", api: "API", agent: "AI activity", workflow: "Automation", ghl_migration: "GoHighLevel migration", unknown: "Not recorded",
 };
 
 // Native deals only (GoHighLevel copies are excluded); archived deals are left out, as everywhere else in the CRM.

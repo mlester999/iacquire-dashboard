@@ -117,7 +117,7 @@ function renderRail(rail: Partial<ChatRailProps> = {}, shell: Partial<ShellData>
 describe("ChatRail navigation", () => {
   it("shows the brand, links home, and labels retained client profiles accurately", () => {
     renderRail();
-    expect(screen.getByRole("link", { name: /iAcquire dashboard/i })).toHaveAttribute("href", "/overview");
+    expect(screen.getByRole("link", { name: /iAcquireOS dashboard/i })).toHaveAttribute("href", "/overview");
     expect(screen.getByRole("link", { name: /Back to previous role profiles/i })).toHaveAttribute("href", "/employees");
     expect(screen.getByText("AcquireOS")).toBeInTheDocument();
   });
@@ -125,7 +125,7 @@ describe("ChatRail navigation", () => {
   it("returns an agency Super Admin to the agency workforce area, not the client directory", () => {
     renderRail({}, { org: { ...shellData().org, kind: "agency", name: "iAcquire" } });
     expect(screen.getByRole("link", { name: /Back to iAcquire internal profiles/i })).toHaveAttribute("href", "/admin/employees");
-    expect(screen.getByRole("link", { name: /iAcquire agency dashboard/i })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: /iAcquireOS agency dashboard/i })).toHaveAttribute("href", "/admin");
   });
 
   it("lists only enabled specialists, each opening that employee's chat", () => {

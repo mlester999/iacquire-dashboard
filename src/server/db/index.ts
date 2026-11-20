@@ -470,6 +470,13 @@ export const MIGRATION_PREREQUISITES: Record<string, readonly string[]> = {
   "0121_ai_growth_partner_conversation": ["0002_workforce", "0005_tenant_integrity", "0060_rls_initplan", "0120_ai_growth_partner_foundation"],
   // 0130 adds inspectable, tenant-scoped application memory behind the unified Partner identity.
   "0130_ai_growth_partner_memory": ["0121_ai_growth_partner_conversation"],
+  "0142_growth_partner_migration_plans": ["0120_ai_growth_partner_foundation", "0134_ai_growth_partner_legacy_knowledge"],
+  // 0143 references foundation tenant tables and revokes access from the Website Studio runtime role.
+  "0143_workspace_oauth_connections": ["0001_foundation", "0021_websites"],
+  // 0144 ties preparation evidence to the exact reviewed plan and tenant Brain versions.
+  "0144_growth_partner_migration_preparations": ["0120_ai_growth_partner_foundation", "0142_growth_partner_migration_plans"],
+  "0145_fsa_directory_research_source": ["0128_lead_research_source_budgets"],
+  "0146_workspace_knowledge_sources": ["0120_ai_growth_partner_foundation", "0143_workspace_oauth_connections"],
   // 0133 adds tenant-scoped targets to the one-per-tenant Growth Partner foundation.
   "0133_ai_growth_partner_goals": ["0120_ai_growth_partner_foundation"],
 };

@@ -29,6 +29,7 @@ import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fix
 import { clearSetupPayment } from "./support/billing";
 import { makeRuntimeReady } from "./support/runtime-ready";
 import { applyRealBlueprint, approveHeldFirstConfigurations, approveHours, checkJobs, count, itemOf, settled } from "./support/launch";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
 
 const OFFICE_HOURS = { mon: [["09:00", "17:00"]], tue: [["09:00", "17:00"]], wed: [["09:00", "17:00"]], thu: [["09:00", "17:00"]], fri: [["09:00", "17:00"]] };
 
@@ -357,7 +358,7 @@ describe("two clients from the questionnaire to ready to launch", () => {
     await expect(loadLaunchFacts(ctxFor(a.owner, b.org, "owner"))).rejects.toThrow(/access/i);
     await expect(loadLaunchFacts(ctxFor(b.owner, a.org, "owner"))).rejects.toThrow(/access/i);
     // An employee only does its own role's reviewed work.
-    await expect(dispatchCapabilityJob(a.ctx, { agentRole: "performance_analyst", capability: "appointment_availability", title: "Not mine" })).rejects.toThrow(/role/i);
+    await expect(dispatchCapabilityJob(a.ctx, { agentRole: "performance_analyst", capability: "appointment_availability", title: "Not mine" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
     const denied = await withSystem((db) => db.query("select 1 from audit_logs where org_id = $1 and action = 'agent.action_denied'", [a.org.id]));
     expect(denied.rows.length).toBeGreaterThan(0);
   }, 180_000);
@@ -527,4 +528,21 @@ describe("an employee that fell behind what the client approved", () => {
     expect((await loadLaunchFacts(c.ctx))!.employeesBehind).toBeUndefined();
     expect((await readiness(c)).steps.flatMap((s) => s.items).map((i) => i.key)).not.toContain("employees.in_sync");
   }, 300_000);
+});
+
+describe("a Growth-Partner-only client on the launch checklist", () => {
+  it("shows the Partner's required setup items without listing the six legacy employees", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Launch Checklist", runtime: "setup_required" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+
+    const membership = { ...tenant.ownerCtx.org, onboardingCompletedAt: new Date().toISOString() };
+    const ctx = { ...tenant.ownerCtx, org: membership, memberships: [membership] };
+    const readiness = await getLaunchReadiness(ctx) as LaunchReadiness | null;
+    expect(readiness).not.toBeNull();
+    const keys = readiness!.steps.flatMap((step) => step.items).map((item) => item.key);
+    expect(keys).toEqual(expect.arrayContaining(["growth_partner.brain", "growth_partner.conversation", "growth_partner.runtime"]));
+    for (const role of AGENT_ROLE_KEYS) expect(keys).not.toContain(`employees.${role}`);
+    await expectNoLegacyEmployeeRows(tenant.org.id);
+  });
 });

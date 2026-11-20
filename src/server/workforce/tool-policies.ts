@@ -351,7 +351,7 @@ export async function saveHermesToolPolicy(
     } else if (input.scopeKind === "agent") {
       await db.query("select id from agent_instances where id=$1 for update", [input.agentId]);
       const target = await db.query<{ org_id: string; org_kind: string }>("select a.org_id,o.kind as org_kind from agent_instances a join organizations o on o.id=a.org_id where a.id=$1", [input.agentId]);
-      if (!target.rows[0]) throw new AppError("not_found", "AI employee not found.");
+      if (!target.rows[0]) throw new AppError("not_found", "AI runtime not found.");
       orgId = target.rows[0].org_id;
       agentId = input.agentId!;
     }

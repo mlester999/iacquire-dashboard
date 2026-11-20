@@ -25,11 +25,12 @@ import {
   recordWorkStage,
   type WorkJobRow,
 } from "@/server/workforce/jobs";
-import { targetingSchema } from "@/lib/leads-targeting";
-import { isWorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
+import { targetingSchema, type Targeting } from "@/lib/leads-targeting";
+import { workforceRoleShortName } from "@/lib/agents";
 import { serverMarker } from "@/lib/evidence-class";
 import {
   findLeadDuplicates,
+  lockLeadIntake,
   normalizeDomain,
   normalizeScore,
   parseResearchOutput,
@@ -44,10 +45,10 @@ import {
   type ResearchSourceBundle,
   type ResearchSourceRunnerDependencies,
 } from "@/server/leads/research-source-runner";
-import { getResearchSourcePolicy } from "@/server/leads/research-source-policy";
+import { getResearchSourceUsageForJob, hasApprovedDiscoverySource } from "@/server/leads/research-source-policy";
 
 /**
- * The Lead Hunter research handler.
+ * The acquisition research handler.
  *
  * Real work only: every stage event is produced by a provider tool event or by server-side
  * qualification/duplicate work that actually ran. Counts are incremented from observed events and
@@ -57,8 +58,8 @@ import { getResearchSourcePolicy } from "@/server/leads/research-source-policy";
 
 const STAGE_COPY: Record<string, string> = {
   searching: "Searching approved business sources…",
-  reviewing: "Reviewing discovered company websites…",
-  extracting: "Extracting prospect details from the pages that were read…",
+  reviewing: "Reviewing evidence from approved sources…",
+  extracting: "Extracting prospect details from the collected evidence…",
   verifying: "Verifying information against the cited sources…",
   qualifying: "Qualifying candidates against your criteria…",
   checking_duplicates: "Checking candidate companies against existing CRM records…",
@@ -73,6 +74,7 @@ interface ResearchSetup {
   configVersionId: string | null;
   memoryScope: string;
   input: string;
+  targeting: Targeting;
   agentRunId: string;
   hermesRunId: string | null;
 }
@@ -182,9 +184,9 @@ async function markRequestFailed(
   },
 ) {
   await withSystem(async (db) => {
-    if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId })) return;
+    if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId, allowCancelRequested: true })) return;
     const current = await getWorkJob(db, job.org_id, job.id);
-    const effective = current?.status === "cancelled" ? "cancelled" : input.status;
+    const effective = current?.status === "cancelled" || current?.cancel_requested_at ? "cancelled" : input.status;
     const stage = effective === "cancelled" ? "cancelled" : effective === "blocked" ? "blocked" : "failed";
     if (input.requestId) {
       await updateRequest(db, job.org_id, input.requestId, effective === "cancelled" ? "cancelled" : "failed", input.message);
@@ -275,7 +277,7 @@ export async function runLeadResearchJob(
       "select role_key from agent_instances where id = $1 and org_id = $2",
       [job.agent_instance_id, job.org_id],
     );
-    return rows[0] && isWorkforceRoleKey(rows[0].role_key) ? workforceRoleShortName(rows[0].role_key) : "AI employee";
+    return rows[0]?.role_key === "growth_partner" ? workforceRoleShortName("growth_partner") : "Research runtime";
   });
 
   let setup: ResearchSetup & { runId: string };
@@ -301,12 +303,10 @@ export async function runLeadResearchJob(
       }
       const conn = await loadConnection(db, job.agent_instance_id);
       if (!conn) throw new ResearchBlocked(employeeName + " is not connected, so no research was started.");
-      if (conn.roleKey === "growth_partner") {
-        const discoveryPolicy = await getResearchSourcePolicy(db, job.org_id, "openstreetmap");
-        if (!discoveryPolicy?.enabled) throw missingGrowthPartnerDiscoverySource();
-      }
-      const targeting = targetingSchema.safeParse(request.criteria);
-      const brainQuery = [request.prompt, targeting.success ? JSON.stringify(targeting.data) : ""].filter(Boolean).join("\n");
+      if (conn.roleKey === "growth_partner" && !await hasApprovedDiscoverySource(db, job.org_id)) throw missingGrowthPartnerDiscoverySource();
+      const savedTargeting = targetingSchema.safeParse(request.criteria);
+      const targeting = savedTargeting.success ? savedTargeting.data : targetingSchema.parse({});
+      const brainQuery = [request.prompt, savedTargeting.success ? JSON.stringify(targeting) : ""].filter(Boolean).join("\n");
       const runInstructions = await buildRunInstructions(db, job.org_id, job.agent_instance_id, brainQuery);
       if (!runInstructions.versionId) throw new ResearchBlocked(employeeName + " has no applied configuration, so no research was started.");
       const company = await loadCompanyContext(db, job.org_id);
@@ -317,7 +317,7 @@ export async function runLeadResearchJob(
       }
       const input = researchPrompt(
         request.prompt,
-        targeting.success ? targeting.data : targetingSchema.parse({}),
+        targeting,
         request.campaign_type,
         company,
       );
@@ -346,6 +346,7 @@ export async function runLeadResearchJob(
         configVersionId: runInstructions.versionId,
         memoryScope: ["iaq", job.org_id, conn.roleKey].join(":"),
         input,
+        targeting,
         runId: run[0].id,
         agentRunId: run[0].id,
         hermesRunId: null,
@@ -398,6 +399,8 @@ export async function runLeadResearchJob(
       orgId: job.org_id,
       jobId: job.id,
       requestId,
+      targeting: setup.targeting,
+      workerId: context.workerId,
       beforeProviderRequest: () => assertNoToolRunScopeAvailable(setup.conn),
       dependencies: dependencies.researchSources,
       onProgress: async (stage) => {
@@ -407,7 +410,7 @@ export async function runLeadResearchJob(
     if (collected) {
       sourceBundle = collected.bundle;
       setup.input = `${setup.input}\n\n${collected.promptContext}`;
-      counters.searches += 1;
+      counters.searches += sourceBundle.discoveryRequests;
       counters.pagesReviewed += sourceBundle.pagesReviewed;
       await noteProgress(job, context.workerId, counters, "extracting");
     } else if (setup.sourcePlatform === "growth_partner") {
@@ -415,22 +418,36 @@ export async function runLeadResearchJob(
       // ordinary Hermes run with web tools available.
       throw missingGrowthPartnerDiscoverySource();
     }
+    if (context.controller.signal.aborted || await requestCancelled(job.id, job.org_id)) throw new Error("work_cancelled");
     const started = await startAgentRun(job.agent_instance_id, job.org_id, setup.conn, {
       input: setup.input,
       instructions: setup.instructions,
       idempotencyKey: `research:${requestId}:${job.id}:${job.attempts}`,
-      memoryScope: setup.memoryScope,
+      // The work result belongs in the app's permanent thread. Source content stays out of native shared memory.
+      memoryScope: sourceBundle ? undefined : setup.memoryScope,
     }, sourceBundle ? { toolScope: "no_tools" as const } : {});
     hermesRunId = started.runId;
-    if (leaseLost || !await withSystem(async (db) => {
+    const runRegistered = !leaseLost && await withSystem(async (db) => {
       if (!await lockActiveWorkJobLease(db, { jobId: job.id, orgId: job.org_id, workerId: context.workerId })) return false;
       await db.query("update agent_runs set hermes_run_id = $2 where id = $1 and status = 'running'", [setup.runId, hermesRunId]);
       return true;
-    })) {
+    });
+    if (!runRegistered) {
       clearInterval(heartbeatTimer);
       if (heartbeatInFlight) await heartbeatInFlight;
       await stopRun(setup.conn, hermesRunId).catch(() => undefined);
-      await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+      if (await requestCancelled(job.id, job.org_id)) {
+        await markRequestFailed(job, context.workerId, {
+          status: "cancelled",
+          code: "cancelled",
+          message: "The research was stopped. No further provider work was requested.",
+          requestId,
+          agentRunId: setup.runId,
+          agentRunStatus: "cancelled",
+        });
+      } else {
+        await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+      }
       return;
     }
   } catch (err) {
@@ -438,6 +455,13 @@ export async function runLeadResearchJob(
     if (heartbeatInFlight) await heartbeatInFlight;
     if (leaseLost) {
       await withSystem((db) => updateAgentRun(db, setup.runId, "interrupted", null, "work_lease_lost")).catch(() => undefined);
+      return;
+    }
+    if (context.controller.signal.aborted || await requestCancelled(job.id, job.org_id)) {
+      await markRequestFailed(job, context.workerId, {
+        status: "cancelled", code: "cancelled", requestId, agentRunId,
+        message: "The research was stopped. No further provider work was requested.",
+      });
       return;
     }
     const blocked = err instanceof ResearchBlocked || err instanceof AgentRunNotReadyError;
@@ -630,6 +654,7 @@ export async function runLeadResearchJob(
         message: STAGE_COPY.checking_duplicates,
         progress: { ...counters, candidates: parsed.leads.length },
       });
+      await lockLeadIntake(db, job.org_id);
       const leadIds: string[] = [];
       let evidenceBacked = 0;
       let needsEvidence = 0;
@@ -689,7 +714,7 @@ export async function runLeadResearchJob(
             duplicate.status,
             JSON.stringify(duplicate.matches),
             JSON.stringify(lead.public_contact ?? {}),
-            setup.sourcePlatform,
+            sourceBundle ? (sourceBundle.synthetic ? "synthetic_fixture" : "approved_source") : setup.sourcePlatform,
             JSON.stringify(signalRecords),
             qualification.state,
             qualification.reasons,
@@ -702,18 +727,8 @@ export async function runLeadResearchJob(
 
       const outcomeSummary = `${evidenceBacked} evidence-backed, ${disqualified} disqualified, ${duplicates} duplicate${duplicates === 1 ? "" : "s"}, and ${needsEvidence} needing more evidence`;
       const sourceUsage = sourceBundle
-        ? await db.query<{ source: string; requests: number; provider_fee_usd: string; reserved: number; transport_failed: number }>(
-            `select source, count(*)::int as requests,
-                    coalesce(sum(provider_fee_usd), 0)::text as provider_fee_usd,
-                    count(*) filter (where status = 'reserved')::int as reserved,
-                    count(*) filter (where status = 'transport_failed')::int as transport_failed
-               from lead_research_source_usage
-              where org_id = $1 and work_job_id = $2
-              group by source
-              order by case source when 'openstreetmap' then 0 else 1 end`,
-            [job.org_id, job.id],
-          )
-        : null;
+        ? await getResearchSourceUsageForJob(db, job.org_id, job.id)
+        : [];
       const sourceReport = sourceBundle
         ? ` Sources: ${sourceBundle.sourceNames.join(" and ")} (${sourceBundle.requests} request${sourceBundle.requests === 1 ? "" : "s"}, $${sourceBundle.providerFeeUsd.toFixed(2)} provider spend).`
         : "";
@@ -758,13 +773,8 @@ export async function runLeadResearchJob(
           rejected: parsed.rejected,
           searches: counters.searches,
           pagesReviewed: counters.pagesReviewed,
-          sourceUsage: sourceUsage?.rows.map((row) => ({
-            source: row.source,
-            requests: row.requests,
-            providerFeeUsd: Number(row.provider_fee_usd),
-            reserved: row.reserved,
-            transportFailed: row.transport_failed,
-          })) ?? [],
+          sourceUsage,
+          sourceTransport: sourceBundle ? (sourceBundle.synthetic ? "synthetic_fixture" : "approved_source") : null,
           sourceWarnings: sourceBundle?.warnings ?? [],
           limitation: leadIds.length < parsed.leads.length ? "Some candidates were flagged as duplicates or lacked evidence." : null,
         },

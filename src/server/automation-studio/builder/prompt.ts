@@ -1,8 +1,9 @@
 import "server-only";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import type { WorkflowBuilderOptions } from "@/server/crm/workflows/context";
 import type { ValidationIssue, WorkflowDefinition } from "@/lib/crm/workflow/spec";
 import { OPERATION_FORMAT_NOTES } from "@/server/automation-studio/builder/operations-notes";
-import { conditionCatalog, employeeCatalog, limitsNote, stepCatalog, tokenNote, triggerCatalog } from "@/server/automation-studio/builder/catalog";
+import { conditionCatalog, limitsNote, stepCatalog, tokenNote, triggerCatalog } from "@/server/automation-studio/builder/catalog";
 import { cleanData, dataRules, fenceData, newDataNonce } from "@/server/automation-studio/builder/guard";
 
 /**
@@ -81,7 +82,7 @@ export function workspaceForModel(o: WorkflowBuilderOptions): string {
     `pipelines: ${list(o.pipelines.map((p) => ({ id: p.id, name: c(p.name), stages: p.stages.map((s) => ({ id: s.id, name: c(s.name), kind: s.kind })) })))}`,
     `custom fields: ${list(o.fields.map((f) => ({ id: f.id, label: c(f.label), entity: f.entity, type: f.type, options: f.options.length ? f.options.map((x) => c(x.value)) : undefined })))}`,
     `approved message templates (the ONLY messages a workflow may send; copy templateId, contentHash and channel exactly): ${list(o.templates.map((t) => ({ templateId: t.id, name: c(t.name), channel: t.channel, purpose: t.purpose, contentHash: t.contentHash })))}`,
-    `AI employees in this workspace: ${list(o.agents.map((a) => ({ roleKey: a.roleKey, name: c(a.name), mode: a.mode, readyToChat: a.ready })))}`,
+    `AI runtime assignments in this workspace: ${list(o.agents.map((a) => ({ roleKey: a.roleKey, name: c(a.name), previousProfile: a.roleKey !== AI_GROWTH_PARTNER_ROLE_KEY, mode: a.mode, readyToChat: a.ready })))}`,
     `verified n8n automations: ${list(o.n8nMappings.map((m) => ({ mappingId: m.id, label: c(m.label), problem: m.problem ? c(m.problem) : undefined })))}`,
     `outbound webhook endpoints: ${list(o.webhookSubscriptions.map((w) => ({ subscriptionId: w.id, name: c(w.name), host: c(w.host) })))}`,
     `connections to outside systems (the ONLY ones an http_request or slack_message step may use; copy connectionId exactly; "methods" are the only HTTP methods allowed; a connection that is not "active" cannot send until the owner verifies it): ${list((o.connections ?? []).map((x) => ({ connectionId: x.id, name: c(x.name), kind: x.kind, status: x.status, host: x.kind === "http" ? c(x.host) : undefined, methods: x.kind === "http" ? x.methods : undefined })))}`,
@@ -100,14 +101,14 @@ export function buildSystemPrompt(ctx: BuilderContext): string {
   const runs = ctx.recentProblems.length
     ? ctx.recentProblems.map((r) => `- ${r.at}: ${r.status}${r.step ? ` at step "${cleanData(r.step, 80)}"` : ""}${r.error ? `: ${cleanData(r.error, 300)}` : ""}`).join("\n")
     : "none recently";
-  return clip(`You are the AI Automation Builder inside iAcquire Automation Studio. You help a business owner build and change ONE automation (a workflow) in their own workspace. You are a specialist for this job: you are not the help assistant (AQi) and you are not one of their AI employees.
+  return clip(`You are the AI Automation Builder inside iAcquire Automation Studio. You help a business owner build and change ONE automation (a workflow) in their own workspace. You help draft automations. Refer to the workspace’s one business assistant as the AI Growth Partner.
 
 HOW YOU WORK
 - You change the workflow ONLY by proposing "operations" (below). The server checks every operation against the workspace and refuses anything invalid, so never guess an id: use only ids from the workspace lists. You never write or run code, and you cannot send messages, call outside systems or switch the automation on; you only edit its draft.
 - Always edit the EXISTING workflow shown below. Never rebuild it from scratch or duplicate it. Keep everything the person did not ask you to change, including their manual edits and step names.
 - Ask a question only when you truly cannot proceed (for example the workspace has no suitable approved message template, or two different tags could both be meant). Prefer a sensible default and say what you chose. At most one question at a time.
 - If a step needs something the workspace doesn't have (an approved message template, a tag, a pipeline), say so plainly and tell the person where to add it, instead of inventing it. Never put raw message text into a step: messages are sent only from approved templates.
-- Anything that messages customers, calls an outside system or asks an AI employee needs the business owner's approval of the exact published version before it runs. Mention this once when you add such a step. Never say a message was sent or an automation ran: you only edit the draft.
+- Anything that messages customers, calls an outside system or requests work from AI needs the business owner's approval of the exact published version before it runs. Mention this once when you add such a step. Never say a message was sent or an automation ran: you only edit the draft.
 - If asked why something failed, use the recent run problems below and explain in plain words what happened and what would fix it. Do not blame the person.
 - Reply in short, friendly, plain language. No jargon, no emojis, no markdown headings. A few short sentences, or a short list when there are several changes. Describe what you changed, not what you are about to do.
 - If the person's message names or refers to "this", "that step" or "it" and a step is selected, they mean the selected step.
@@ -134,9 +135,8 @@ ${conditionCatalog()}
 STEP KINDS (config is JSON Schema; "key" values you choose must be lower-case letters, numbers, - and _)
 ${stepCatalog()}
 
-AI EMPLOYEES (roleKey values)
-${employeeCatalog()}
-Asking an employee to do something ("ai_task") uses its own mode and permissions; a workflow never gives an employee more access than it already has.
+AI RUNTIME ASSIGNMENTS
+Use "${AI_GROWTH_PARTNER_ROLE_KEY}" for new AI steps when it appears in the workspace list. Preserve previous-profile assignments when editing existing steps unless the owner specifically asks to change them. Use only roleKey values from the workspace list. An "ai_task" step inherits the assigned runtime's current mode and permissions.
 
 LIMITS
 ${limitsNote()}

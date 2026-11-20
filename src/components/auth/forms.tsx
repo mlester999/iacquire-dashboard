@@ -4,10 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useActionState } from "react";
 import { motion, AnimatePresence,useReducedMotion } from "motion/react";
-import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
+import styles from "./auth-shell.module.css";
 import {
   acceptInviteAction,
   acceptInviteExistingAction,
@@ -37,7 +38,7 @@ export function FormAlert({ state }: { state: FormState }) {
       {message && (
         <motion.div
           key={message}
-          initial={{ opacity: 0, y: -6, height: 0 }}
+          initial={reduce ? false : { opacity: 0, y: -6, height: 0 }}
           animate={{ opacity: 1, y: 0, height: "auto" }}
           exit={reduce?undefined:{ opacity: 0, height: 0 }}
           className="overflow-hidden"
@@ -58,7 +59,7 @@ export function FormAlert({ state }: { state: FormState }) {
   );
 }
 
-function PasswordInput({ id, name, autoComplete, invalid, onValue }: { id: string; name: string; autoComplete: string; invalid?: boolean; onValue?: (v: string) => void }) {
+function PasswordInput({ id, name, autoComplete, invalid, onValue, className }: { id: string; name: string; autoComplete: string; invalid?: boolean; onValue?: (v: string) => void; className?: string }) {
   const [show, setShow] = React.useState(false);
   return (
     <div className="relative">
@@ -70,17 +71,17 @@ function PasswordInput({ id, name, autoComplete, invalid, onValue }: { id: strin
         required
         maxLength={200}
         aria-invalid={invalid || undefined}
-        className="pr-11"
+        className={cn("pr-12", className)}
         onChange={(e) => onValue?.(e.target.value)}
       />
       <button
         type="button"
         onClick={() => setShow((s) => !s)}
-        className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink"
+        className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-primary"
         aria-label={show ? "Hide password" : "Show password"}
-        aria-pressed={show}
+        aria-controls={id}
       >
-        {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        {show ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
       </button>
     </div>
   );
@@ -115,32 +116,26 @@ function StrengthMeter({ value }: { value: string }) {
 
 export function LoginForm({ next, notice }: { next?: string; notice?: string }) {
   const [state, action, pending] = useActionState(loginAction, notice ? { success: notice } : undefined);
-  const [hasEmail, setHasEmail] = React.useState(false);
-  const [hasPassword, setHasPassword] = React.useState(false);
+  const inputStyle = styles.authInput;
   return (
-    <form action={action} className="space-y-4" noValidate>
+    <form action={action} className={styles.signInForm}>
       <FormAlert state={state} />
       <input type="hidden" name="next" value={next ?? "/"} />
-      <Field label="Work email" htmlFor="email">
-        <Input id="email" name="email" type="email" autoComplete="email" inputMode="email" required autoFocus placeholder="you@company.com" maxLength={254} onChange={(event) => setHasEmail(Boolean(event.currentTarget.value.trim()))} />
-      </Field>
-      <Field
-        label={
-          <span className="flex w-full items-center justify-between">
-            Password
-          </span>
-        }
-        htmlFor="password"
-      >
-        <PasswordInput id="password" name="password" autoComplete="current-password" onValue={(value) => setHasPassword(Boolean(value.trim()))} />
-      </Field>
-      <div className="flex justify-end">
-        <Link href="/forgot-password" className="inline-flex min-h-11 items-center text-[14px] font-medium text-primary hover:underline">
+      <div className="space-y-4">
+        <Field label="Work email" htmlFor="email">
+          <Input id="email" name="email" type="email" autoComplete="email" inputMode="email" required placeholder="you@company.com" maxLength={254} className={inputStyle} />
+        </Field>
+        <Field label="Password" htmlFor="password">
+          <PasswordInput id="password" name="password" autoComplete="current-password" className={inputStyle} />
+        </Field>
+      </div>
+      <div className="mb-2 flex justify-end">
+        <Link href="/forgot-password" className={cn(styles.authLink, "text-[14px]")}>
           Forgot password?
         </Link>
       </div>
-      <Button type="submit" variant="brand" size="lg" className="w-full" loading={pending} disabled={!hasEmail || !hasPassword}>
-        Sign in
+      <Button type="submit" variant="primary" size="lg" className={cn(styles.authSubmit, "w-full")} loading={pending}>
+        {pending ? "Signing in…" : <>Sign in <ArrowRight className="size-4" aria-hidden /></>}
       </Button>
     </form>
   );

@@ -35,7 +35,7 @@ export default async function ProjectsPage() {
           <EmptyState
             icon={<FolderKanban className="size-5" />}
             title="No custom projects yet"
-            description="When you need extra automations, AI agents, a website or custom software, request it here and follow every step."
+            description="When you need extra automations, custom AI workflows, a website or custom software, request it here and follow every step."
             action={
               <ButtonLink href="/add-ons" variant="brand">
                 Explore Custom Projects &amp; Add-ons

@@ -72,6 +72,7 @@ describe("Growth Partner schedule migration preview", () => {
       partnerScheduleMatches: 1,
       dueSchedules: 1,
     });
+    expect(preview.migrationChecks).toEqual({ unboundPartnerRuntimes: 0, pendingRetainedKnowledgeReviews: 0 });
     expect(preview.schedules).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: source.scheduleIds[0],
@@ -115,6 +116,31 @@ describe("Growth Partner schedule migration preview", () => {
       )).rows,
     }));
     expect(after).toEqual(before);
+  });
+
+  it("returns only counts for pending knowledge reviews and unbound runtime conflicts, scoped to the requested tenant", async () => {
+    const first = await createOrg();
+    const second = await createOrg();
+    await withSystem(async (db) => {
+      const candidate = (await db.query<{ id: string }>(
+        "insert into ai_growth_partners (org_id, status) values ($1, 'migration_required') returning id", [first.id],
+      )).rows[0];
+      await db.query(
+        "insert into agent_instances (org_id, role_key, display_name) values ($1, 'growth_partner', 'Synthetic private runtime label')",
+        [first.id],
+      );
+      await db.query(
+        `insert into ai_growth_partner_legacy_knowledge (org_id, partner_id, source_type, source_record_id, source_version, title, content)
+         values ($1, $2, 'employee_note', gen_random_uuid(), 'v1', 'Private title', 'Private knowledge for review')`,
+        [first.id, candidate.id],
+      );
+    });
+
+    const focused = await previewGrowthPartnerScheduleMigration(first.id);
+    expect(focused.migrationChecks).toEqual({ unboundPartnerRuntimes: 1, pendingRetainedKnowledgeReviews: 1 });
+    expect(JSON.stringify(focused)).not.toMatch(/private runtime label|private title|private knowledge/i);
+    expect((await previewGrowthPartnerScheduleMigration(second.id)).migrationChecks)
+      .toEqual({ unboundPartnerRuntimes: 0, pendingRetainedKnowledgeReviews: 0 });
   });
 
   it("refuses unknown, non-client and inactive workspaces", async () => {

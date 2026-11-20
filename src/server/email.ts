@@ -2,6 +2,7 @@ import "server-only";
 import { withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
 import { renderEmail } from "@/server/email-render";
+import { outboundMessagingEnabled } from "@/server/messaging/transports/policy";
 
 export type EmailTemplate = "invitation" | "verify_email" | "password_reset" | "support_reply" | "staff_invitation" | "setup_update" | "escalation_alert" | "notification" | "proposal_code" | "demo_link" | "purchase_invitation";
 
@@ -22,6 +23,34 @@ export interface OutgoingEmail {
 
 export type EmailStatus = "queued" | "captured" | "sent" | "failed";
 
+/**
+ * Who a platform email is for, which decides what the environment's master switch (OUTBOUND_MESSAGING_ENABLED) does to it.
+ *  - "outreach": goes to a prospect or a customer who may have no account here (a demo link, a proposal code, a purchase invitation, a support reply). While the master switch is off
+ *    it is stored as captured with a note that it was held, and the provider is not called.
+ *  - "account": keeps people in their own account or tells the team something (sign-in and password mail, invitations, staff and setup notices, escalation and notification mail). It is
+ *    NOT held by the switch: turning outbound messaging off must never lock anyone out of signing in or leave an invited person without their link.
+ * It is a Record over every template on purpose: a new template does not compile until someone decides which side it is on.
+ */
+const EMAIL_AUDIENCE: Record<EmailTemplate, "outreach" | "account"> = {
+  invitation: "account",
+  verify_email: "account",
+  password_reset: "account",
+  staff_invitation: "account",
+  setup_update: "account",
+  escalation_alert: "account",
+  notification: "account",
+  support_reply: "outreach",
+  proposal_code: "outreach",
+  demo_link: "outreach",
+  purchase_invitation: "outreach",
+};
+
+/** The templates the master switch holds. Exported so a test can pin the split. */
+export const OUTBOUND_HELD_EMAIL_TEMPLATES: readonly EmailTemplate[] = (Object.keys(EMAIL_AUDIENCE) as EmailTemplate[]).filter((t) => EMAIL_AUDIENCE[t] === "outreach");
+
+/** What the outbox row says when an email was held by the master switch. */
+export const OUTBOX_HELD_NOTE = "held: outbound messaging switch is off";
+
 export interface EmailDelivery {
   id: string;
   status: EmailStatus;
@@ -35,6 +64,9 @@ export interface EmailDelivery {
  * Queues an email in the outbox and delivers it through the configured provider.
  * With EMAIL_PROVIDER=capture (the default), messages are stored but not sent; in development
  * they can be read at /dev/mailbox. Delivery status is recorded truthfully either way.
+ *
+ * With a real provider, an email to a prospect or customer (see EMAIL_AUDIENCE) is also stored as captured, with a note saying it was held and with the provider not called,
+ * while OUTBOUND_MESSAGING_ENABLED is off. Account and sign-in mail is not affected by that switch.
  *
  * By default delivery is fire-and-forget. Pass `{ wait: true }` when the caller reports the outcome to a
  * person (for example "invitation sent"): the provider call is awaited and the final status is returned.
@@ -55,6 +87,14 @@ export async function sendEmail(email: OutgoingEmail, db?: Queryable, opts: { wa
     const mark = (q: Queryable) => q.query("update email_outbox set status = 'captured' where id = $1", [id]);
     if (db) await mark(db);
     else await withSystem(mark);
+    return { id, status: "captured" };
+  }
+
+  // A real provider is configured, but the master switch for messages to prospects and customers is off: this kind of email is kept in the outbox and not handed to the provider.
+  if (EMAIL_AUDIENCE[email.template] === "outreach" && !outboundMessagingEnabled()) {
+    const hold = (q: Queryable) => q.query("update email_outbox set status = 'captured', error = $2 where id = $1", [id, OUTBOX_HELD_NOTE]);
+    if (db) await hold(db);
+    else await withSystem(hold);
     return { id, status: "captured" };
   }
 
@@ -148,6 +188,7 @@ const PLACEHOLDER_DOMAIN = /(^|\.)(local|test|invalid|example|localhost)$|^examp
 /**
  * Whether email can really leave. It reads configuration only and calls nothing: whether the sending domain is verified is the email provider's to decide, and a message from
  * an unverified domain is refused by it, which the delivery record then says. The browser never sends email: this is checked on the server, before and while sending.
+ * "Ready" is about mail to a prospect or customer (a purchase invitation): it needs the master switch (OUTBOUND_MESSAGING_ENABLED) on as well as the provider set up.
  */
 export function emailReadiness(): EmailReadiness {
   const e = env();
@@ -160,6 +201,10 @@ export function emailReadiness(): EmailReadiness {
   if (e.EMAIL_PROVIDER !== "resend") {
     reason = "email_off";
     problems.push("EMAIL_PROVIDER is \"capture\", so messages are stored and never sent. Set EMAIL_PROVIDER=resend.");
+  } else if (!outboundMessagingEnabled()) {
+    // Mail to a prospect or customer (a purchase invitation is one) is held while the master switch is off, so it is not "ready" however well the provider is set up.
+    reason = "email_off";
+    problems.push("OUTBOUND_MESSAGING_ENABLED is not true, so email to prospects and customers (demo links, proposal codes, purchase invitations, support replies) is stored and never sent. Set OUTBOUND_MESSAGING_ENABLED=true once sending is approved.");
   }
   if (!e.RESEND_API_KEY) {
     reason ??= "email_not_configured";

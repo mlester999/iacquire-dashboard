@@ -123,6 +123,7 @@ export const JOB_LABELS: Record<string, string> = {
   inactivityReview: "Review accounts that have gone quiet",
   offboardingReminders: "Remind departing clients before deletion",
   aiWorkRecovery: "Recover stalled AI work jobs",
+  aiWorkRunQueued: "Run queued AI work",
   aiWorkSchedules: "Run due AI work schedules",
   aiWorkTriggers: "Run AI work triggers",
   aiProactiveHeldReports: "Release proactive reports held by quiet hours",

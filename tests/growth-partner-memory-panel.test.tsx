@@ -40,7 +40,7 @@ describe("Growth Partner memory controls", () => {
     });
     render(<GrowthPartnerMemoryPanel memories={[]} canManage hasPartner timezone="UTC" />);
 
-    expect(screen.getByText(/separate from Hermes runtime memory/)).toBeTruthy();
+    expect(screen.getByText(/separate from the AI runtime's own memory/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Add a note/ }));
     fireEvent.change(screen.getByLabelText("Saved note"), { target: { value: "Keep weekly reports concise." } });
     fireEvent.click(screen.getByRole("button", { name: "Save note" }));

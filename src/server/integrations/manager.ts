@@ -188,9 +188,9 @@ export async function saveIntegrationConnection(user:SessionUser,orgId:string|nu
     let hermesGatewayId:string|null=null;
     if(d.provider==="hermes" && orgId) {
       if(kind==="client" && isReservedProfile(config.profile!))throw new AppError("forbidden","Clients require dedicated profiles. Agency profiles cannot be reused.");
-      if(!config.roleKey)throw new AppError("invalid_input","Select the AI employee this profile belongs to.");
+      if(!config.roleKey)throw new AppError("invalid_input","Select the AI runtime identity for this connection.");
       agent=(await db.query<{id:string;credential_id:string|null}>("select id,credential_id from agent_instances where org_id=$1 and role_key=$2",[orgId,config.roleKey])).rows[0];
-      if(!agent)throw new AppError("not_found","AI employee not found.");
+      if(!agent)throw new AppError("not_found","AI runtime not found.");
       let selectedGatewayType:string|undefined;
       if(config.gatewayId) {
         const {rows:gateways}=await db.query<{id:string;base_url:string;status:string;gateway_type:string}>("select id,base_url,status,gateway_type from hermes_gateways where id=$1",[config.gatewayId]);

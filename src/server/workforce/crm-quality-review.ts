@@ -122,7 +122,7 @@ const unverifiedIdentities: ReviewCheck = async (db, job) => {
   });
 };
 
-export async function runCrmQualityReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runCrmQualityReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "crm_quality_review",
     allowedRoles: ["crm_manager", "growth_partner"],
@@ -136,5 +136,5 @@ export async function runCrmQualityReviewJob(job: WorkJobRow, _context: { worker
     sourceArea: "contacts",
     limitations: "Only CRM records stored in this workspace were read. No provider was contacted and no record or identity was changed.",
     subject: "CRM quality",
-  });
+  }, context.controller.signal);
 }

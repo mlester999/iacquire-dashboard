@@ -8,6 +8,8 @@ import { getWidgetByOrg } from "@/server/webchat/config";
 import { ungroundedAmounts } from "@/server/webchat/amounts";
 import { unsupportedReplyClaims } from "@/server/webchat/reply-check";
 import { KNOWLEDGE_SECTION_KEYS, type KnowledgeSectionKey } from "@/lib/webchat/rules";
+import { BusinessBrainSchema } from "@/lib/ai-growth-partner";
+import { customerSafeFacts, customerSafeFactsForSections, customerSafeFactsText } from "@/lib/ai-growth-partner-audience";
 
 // The website assistant. An anonymous visitor gets least privilege: the assistant sees ONLY the company-knowledge sections the workspace exposed to
 // the widget (and only content that is approved, never content held back for review), the conversation so far, and the real calendar when booking is
@@ -52,6 +54,24 @@ export async function widgetKnowledge(orgId: string, sections: readonly Knowledg
   return { text: text.trim(), used };
 }
 
+/** Confirmed, customer-safe facts from the active Growth Partner Brain. Drafts and internal facts never enter a customer prompt. */
+async function activeBusinessBrain(orgId: string) {
+  const { rows } = await withSystem((db) => db.query<{ business_brain: unknown }>(
+    `select v.business_brain from ai_growth_partners p
+     join ai_growth_partner_versions v on v.org_id = p.org_id and v.partner_id = p.id and v.version = p.current_version
+     where p.org_id = $1 and p.runtime_agent_instance_id is not null limit 1`,
+    [orgId],
+  ));
+  const parsed = rows[0] ? BusinessBrainSchema.safeParse(rows[0].business_brain) : null;
+  return parsed?.success ? parsed.data : null;
+}
+
+/** Customer-safe Brain text for non-widget customer replies (email, SMS, WhatsApp). */
+export async function customerSafeBrainKnowledge(orgId: string): Promise<string> {
+  const brain = await activeBusinessBrain(orgId);
+  return brain ? customerSafeFactsText(customerSafeFacts(brain)) : "";
+}
+
 // The amount helpers live in their own file so the claim check can use them without importing this one back; they are re-exported here for the callers that always
 // took them from the generator.
 export { NUMBER_TOKEN, plainNumber, ungroundedAmounts } from "@/server/webchat/amounts";
@@ -84,6 +104,16 @@ export function createWebChatGenerator(deps: GeneratorDeps = {}): ReplyGenerator
     if (!widget) return { kind: "unavailable", reason: "Website chat is not set up for this workspace." };
     if (!widget.aiEnabled) return { kind: "unavailable", reason: "The website assistant is switched off." };
     const knowledge = await widgetKnowledge(ctx.orgId, widget.knowledgeSections);
+    // Website exposure remains an explicit owner choice: Brain facts are mapped to a public widget section and follow the same allowlist.
+    const brain = widget.aiRoleKey === "growth_partner" ? await activeBusinessBrain(ctx.orgId) : null;
+    const brainFacts = brain ? customerSafeFactsForSections(brain, widget.knowledgeSections) : [];
+    const brainText = customerSafeFactsText(brainFacts);
+    const combinedKnowledge = [
+      knowledge.text,
+      brainText ? `### Confirmed Business Brain facts\n${brainText}` : "",
+    ].filter(Boolean).join("\n\n");
+    const used = new Set(knowledge.used);
+    for (const fact of brainFacts) used.add(fact.widgetSection);
     const config = await loadConfig();
     if (!config) return { kind: "unavailable", reason: "The AI language model is not connected, so the website assistant cannot answer." };
     // Every reply reaches a model iAcquire pays for, and the widget key is public: the workspace's daily allowance is taken before the model is asked. Past it, nobody
@@ -95,7 +125,7 @@ export function createWebChatGenerator(deps: GeneratorDeps = {}): ReplyGenerator
     }
     const callKey = modelCallKey(ctx.inboundMessageId);
 
-    const system = customerInstructions(systemBase({ businessName: ctx.businessName, knowledge: knowledge.text, hasPricing: knowledge.used.includes("approved_pricing"), widgetTitle: widget.title }), ctx);
+    const system = customerInstructions(systemBase({ businessName: ctx.businessName, knowledge: combinedKnowledge, hasPricing: used.has("approved_pricing"), widgetTitle: widget.title }), ctx);
     const transcript = ctx.history.map((h) => `${h.role === "user" ? "Visitor" : "Assistant"}: ${h.content}`).join("\n");
     const user = `<conversation>\n${transcript}${transcript ? "\n" : ""}Visitor: ${ctx.customerMessage}\n</conversation>\n\nWrite the assistant's next reply to the visitor's last message, following the rules above.`;
     const res = await complete(config, { system, user, maxTokens: 500, temperature: 0.3, timeoutMs: 25_000 });
@@ -105,12 +135,12 @@ export function createWebChatGenerator(deps: GeneratorDeps = {}): ReplyGenerator
     if (!res.ok) return { kind: "unavailable", reason: "The AI language model did not answer." };
     const outcome = parseReply(res.text);
     if (outcome.kind === "reply") {
-      const bad = ungroundedAmounts(outcome.text, knowledge.text);
+      const bad = ungroundedAmounts(outcome.text, combinedKnowledge);
       if (bad.length) return { kind: "unavailable", reason: `The assistant quoted an amount (${bad[0]}) that is not in the approved knowledge, so the reply was not sent.` };
       // The same net the AI drafts get (offers, discounts, guarantees, awards, contact details the business never gave), plus a bare "it is free": a visitor can talk
       // the model into saying it, and on an autonomous employee nobody reads the reply first. The visitor's own words never back a claim; they only excuse repeating their own contact details.
       const visitorSaid = [...ctx.history.filter((h) => h.role === "user").map((h) => h.content), ctx.customerMessage].join("\n");
-      const claims = unsupportedReplyClaims(outcome.text, knowledge.text, visitorSaid);
+      const claims = unsupportedReplyClaims(outcome.text, combinedKnowledge, visitorSaid);
       if (claims.length) return { kind: "unavailable", reason: `The assistant made a claim ("${claims[0].slice(0, 60)}") that is not in the approved knowledge, so the reply was not sent.` };
       // An obvious leak of the rules themselves is never sent.
       if (/approved business knowledge|untrusted text|## (what you may use|prices)/i.test(outcome.text)) return { kind: "unavailable", reason: "The reply repeated the assistant's own instructions, so it was not sent." };

@@ -65,15 +65,15 @@ export async function issueAgentToolToken(
     && AGENT_ROLE_KEYS.includes(agent.role_key as AgentRoleKey)
     && agent.hermes_profile === AGENCY_HERMES_PROFILE_IDS[agent.role_key as AgentRoleKey],
   );
-  if (!agent || (agent.kind !== "client" && !agencyBridgeAllowed)) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("conflict", "This AI employee is not included in the workspace.");
+  if (!agent || (agent.kind !== "client" && !agencyBridgeAllowed)) throw new AppError("not_found", "AI runtime not found.");
+  if (!agent.enabled) throw new AppError("conflict", "The AI runtime is disabled in this workspace.");
   if (input.runId) {
     const run = await db.query<{ status: string }>("select status from agent_runs where id = $1 and org_id = $2 and agent_instance_id = $3", [input.runId, input.orgId, input.agentInstanceId]);
     if (!run.rows[0]) throw new AppError("not_found", "Run not found.");
     if (!LIVE_RUN.includes(run.rows[0].status)) throw new AppError("conflict", "That run has already finished.");
   }
   const scopes = effectiveScopes(agent.role_key, [...new Set(input.scopes)]);
-  if (!scopes.length) throw new AppError("invalid_input", "None of those tool scopes are allowed for this AI employee's role.");
+  if (!scopes.length) throw new AppError("invalid_input", "None of those tool scopes are available to the assigned AI profile.");
   const token = `${AGENT_TOKEN_PREFIX}${randomToken(32)}`;
   const ins = await db.query<{ id: string; expires_at: Date }>(
     `insert into crm_agent_tokens (org_id, agent_instance_id, run_id, token_hash, scopes, expires_at)
@@ -145,10 +145,10 @@ export async function revokeEndedRunTokens(db: Queryable): Promise<number> {
  * one of them is refused from the next request on. Needs the pause permission (owners and managers).
  */
 export async function revokeAgentToolAccess(actor: CrmActor, agentInstanceId: string): Promise<{ revoked: number }> {
-  assertCan(actor, "automation.pause", "Only owners and managers can stop an AI employee's tool access.");
+  assertCan(actor, "automation.pause", "Only owners and managers can stop AI tool access.");
   return withSystem(async (db) => {
     const agent = await db.query<{ display_name: string }>("select display_name from agent_instances where id = $1 and org_id = $2", [agentInstanceId, actor.orgId]);
-    if (!agent.rows[0]) throw new AppError("not_found", "AI employee not found.");
+    if (!agent.rows[0]) throw new AppError("not_found", "AI runtime not found.");
     const res = await db.query(
       "update crm_agent_tokens set revoked_at = now() where org_id = $1 and agent_instance_id = $2 and revoked_at is null and expires_at > now()",
       [actor.orgId, agentInstanceId],

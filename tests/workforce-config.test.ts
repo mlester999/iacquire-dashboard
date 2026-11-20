@@ -22,6 +22,7 @@ describe("configuration compiler", () => {
     expect(c.riskFlags).toEqual([]);
     expect(c.summary).toMatch(/Your Sales Assistant will support sales of whitening from \$299/);
     expect(c.policyVersion).toBe(POLICY_VERSION);
+    expect(c.instructions).toContain("Never store passwords, API keys, access tokens");
     expect(c.instructions).toContain("never discuss iAcquire's internal systems or other customers.");
   });
 
@@ -189,7 +190,7 @@ describe("provisioning safety", () => {
     const soul = buildSoul("lead_hunter", "Lakeside Dental");
     expect(soul).toContain("You work only for Lakeside Dental");
     expect(soul).toContain("Public research is not consent");
-    expect(soul).toContain("iAcquire policy (2026-10-21.1)");
+    expect(soul).toContain(`iAcquire policy (${POLICY_VERSION})`);
     const config = buildConfigYaml();
     expect(config).toMatch(/platform_toolsets:\s*\n\s+api_server:/);
     expect(config).toMatch(/disabled_toolsets:/);

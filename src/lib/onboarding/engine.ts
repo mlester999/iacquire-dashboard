@@ -2,6 +2,7 @@
 // and what the answers mean for the rest of the platform. No I/O so it runs the same in the browser
 // (instant feedback) and on the server (the authority).
 import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { BUSINESS_BRAIN_SECTIONS, BUSINESS_BRAIN_SECTION_TITLES, generateBusinessBrainFromOnboarding } from "@/lib/ai-growth-partner";
 import { GROWTH_PARTNER_BEHAVIOR_MODES, LANGUAGES, TONES, type OnboardingData, type Tone, type ReplyLength } from "@/lib/agent-settings";
 import { normalizeEmail, normalizePhone, validateBusinessHours, type BusinessHours, WEEKDAYS } from "@/lib/messaging";
 import { INDUSTRY_OPTIONS, QUESTIONS, QUESTION_BY_ID, QUESTIONNAIRE_VERSION, hasHours, questionOptions, wantsAppointments, wantsWebsite, channelsOf } from "./definitions";
@@ -634,7 +635,13 @@ const COUNT_WORDS = ["no", "one", "two", "three", "four", "five", "six"];
 /** A small count in words ("five"), so a heading never says six when the plan holds fewer. */
 export const countWord = (n: number): string => COUNT_WORDS[n] ?? String(n);
 
+export interface OnboardingBrainReview {
+  confirmation?: string;
+  groups: { title: string; facts: { key: string; questionId: string; label: string; value: string; state: string }[] }[];
+}
+
 export interface ReviewModel {
+  businessBrain?: OnboardingBrainReview;
   workforceModel: "legacy" | "growth_partner";
   sections: Array<{ id: SectionId; title: string; rows: ReviewRow[] }>;
   plan: PlanSummary;
@@ -649,7 +656,7 @@ export interface ReviewModel {
   canSubmit: boolean;
 }
 
-export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[], scope?: QuestionScope, addOns: PlanAddOn[] = [], workforceModel: ReviewModel["workforceModel"] = "legacy"): ReviewModel {
+export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFacts, enabledRoles: AgentRoleKey[], scope?: QuestionScope, addOns: PlanAddOn[] = [], workforceModel: ReviewModel["workforceModel"] = "legacy", includeFirstBrain = false): ReviewModel {
   const stored = effectiveStored(storedAll, scope);
   const a = answersOf(stored);
   const visible = visibleQuestions(a, scope);
@@ -673,6 +680,25 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
         } satisfies ReviewRow;
       }),
   }));
+
+  let businessBrain: OnboardingBrainReview | undefined;
+  if (workforceModel === "growth_partner" && includeFirstBrain) {
+    const brain = generateBusinessBrainFromOnboarding(stored);
+    const groups = BUSINESS_BRAIN_SECTIONS.map((section) => ({
+      title: BUSINESS_BRAIN_SECTION_TITLES[section],
+      facts: Object.entries(brain.sections[section]).flatMap(([key, fact]) => {
+        const questionId = fact.provenance[0]?.sourceId;
+        const question = questionId ? QUESTION_BY_ID[questionId] : undefined;
+        if (!questionId || !question || fact.state === "unknown") return [];
+        const brandColor = questionId === "e.brand_colors";
+        const value = brandColor && typeof fact.value === "string" ? fact.value : describeValue(question, fact.value as AnswerValue, a);
+        if (!value) return [];
+        const label = brandColor ? key === "brandAccentColor" ? "Accent color" : "Primary brand color" : question.reviewLabel ?? question.title;
+        return [{ key, questionId, label, value, state: fact.state }];
+      }),
+    })).filter((group) => group.facts.length > 0);
+    businessBrain = { groups };
+  }
 
   const roleAnswers = toRoleAnswers(confirmedAnswers(stored));
   const employees = enabledRoles.map((role) => {
@@ -748,7 +774,7 @@ export function buildReviewModel(storedAll: StoredAnswers, facts: ConnectionFact
 
   const check = submitCheck(storedAll, scope);
   const plan: PlanSummary = { included: AGENT_ROLE_KEYS.filter((r) => enabledRoles.includes(r)), notIncluded: AGENT_ROLE_KEYS.filter((r) => !enabledRoles.includes(r)), addOns };
-  return { workforceModel, sections, plan, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
+  return { workforceModel, businessBrain, sections, plan, employees, messaging, permissions, missingConnections, optionalConnections, humanTasks, blockers: check.blockers, canSubmit: check.canSubmit };
 }
 
 /**

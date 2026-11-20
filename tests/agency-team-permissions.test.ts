@@ -9,10 +9,12 @@ import { getAdminOverview, getTenantDetail, listAllAgents } from "@/server/admin
 import { agencyCrmPortfolio } from "@/server/crm/agency";
 import { listAgencyTickets } from "@/server/support/service";
 import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
+import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
+import { activateGrowthPartnerBusinessBrainVersion, ensureGrowthPartnerIdentity, saveGrowthPartnerBusinessBrainDraft } from "@/server/ai-growth-partner/service";
 import { loadAgencyPermissionOverrides, loadAgencyPermissions, loadAgencyRolePermissions } from "@/server/tenancy/context";
 import { agencyOrgContext } from "@/server/websites/studio-ctx";
 import { AGENCY_DELEGABLE_PERMISSIONS, AGENCY_PERMISSION_INFO, AGENCY_TEAM_MANAGED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSIONS, AGENCY_TEAM_PROTECTED_PERMISSION_INFO, PERMISSION_MATRIX } from "@/lib/permissions";
-import { addMember, agencyUser, createOrg, createUser } from "./support/fixtures";
+import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
 import { makeRuntimeReady } from "./support/runtime-ready";
 
 async function canAccess(userId: string, orgId: string) {
@@ -199,6 +201,12 @@ describe("agency manager and staff access", () => {
     await makeRuntimeReady(growthPartnerRuntimeId, client.id, owner.id);
     const unassignedGrowthPartnerRuntimeId = await withSystem((db) => ensureGrowthPartnerRuntime(unassignedClient.id, db));
     await makeRuntimeReady(unassignedGrowthPartnerRuntimeId, unassignedClient.id, owner.id);
+    const clientOwner = await createUser();
+    await addMember(client.id, clientOwner.id, "owner");
+    const clientCtx = ctxFor(clientOwner, client, "owner");
+    await ensureGrowthPartnerIdentity(clientCtx);
+    const brainDraft = await saveGrowthPartnerBusinessBrainDraft(clientCtx, { businessBrain: emptyBusinessBrain() });
+    await activateGrowthPartnerBusinessBrainVersion(clientCtx, { expectedCurrentVersion: null, version: brainDraft.version });
     const session = agencyUser(staff, "agency_staff");
 
     const visible = await getAdminOverview(session);

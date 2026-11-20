@@ -19,8 +19,15 @@ const SECRET_PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"']+/gi,
   /\b(?:pk|sk|rk|whsec|key)_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\bAIza[0-9A-Za-z_-]{30,}\b/g,
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+  /\bSK[0-9a-fA-F]{32}\b/g,
   /\b[A-Fa-f0-9]{40,}\b/g,
-  /\b(?:api[_-]?key|secret|token|password|passwd)\s*[:=]\s*["']?[^\s"',;]{6,}/gi,
+  /\b(?:password|passcode|passphrase|secret|token|api[_-]?key|access[_-]?key|credential)\s*(?:is|[:=])\s*["']?[^\s"',;]{4,}/gi,
+  /https?:\/\/[^/\s:@]+:[^@\s]{6,}@[^\s"']+/gi,
+  /-----BEGIN ([A-Z ]*PRIVATE KEY)-----[\s\S]+?-----END \1-----/g,
   /https:\/\/hooks\.slack\.com\/[^\s"']+/gi,
 ];
 

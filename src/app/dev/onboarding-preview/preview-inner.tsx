@@ -6,7 +6,6 @@ import { OnboardingApiProvider, type OnboardingApi } from "@/components/onboardi
 import { buildReviewModel, computeProgress, resolveCurrentQuestion, submitCheck, validateAnswer, effectiveAnswers, type ConnectionFacts } from "@/lib/onboarding/engine";
 import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import type { AnswerValue, StoredAnswers } from "@/lib/onboarding/types";
-import { AGENT_ROLE_KEYS } from "@/lib/agents";
 import { missingDetails } from "@/lib/onboarding/assistance";
 import type { OnboardingSession } from "@/server/onboarding/service";
 
@@ -18,7 +17,7 @@ import type { OnboardingSession } from "@/server/onboarding/service";
 
 const STORE = "iaq-onboarding-preview";
 const FACTS: ConnectionFacts = {
-  crmLinked: false, aiEmployeesVerified: 0, aiEmployeesTotal: 6, automationMapped: false,
+  crmLinked: false, aiEmployeesVerified: 0, aiEmployeesTotal: 0, growthPartnerRuntimeVerified: 0, growthPartnerRuntimeTotal: 1, automationMapped: false,
   channels: { sms: { enabled: false, registration: "not_started" }, whatsapp: { enabled: false, registration: "not_started" }, email: { enabled: false, registration: "not_started" } },
   calendarConnected: false, websiteDomainVerified: false, invitedStaff: 0,
 };
@@ -31,7 +30,7 @@ function seedAnswers(kind: "empty" | "full"): StoredAnswers {
   return {
     ...base,
     "a.industry": row("home_services"), "a.business_model": row("local"), "a.description": row("We repair and replace roofs for homeowners in Austin."),
-    "a.timezone": row("America/Chicago"), "a.contact_email": row("hello@brightside.test"), "b.goals": row(["more_leads", "more_appointments"]),
+    "a.timezone": row("America/Chicago"), "a.contact_email": row("hello@brightside.test"), "a.hours": row({ mon: [["09:00", "17:00"]] }), "b.goals": row(["more_leads", "more_appointments"]),
     "b.appointments": row(true), "b.website_need": row("new"), "c.channels": row(["sms", "email"]), "c.tone": row("friendly"),
     "d.appt_types": row([{ name: "Free inspection", minutes: "30", mode: "in_person" }]), "d.pricing_policy": row("never"),
     "d.team": row([{ name: "Sam Rivera", email: "sam@brightside.test", role: "sales_rep" }]),
@@ -120,7 +119,7 @@ function makeServer(kind: "empty" | "full") {
     },
     async review() {
       await wait(400);
-      return { ok: true, data: buildReviewModel(state.answers, FACTS, [...AGENT_ROLE_KEYS]) };
+      return { ok: true, data: buildReviewModel(state.answers, FACTS, [], undefined, [], "growth_partner", !state.submitted) };
     },
     async submit() {
       await wait(900);
@@ -172,7 +171,7 @@ export default function PreviewInner({ seed }: { seed: "empty" | "full" }) {
     () => ({
       questionnaireVersion: 2, status: "draft", revision: server.state.revision, currentQuestionId: resolveCurrentQuestion(server.state.answers, server.state.current),
       answers: server.state.answers, progress: computeProgress(server.state.answers), completedAt: null, submittedAt: null, hasUnsubmittedChanges: false,
-      workforceModel: "growth_partner", enabledRoles: [...AGENT_ROLE_KEYS], websiteAnalysis: null,
+      workforceModel: "growth_partner", enabledRoles: [], websiteAnalysis: null,
     }),
     // The session is only the starting point; the interface owns state afterwards.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,9 +188,9 @@ export default function PreviewInner({ seed }: { seed: "empty" | "full" }) {
   };
 
   return (
-    <div className="app-backdrop grain min-h-dvh">
+    <div className="app-backdrop grain min-h-dvh" data-onboarding-workforce-model={session.workforceModel} data-onboarding-legacy-role-count={session.enabledRoles.length}>
       <div className="sticky top-0 z-40 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-[13px] font-medium text-warning-ink">
-        Local preview — sample data and mocked AI. No provider calls. Saved only in this tab.{" "}
+        Local preview — Growth Partner-only tenant, sample data and mocked AI. No provider calls. Saved only in this tab.{" "}
         <label className="ml-2 inline-flex items-center gap-1.5">
           <input
             type="checkbox"

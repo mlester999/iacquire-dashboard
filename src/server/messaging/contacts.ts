@@ -10,7 +10,7 @@ import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { latestConsentEvent } from "@/server/messaging/consent-identity";
 import { CHANNELS, identityKind, type Channel } from "@/lib/messaging";
-import { MERGE_CARRIED_NOTE, TYPED_CONSENT_SOURCE } from "@/lib/webchat/identity";
+import { isUnverifiedFormConsentSource, MERGE_CARRIED_NOTE } from "@/lib/webchat/identity";
 import type { OrgContext } from "@/server/tenancy/context";
 import type { CrmActor } from "@/server/crm/actor";
 import type { Permission } from "@/lib/permissions";
@@ -40,6 +40,8 @@ export interface ResolveContactInput {
   source?: string;
   ghlContactId?: string | null;
   verifiedVia?: "provider_inbound" | "customer_confirmed" | "staff_confirmed" | "crm_import";
+  /** Mark an unverified identity from a public form as typed by its submitter, so it cannot be reached automatically. */
+  typedByVisitor?: boolean;
   /** How the record first arrived (contacts.created_via). Defaults from the source. */
   createdVia?: "inbound_message" | "website_form" | "form" | "booking" | "api" | "agent" | "workflow" | "call" | "import" | "ghl_migration";
 }
@@ -50,12 +52,17 @@ export interface ResolveContactInput {
  */
 export async function resolveContact(db: Queryable, input: ResolveContactInput): Promise<{ contactId: string; created: boolean }> {
   const kind = identityKind(input.channel);
-  const found = await db.query<{ contact_id: string }>(
-    `select i.contact_id from contact_identities i join contacts c on c.id = i.contact_id and c.org_id = i.org_id
+  const found = await db.query<{ id: string; contact_id: string; verified: boolean }>(
+    `select i.id, i.contact_id, i.verified from contact_identities i join contacts c on c.id = i.contact_id and c.org_id = i.org_id
      where i.org_id = $1 and i.kind = $2 and i.value = $3 and c.deleted_at is null`,
     [input.orgId, kind, input.address],
   );
-  if (found.rows[0]) return { contactId: found.rows[0].contact_id, created: false };
+  if (found.rows[0]) {
+    if (input.typedByVisitor && !found.rows[0].verified) {
+      await db.query("update contact_identities set typed_by_visitor = true where id = $1 and org_id = $2 and not verified", [found.rows[0].id, input.orgId]);
+    }
+    return { contactId: found.rows[0].contact_id, created: false };
+  }
   const createdVia = input.createdVia ?? (input.source === "website_form" ? "website_form" : "inbound_message");
   const { rows } = await db.query<{ id: string }>(
     `insert into contacts (org_id, display_name, email, phone, source, ghl_contact_id, created_via)
@@ -66,13 +73,14 @@ export async function resolveContact(db: Queryable, input: ResolveContactInput):
   // only the customer or a person confirming it, or a CRM import, verifies it.
   const via = input.verifiedVia;
   const verified = Boolean(via) && !(kind === "email" && via === "provider_inbound");
-  await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, verified_via) values ($1, $2, $3, $4, $5, $6)", [
+  await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, verified_via, typed_by_visitor) values ($1, $2, $3, $4, $5, $6, $7)", [
     input.orgId,
     rows[0].id,
     kind,
     input.address,
     verified,
     verified ? via : null,
+    Boolean(input.typedByVisitor) && !verified,
   ]);
   return { contactId: rows[0].id, created: true };
 }
@@ -170,16 +178,16 @@ export async function mergeContactsInTx(db: Queryable, who: Principal | OrgConte
       if (b === "revoked" && a !== "revoked") await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "revoked", source: "contact_merge", evidence: "Merged record had opted out", recordedBy: p.userId });
       else if (b === "granted" && a === "unknown") {
         const latest = await latestConsentEvent(db, orgId, merged.id, channel, purpose);
-        if (latest?.source !== TYPED_CONSENT_SOURCE) {
+        if (!latest || !isUnverifiedFormConsentSource(latest.source)) {
           await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: "contact_merge", recordedBy: p.userId });
           continue;
         }
-        // A tick a website visitor made is the visitor's word for the details they typed. It is carried with its source and its words, so it is still recognised as typed
+        // A tick a public form submitter made is their word for the details they typed. It is carried with its source and its words, so it is still recognised as typed
         // (src/lib/webchat/identity.ts), and only when the kept contact has no address of its own on this channel: the tick said nothing about that one.
         const own = await db.query("select 1 from contact_identities where org_id = $1 and contact_id = $2 and kind = $3 and not typed_by_visitor limit 1", [orgId, kept.id, identityKind(channel)]);
         if (own.rows[0]) continue;
         const evidence = `${(latest.evidence ?? "").slice(0, 500 - MERGE_CARRIED_NOTE.length - 1)} ${MERGE_CARRIED_NOTE}`.trim();
-        await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: TYPED_CONSENT_SOURCE, evidence, recordedBy: p.userId });
+        await recordConsent(db, { orgId, contactId: kept.id, channel, purpose, status: "granted", source: latest.source, evidence, recordedBy: p.userId });
       }
     }
   }

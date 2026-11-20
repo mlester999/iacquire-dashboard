@@ -1,5 +1,8 @@
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
+import { BUSINESS_BRAIN_SECTIONS, BUSINESS_BRAIN_SECTION_TITLES } from "@/lib/ai-growth-partner";
 import { growthPartnerFacts } from "@/lib/demo/tour";
+import { CORE_INCLUDES, IMPLEMENTATION_SETS, MAINTENANCE_INCLUDES_FALLBACK, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, USAGE_NOTE, faqs } from "@/lib/demo/showroom/content";
+import { OVERSIGHT_FOOTER, SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { scanInstructionText } from "@/lib/instruction-risk";
 import {
   AQI_CONVERSATION_RULES,
@@ -105,9 +108,38 @@ function catalogLines(c: PromptCatalog): string[] {
   return lines;
 }
 
+function showroomLines(): string[] {
+  const sections = BUSINESS_BRAIN_SECTIONS.map((section) => BUSINESS_BRAIN_SECTION_TITLES[section]).join("; ");
+  const pipeline = PIPELINE_STAGES.map((stage) => `${stage}: ${STAGE_STORY[stage].what}`).join(" ");
+  const publicFaqs = faqs(usd(SETUP_FEE_USD), usd(MAINTENANCE_MONTHLY_USD)).map(({ q, a }) => `FAQ — ${q} ${a}`);
+  const lines = [
+    ...CORE_INCLUDES,
+    ...IMPLEMENTATION_SETS,
+    ...STUDIO_INCLUDES,
+    ...MAINTENANCE_INCLUDES_FALLBACK,
+    ...PLAN_NOT_INCLUDED,
+    USAGE_NOTE,
+    SCOPE_NOTE,
+    ...publicFaqs,
+    `The Business Brain sections are: ${sections}.`,
+    "A Business Brain fact can be verified, client confirmed, a draft suggestion or unknown. Sources and review status are shown with each fact.",
+    "A saved Business Brain edit becomes a draft. An owner or admin reviews and activates the latest draft before it controls live behavior.",
+    "Unknown Business Brain facts stay unknown until a person supplies or confirms information; the Growth Partner does not guess them.",
+    "The AI Work Board shows work states such as Queued, Working, Waiting for approval, Blocked, Prepared, not finished, and Completed.",
+    "Completed means saved execution evidence; drafts waiting for a decision stay in Prepared, not finished.",
+    "The demo AI Work Board uses invented tasks and evidence. Its Approve and Decline controls only change this demo page, and nothing is sent.",
+    `The demo pipeline stages are ${PIPELINE_STAGES.join(", ")}. ${pipeline}`,
+    "The demo sample inbox illustrates texts, emails, website chats and missed calls. A client's available channels depend on which supported channels are connected.",
+    "Performance & Analytics explains recorded acquisition activity and outcomes with their evidence and limits.",
+    "The demo report uses invented sample figures; real reports depend on recorded activity and authorized data.",
+    OVERSIGHT_FOOTER.split(".")[0] + ".",
+  ];
+  return lines.map((line) => fence(withoutPrices(line), 1000)).filter(Boolean);
+}
+
 /** The facts the model may use, as lines. Also what the replies are held to. */
 export function factLines(catalog: PromptCatalog): string[] {
-  return [...growthPartnerFacts(), ...PRICE_FACTS, ...catalogLines(catalog)];
+  return [...growthPartnerFacts(), ...PRICE_FACTS, ...catalogLines(catalog), ...showroomLines()];
 }
 
 export function buildDemoPrompt(input: PromptInput): DemoPrompt {

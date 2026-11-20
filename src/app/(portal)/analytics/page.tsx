@@ -2,7 +2,7 @@ import { requireOrgContext } from "@/server/tenancy/context";
 import { fillDays, getAnalytics, parseRange } from "@/server/queries/analytics";
 import { AnalyticsView } from "@/components/analytics/analytics-view";
 
-export const metadata = { title: "Analytics" };
+export const metadata = { title: "Performance Reporting" };
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string }> }) {
   const params = await searchParams;

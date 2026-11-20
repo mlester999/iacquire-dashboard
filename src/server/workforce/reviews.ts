@@ -14,7 +14,7 @@ import {
   type ReviewReasonView,
   type ReviewVersionView,
 } from "@/lib/config-review";
-import { AGENT_ROLE_KEYS, isAgentRoleKey, type AgentRoleKey } from "@/lib/agents";
+import { isWorkforceRoleKey, WORKFORCE_ROLE_KEYS, type WorkforceRoleKey } from "@/lib/agents";
 
 export interface HeldConfigRow {
   id: string;
@@ -81,7 +81,7 @@ export function buildHeldConfigReview(row: HeldConfigRow): ReviewPayload {
   const next = agentSettingsSchema.parse(row.settings);
   const previousParsed = row.previous_settings ? agentSettingsSchema.safeParse(row.previous_settings) : null;
   const previous = previousParsed?.success ? previousParsed.data : null;
-  const role: AgentRoleKey = isAgentRoleKey(row.role_key) ? row.role_key : "operations_manager";
+  const role: WorkforceRoleKey = isWorkforceRoleKey(row.role_key) ? row.role_key : "operations_manager";
   const source = configSource(row.source);
   const computed = classifyConfigChange({
     role,
@@ -122,7 +122,7 @@ export function buildHeldConfigReview(row: HeldConfigRow): ReviewPayload {
 }
 
 export function toReviewVersion(row: HeldConfigRow): ReviewVersionView {
-  const role: AgentRoleKey = isAgentRoleKey(row.role_key) ? row.role_key : "operations_manager";
+  const role: WorkforceRoleKey = isWorkforceRoleKey(row.role_key) ? row.role_key : "operations_manager";
   const compiled = row.compiled_instructions ? redactReviewText(row.compiled_instructions) : null;
   // Evidence is truncated for the browser, not for storage. The full compiled instructions stay in
   // the version row and the audit trail.
@@ -192,7 +192,7 @@ export async function countInternalHeldConfigReviews(userId: string): Promise<nu
 export async function listHeldConfigReviewsForOrg(db: Queryable, orgId: string): Promise<ReviewVersionView[]> {
   const { rows } = await db.query<HeldConfigRow>(
     `${HELD_SELECT} and v.org_id = $1 and a.role_key = any($2::text[]) order by v.created_at`,
-    [orgId, AGENT_ROLE_KEYS],
+    [orgId, WORKFORCE_ROLE_KEYS],
   );
   return rows.map(toReviewVersion);
 }

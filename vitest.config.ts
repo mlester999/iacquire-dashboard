@@ -42,6 +42,8 @@ export default defineConfig({
       // tests/employee-tool-policy.test.ts (every role against the shared set and against its own) and its provisioning/inventory cases. A suite that wants to
       // exercise enforcement deletes or overrides this variable; `roleToolEnforcement({})` still answers "enforce" for an unset variable, which a unit test pins.
       WORKFORCE_ROLE_TOOL_ENFORCEMENT: "report",
+      // Keep the legacy suite's explicitly synthetic messaging fixtures enabled; tests/outbound-master-switch.test.ts removes this value and proves the production default is off.
+      OUTBOUND_MESSAGING_ENABLED: "true",
       // The automatic final checks are off until a release date is set (src/server/setup/launch-sweep.ts); the suite exercises them, so it sets one in the past. tests/launch-automation-gate.test.ts
       // proves the default.
       LAUNCH_AUTOMATION_SINCE: "2000-01-01T00:00:00Z",

@@ -2,13 +2,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { updateAgencyUserPermission } from "@/server/admin/team";
 import { addMember, agencyUser, createOrg, createUser, ctxFor } from "./support/fixtures";
-import { listMarketplaceServices, saveService, saveCategory, setServiceFlags, listCatalogForAdmin, listPriceHistory } from "@/server/catalog/service";
+import { getPublicMaintenancePlan, listMarketplaceServices, listPublicServices, saveService, saveCategory, setServiceFlags, listCatalogForAdmin, listPriceHistory } from "@/server/catalog/service";
 import { createProjectRequest, decideQuote, getProject, listProjects, postClientMessage, respondToMilestone, markQuoteViewed, attachClientFile } from "@/server/projects/client";
 import {
   addProgressUpdate, assignProject, getAgencyProject, listAgencyProjects, listProjectClients, postAgencyMessage, recordHandover, saveInternalNotes, saveMilestone, saveQuoteDraft,
   sendQuote, setMilestoneStatus, updateProjectStatus, uploadDeliverable,
 } from "@/server/projects/agency";
 import { formatDelivery, formatPrice, suggestServices } from "@/lib/projects";
+import { MAINTENANCE_INCLUDES_FALLBACK } from "@/lib/demo/showroom/content";
 import { quoteContentHash } from "@/server/projects/shared";
 
 let orgA: Awaited<ReturnType<typeof createOrg>>;
@@ -100,9 +101,16 @@ describe("service catalog and pricing rules", () => {
     expect(rows).toEqual([{ min_cents: 29900, price_type: "monthly" }]);
   });
 
-  it("agents carry a note that standard iAcquire employees are not an add-on", async () => {
+  it("serves current maintenance inclusions in the public catalog projection", async () => {
+    const [services, maintenance] = await Promise.all([listPublicServices(), getPublicMaintenancePlan()]);
+    expect(maintenance?.included).toEqual(MAINTENANCE_INCLUDES_FALLBACK);
+    expect(services.every((service) => !("coreOverlapNote" in service))).toBe(true);
+    expect(JSON.stringify({ services, maintenance })).not.toMatch(/AI employees|AI employee|Appointment Setter|CRM Manager|Performance Analyst/i);
+  });
+
+  it("keeps the AI Growth Partner in the agreed package without calling it an add-on", async () => {
     const services = await listMarketplaceServices(ownerA.id);
-    expect(services.find((s) => s.slug === "ai-voice-receptionist")!.coreOverlapNote).toMatch(/never an add-on/);
+    expect(services.find((s) => s.slug === "ai-voice-receptionist")!.coreOverlapNote).toMatch(/AI Growth Partner.*never an add-on/);
   });
 
   it("only super admins edit the catalog; price changes become immutable versions; hidden services disappear for clients", async () => {

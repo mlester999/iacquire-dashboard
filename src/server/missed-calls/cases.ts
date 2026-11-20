@@ -8,6 +8,7 @@ import { isWithinBusinessHours, validateBusinessHours, type BusinessHours } from
 import { classifyCall } from "@/lib/missed-calls/classify";
 import { E164 } from "@/server/integrations/voice/types";
 import { getPolicy } from "@/server/missed-calls/policy";
+import { resolveActorAgent } from "@/server/workforce/partner-runtime";
 import {
   canTransition, isFinishedState, isPersonOnlyMove, actorIsPerson, CALL_CLASS_LABELS,
   type CallClass, type CaseActor, type CaseState,
@@ -404,11 +405,12 @@ async function createCallerContact(db: Queryable, orgId: string, phone: string):
 export async function ensureConversation(db: Queryable, orgId: string, contactId: string, channel: "sms" | "email" = "sms"): Promise<string> {
   const existing = await db.query<{ id: string }>("select id from conversations where org_id = $1 and contact_id = $2 and channel = $3 and thread_key = 'main'", [orgId, contactId, channel]);
   if (existing.rows[0]) return existing.rows[0].id;
-  const agent = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'sales_assistant' and enabled", [orgId]);
+  const actor = await resolveActorAgent(db, orgId, "sales_assistant");
+  const agentId = actor?.enabled ? actor.agentId : null;
   const created = await db.query<{ id: string }>(
     `insert into conversations (org_id, contact_id, channel, thread_key, ai_agent_id, owner_kind) values ($1, $2, $3, 'main', $4, $5)
      on conflict do nothing returning id`,
-    [orgId, contactId, channel, agent.rows[0]?.id ?? null, agent.rows[0] ? "ai" : "unassigned"],
+    [orgId, contactId, channel, agentId, agentId ? "ai" : "unassigned"],
   );
   if (created.rows[0]) return created.rows[0].id;
   return (await db.query<{ id: string }>("select id from conversations where org_id = $1 and contact_id = $2 and channel = $3 and thread_key = 'main'", [orgId, contactId, channel])).rows[0].id;

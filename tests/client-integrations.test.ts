@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildClientCrmCards, type ClientCrmFacts } from "@/lib/integrations/client-tools";
+import { buildClientCrmCards, buildOAuthCalendarCard, buildSlackWebhookCard, type ClientCrmFacts } from "@/lib/integrations/client-tools";
 
 function facts(patch: Partial<ClientCrmFacts> = {}): ClientCrmFacts {
   return {
@@ -94,5 +94,57 @@ describe("client integration cards", () => {
     expect(cards[0].status?.status).toBe("pending");
     expect(cards[0].statusLabel).toBe("Not verified");
     expect(cards[1].status?.status).toBe("pending");
+  });
+});
+
+describe("external connection cards", () => {
+  const google = { key: "google", label: "Google Calendar", configured: true } as const;
+  const outlook = { key: "microsoft", label: "Microsoft Outlook / 365", configured: true } as const;
+  const checkedAt = "2026-11-19T00:00:00.000Z";
+
+  it("distinguishes missing provider configuration and user permission from an available OAuth connection", () => {
+    const missing = buildOAuthCalendarCard({ ...google, configured: false }, [], true, false);
+    expect(missing).toMatchObject({ statusLabel: "Requires setup", link: { href: "/crm/calendar-connections" } });
+    expect(missing.status).toBeUndefined();
+    expect(buildOAuthCalendarCard(google, [], false, false).statusLabel).toBe("Requires authorization");
+    expect(buildOAuthCalendarCard(google, [], true, false).statusLabel).toBe("Available");
+  });
+
+  it("shows verification only for the matching provider and reports when sync or authorization needs attention", () => {
+    const connections = [
+      { provider: "google", status: "connected", lastSuccessAt: checkedAt },
+      { provider: "microsoft", status: "needs_reauth", lastSuccessAt: null },
+    ] as const;
+    expect(buildOAuthCalendarCard(google, connections, true, true)).toMatchObject({
+      statusLabel: "Connected",
+      status: { status: "connected", last_checked_at: checkedAt },
+      body: expect.stringContaining("sync is currently paused"),
+    });
+    expect(buildOAuthCalendarCard(outlook, connections, true, false)).toMatchObject({
+      statusLabel: "Needs authorization",
+      status: { status: "degraded" },
+    });
+    expect(buildOAuthCalendarCard({ ...google, configured: false }, connections, true, false).statusLabel).toBe("Requires setup");
+  });
+
+  it("shows Slack status as unavailable when the read fails, without a setup link", () => {
+    const card = buildSlackWebhookCard(null, []);
+    expect(card.statusLabel).toBe("Status unavailable");
+    expect(card.link).toBeUndefined();
+    expect(card.status).toBeUndefined();
+  });
+
+  it("requires both the managed plan and a verified Slack webhook for the connected state", () => {
+    const verified = { kind: "slack_webhook", status: "active", verifiedAt: checkedAt } as const;
+    const lapsed = buildSlackWebhookCard(false, [verified]);
+    expect(lapsed.statusLabel).toBe("Requires managed plan");
+    expect(lapsed.link).toBeUndefined();
+    expect(buildSlackWebhookCard(true, [{ ...verified, kind: "http" }]).statusLabel).toBe("Available");
+    expect(buildSlackWebhookCard(true, [{ ...verified, verifiedAt: null }]).statusLabel).toBe("Needs verification");
+    expect(buildSlackWebhookCard(true, [verified])).toMatchObject({
+      statusLabel: "Verified webhook",
+      status: { status: "connected", last_checked_at: checkedAt },
+      link: { href: "/automation-studio/connections" },
+    });
   });
 });

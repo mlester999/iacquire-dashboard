@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 const ITEMS: Array<{ href: string; label: string; group: string; icon: React.ComponentType<{ className?: string }>; permission?: Permission; feature?: string }> = [
   { href: "/settings", label: "Business profile", group: "Workspace", icon: Building2 },
   { href: "/settings/team", label: "Team members", group: "Workspace", icon: Users, permission: "team.view" },
-  { href: "/settings/ai", label: "AI preferences", group: "AI and messaging", icon: Sparkles },
+  { href: "/settings/ai", label: "Growth Partner Settings", group: "AI and messaging", icon: Sparkles },
   { href: "/settings/integrations", label: "Integrations", group: "AI and messaging", icon: Plug, permission: "integrations.view" },
   { href: "/settings/messaging", label: "Messaging", group: "AI and messaging", icon: MessagesSquare, permission: "inbox.view" },
   { href: "/settings/escalations", label: "Escalations & availability", group: "AI and messaging", icon: BellRing, permission: "staff.availability" },

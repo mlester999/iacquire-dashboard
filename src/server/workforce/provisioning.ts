@@ -186,7 +186,7 @@ export async function getProvisioningBundle(agentId: string): Promise<Provisioni
     );
     return rows[0];
   });
-  if (!row || !isWorkforceRoleKey(row.role_key)) throw new AppError("not_found", "AI employee not found.");
+  if (!row || !isWorkforceRoleKey(row.role_key)) throw new AppError("not_found", "AI profile not found.");
   const role = row.role_key;
   const profile = row.hermes_profile ?? suggestedProfileName(row.slug, role);
   const meta = { name: workforceRoleName(role) };
@@ -279,7 +279,7 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
         kind: "billing_setup_payment_required",
         severity: "warning",
         title: `${name} finished onboarding, but the setup payment is not confirmed`,
-        body: `No ${growthPartnerOnly ? "AI Growth Partner" : "AI employee"} is being provisioned. Record the payment, or waive the setup fee with a reason, on the client's billing tab.`,
+        body: `No ${growthPartnerOnly ? "AI Growth Partner" : "previous profile"} is being provisioned. Record the payment, or waive the setup fee with a reason, on the client's billing tab.`,
         link: `/admin/clients/${orgId}?tab=billing`,
         dedupeKey,
       });
@@ -297,7 +297,7 @@ export async function requestProvisioning(db: Queryable, orgId: string, requeste
     const growthPartnerOnly = rows.every((r) => r.role_key === AI_GROWTH_PARTNER_ROLE_KEY);
     const runtimeLabel = growthPartnerOnly
       ? rows.length === 1 ? "AI Growth Partner" : "AI Growth Partners"
-      : rows.length === 1 ? "AI employee" : "AI employees";
+      : rows.length === 1 ? "previous AI profile" : "previous AI profiles";
     await notifyAgency(db, orgId, {
       kind: "agent_status",
       severity: "info",
@@ -386,7 +386,7 @@ export async function requeueProvisioningJob(agencyUserId: string, orgId: string
       [agentId, orgId],
     );
     const agent = agents[0];
-    if (!agent || !isWorkforceRoleKey(agent.role_key)) throw new AppError("not_found", "AI employee not found in this workspace.");
+    if (!agent || !isWorkforceRoleKey(agent.role_key)) throw new AppError("not_found", "AI profile not found in this workspace.");
     if (agent.org_kind !== "client" || agent.is_demo || agent.org_status !== "active") throw new AppError("conflict", "Only an active client workspace can have its setup requeued.");
     if (!agent.enabled) throw new AppError("conflict", "This employee is not included in the workspace, so there is nothing to set up.");
     if (!agent.paid) throw new AppError("conflict", "The workspace's setup payment is not confirmed, so setup cannot be requeued yet.");
@@ -446,7 +446,7 @@ export async function requeueProvisioningJob(agencyUserId: string, orgId: string
       kind: "agent_status",
       severity: "info",
       title: `${workforceRoleShortName(agent.role_key)}'s setup is being retried`,
-      body: "iAcquire restarted this AI employee's setup after a problem. You do not need to do anything.",
+      body: "iAcquire restarted the AI runtime setup after a problem. No action is needed.",
       link: "/employees",
       dedupeKey: `provisioning-requeued:${jobId}`,
     });
@@ -606,7 +606,7 @@ export async function requestDeprovision(db: Queryable, input: { orgId: string; 
     [agentId, orgId],
   );
   const agent = agents[0];
-  if (!agent) throw new AppError("not_found", "AI employee not found in this workspace.");
+  if (!agent) throw new AppError("not_found", "AI profile not found in this workspace.");
   if (agent.org_kind !== "client" || agent.is_demo) throw new AppError("conflict", "Only a real client workspace's employee can have its runtime profile contained, never an agency's or a demo's.");
   if (!agent.hermes_profile?.startsWith("c-") || isReservedProfile(agent.hermes_profile)) {
     throw new AppError("conflict", "This employee has no client runtime profile made by the restricted provisioner, so there is nothing to contain.");

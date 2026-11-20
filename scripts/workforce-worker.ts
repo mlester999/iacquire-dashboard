@@ -7,9 +7,9 @@
  *   npm run workforce:worker            # loop while WORKFORCE_WORKER_ENABLED=true
  *   npm run workforce:worker -- --once  # process at most one batch, then exit
  *
- * Production activation is a separate, reviewed deployment decision. Without this process (and
- * without the scheduler recovery job), a job interrupted by a stopped web function remains queued
- * with its real status visible; it is never reported as completed.
+ * Production activation is a separate, reviewed deployment decision. Without this process or the
+ * scheduler's queued-work runner, a job interrupted by a stopped web function remains queued with
+ * its real status visible; it is never reported as completed.
  */
 import { closeDb } from "../src/server/db/index";
 import { recoverExpiredWorkJobs } from "../src/server/workforce/jobs";
@@ -38,7 +38,7 @@ async function main() {
   while (!stopping) {
     const recovered = await recoverExpiredWorkJobs().catch((err) => {
       console.error(`[workforce-worker] recovery failed safely: ${err instanceof Error ? err.name : "unknown"}`);
-      return { retried: 0, failed: 0, cancelled: 0 };
+      return { retried: 0, failed: 0, cancelled: 0, requeuedIds: [] };
     });
     const result = await processQueuedWorkJobs(1).catch((err) => {
       console.error(`[workforce-worker] batch failed safely: ${err instanceof Error ? err.name : "unknown"}`);

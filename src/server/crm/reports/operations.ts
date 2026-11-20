@@ -102,7 +102,7 @@ export async function aiSection(scope: ReportScope): Promise<SectionResult<"ai">
       toolCalls: outcome.rows.reduce((n, r) => n + num(r.n), 0),
       byOutcome: outcome.rows.map((r) => ({ key: r.k, label: OUTCOME_LABELS[r.k] ?? r.k, count: num(r.n) })),
       byTool: tool.rows.map((r) => ({ key: r.k, label: tools[r.k]?.label ?? (r.k === "workflow_task" ? "Workflow task" : r.k.replace(/_/g, " ")), count: num(r.n) })),
-      byEmployee: employee.rows.map((r) => ({ key: r.k ?? "none", label: r.label ?? "Removed AI employee", count: num(r.n) })),
+      byEmployee: employee.rows.map((r) => ({ key: r.k ?? "none", label: r.label ?? "Unavailable AI profile", count: num(r.n) })),
       approvals: {
         requested: num(a?.requested), approved: num(a?.approved), rejected: num(a?.rejected), expired: num(a?.expired), pending: num(a?.pending),
         executed: num(a?.executed), failed: num(a?.failed), held: num(a?.held),

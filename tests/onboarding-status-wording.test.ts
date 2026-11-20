@@ -59,9 +59,9 @@ describe("the reason behind Setup required", () => {
 
   it("reads exactly as the two sentences the audit asks for", () => {
     expect(setupRequiredLine({ status: "setup_required", enabled: true, paymentCleared: false })).toBe("Setup required: waiting for setup payment");
-    expect(setupRequiredLine({ status: "setup_required", enabled: true, paymentCleared: true })).toBe("Setup required: Hermes profile not connected");
+    expect(setupRequiredLine({ status: "setup_required", enabled: true, paymentCleared: true })).toBe("Setup required: AI runtime not connected");
     expect(SETUP_REASON_TEXT.setup_payment).toBe("waiting for setup payment");
-    expect(SETUP_REASON_TEXT.profile_not_connected).toBe("Hermes profile not connected");
+    expect(SETUP_REASON_TEXT.profile_not_connected).toBe("AI runtime not connected");
   });
 
   it("says nothing for any other status or for an employee that is switched off, whatever the payment", () => {
@@ -94,8 +94,8 @@ describe("what an employee card says", () => {
 
   it("paid, with no connected profile: the pill is Setup required and the line says the Hermes profile", () => {
     for (const paymentCleared of [true, undefined]) {
-      expect(card({ ...base, paymentCleared })).toEqual({ label: "Setup required", line: "Setup required: Hermes profile not connected" });
-      expect(card({ ...base, configVersion: null, paymentCleared }).line).toBe("Setup required: Hermes profile not connected");
+      expect(card({ ...base, paymentCleared })).toEqual({ label: "Setup required", line: "Setup required: AI runtime not connected" });
+      expect(card({ ...base, configVersion: null, paymentCleared }).line).toBe("Setup required: AI runtime not connected");
     }
   });
 

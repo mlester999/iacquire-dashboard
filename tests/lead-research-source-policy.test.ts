@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
-import { createWorkJob } from "@/server/workforce/jobs";
+import { claimWorkJob, createWorkJob, requestWorkJobCancel } from "@/server/workforce/jobs";
 import {
   reserveResearchSourceRequest,
   saveResearchSourcePolicy,
   finishResearchSourceRequest,
+  getResearchSourceHealth,
+  getResearchSourcePolicy,
 } from "@/server/leads/research-source-policy";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
 
@@ -68,10 +70,16 @@ describe("tenant-scoped lead research source budgets", () => {
     await saveResearchSourcePolicy(ctx, "openstreetmap", { ...policy, activationAcknowledged: true });
 
     const otherWork = await createResearchWork(org, owner);
+    const workerId = "local-acquisition-worker";
+    await expect(reserveResearchSourceRequest({ orgId: org.id, ...work, workerId, source: "openstreetmap", requestUrl: OSM.endpoint })).rejects.toThrow(/lease is no longer active/);
+    await expect(reserveResearchSourceRequest({ orgId: org.id, ...work, requestId: otherWork.requestId, source: "openstreetmap", requestUrl: OSM.endpoint })).rejects.toThrow(/different research job/);
+    await withSystem((db) => claimWorkJob(db, { orgId: org.id, jobId: work.jobId, workerId, leaseSeconds: 180 }));
     const reservations = await Promise.allSettled([
-      reserveResearchSourceRequest({ orgId: org.id, ...work, source: "openstreetmap", requestUrl: OSM.endpoint }),
+      reserveResearchSourceRequest({ orgId: org.id, ...work, workerId, source: "openstreetmap", requestUrl: OSM.endpoint }),
       reserveResearchSourceRequest({ orgId: org.id, ...otherWork, source: "openstreetmap", requestUrl: OSM.endpoint }),
     ]);
+    await withSystem((db) => requestWorkJobCancel(db, { orgId: org.id, jobId: work.jobId }));
+    await expect(reserveResearchSourceRequest({ orgId: org.id, ...work, workerId, source: "openstreetmap", requestUrl: OSM.endpoint })).rejects.toThrow(/lease is no longer active/);
     const granted = reservations.filter((result) => result.status === "fulfilled");
     const denied = reservations.filter((result) => result.status === "rejected");
     expect(granted).toHaveLength(1);
@@ -124,5 +132,49 @@ describe("tenant-scoped lead research source budgets", () => {
       [first.id],
     ));
     expect(visible.rows).toEqual([]);
+  });
+
+  it("uses current-approval response evidence and excludes fixture and older ledger rows from source health", async () => {
+    const org = await createOrg();
+    const owner = await createUser();
+    const otherTenantOwner = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    const ctx = ctxFor(owner, org, "owner");
+    const settings = {
+      enabled: true, activationAcknowledged: true, providerFeeUsdPerRequest: 0, perJobRequestCap: 10, perDayRequestCap: 10,
+      perJobSpendCapUsd: 0, perDaySpendCapUsd: 0, sourceConfig: OSM,
+    };
+    await saveResearchSourcePolicy(ctx, "openstreetmap", settings);
+
+    async function ledger(transport: "approved_source" | "synthetic_fixture" | undefined, httpStatus: number | null, date: string, completedRun = false) {
+      const work = await createResearchWork(org, owner);
+      const { usageId } = await reserveResearchSourceRequest({
+        orgId: org.id, ...work, source: "openstreetmap", requestUrl: OSM.endpoint, transport,
+      });
+      await finishResearchSourceRequest({ orgId: org.id, usageId, responseReceived: httpStatus !== null, httpStatus });
+      await withSystem(async (db) => {
+        await db.query("update lead_research_source_usage set completed_at = $2 where id = $1 and org_id = $3", [usageId, date, org.id]);
+        if (completedRun) {
+          await db.query("update ai_work_jobs set status = 'completed', finished_at = $2 where id = $1 and org_id = $3", [work.jobId, date, org.id]);
+        }
+      });
+    }
+
+    const policy = (await withUser(owner.id, (db) => getResearchSourcePolicy(db, org.id, "openstreetmap")))!;
+    const empty = { lastResponseAt: null, lastCompletedRunAt: null, lastError: null };
+    await ledger("synthetic_fixture", 200, "2026-11-18T00:00:00Z", true);
+    await ledger(undefined, 429, "2026-11-18T00:00:00Z");
+    expect(await withUser(owner.id, (db) => getResearchSourceHealth(db, policy))).toEqual(empty);
+
+    // Synthetic database records exercise the trust filter. No transport is called by this test.
+    await ledger("approved_source", 200, "2026-11-17T00:00:00Z", true);
+    await ledger("approved_source", 429, "2026-11-17T00:10:00Z");
+    expect(await withUser(owner.id, (db) => getResearchSourceHealth(db, policy))).toEqual({
+      lastResponseAt: "2026-11-17T00:00:00.000Z",
+      lastCompletedRunAt: "2026-11-17T00:00:00.000Z",
+      lastError: { at: "2026-11-17T00:10:00.000Z", httpStatus: 429 },
+    });
+    expect(await withUser(otherTenantOwner.id, (db) => getResearchSourceHealth(db, policy))).toEqual(empty);
+    expect(await withUser(owner.id, (db) => getResearchSourceHealth(db, { ...policy, approvedAt: new Date(policy.approvedAt!.getTime() + 1000) }))).toEqual(empty);
   });
 });

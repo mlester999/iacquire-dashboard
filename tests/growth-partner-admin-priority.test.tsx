@@ -42,14 +42,26 @@ describe("Growth Partner admin priority", () => {
 
   it("shows client Growth Partners before internal and retained role-profile records", async () => {
     const html = renderToStaticMarkup(await AdminWorkforcePage());
-    const clientPartners = html.indexOf("AI Growth Partners");
-    const internalProfiles = html.indexOf("iAcquire internal profiles");
-    const retainedProfiles = html.indexOf("Retained client profiles");
+    const clientPartners = html.indexOf("AI Growth Partner Operations");
+    const retainedProfiles = html.indexOf("Previous profile activity");
+    const internalProfiles = html.indexOf("Internal agency profiles and gateways");
 
     expect(clientPartners).toBeGreaterThanOrEqual(0);
+    expect(retainedProfiles).toBeGreaterThan(clientPartners);
     expect(internalProfiles).toBeGreaterThan(clientPartners);
-    expect(retainedProfiles).toBeGreaterThan(internalProfiles);
-    expect(html).toContain("One tenant-scoped runtime per client");
-    expect(html).toContain("Existing role-specific profiles remain available for audit");
+    expect(html).toContain("Client Partner status");
+    expect(html).toMatch(/<details[^>]*><summary[^>]*><span[^>]*>Previous profile activity/);
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>Internal agency profiles and gateways/);
+    expect(html).toContain("Review previous profiles for audits, support and staged migration.");
+  });
+
+  it("shows an error card when the Growth Partner fleet read fails", async () => {
+    mocks.listGrowthPartners.mockRejectedValueOnce(new Error("trusted fleet read failed"));
+
+    const html = renderToStaticMarkup(await AdminWorkforcePage());
+
+    expect(html).toContain('aria-label="Growth Partner fleet unavailable"');
+    expect(html).toContain("Growth Partner fleet status could not be loaded");
+    expect(html).toContain("Retained client profiles");
   });
 });

@@ -41,6 +41,7 @@ import { cancelRun, getRun, listRuns, retryRunStep, skipRunStep, startManualRun,
 import { fireSchedules, processWorkflowRuns, recoverAbandonedRuns } from "@/server/crm/workflows/runner";
 import { handleInboundWebhook, inboundToken } from "@/server/crm/workflows/inbound";
 import { checkOrgAutomation } from "@/server/automation/gate";
+import { dispatchMessage, evaluateSend } from "@/server/messaging/send";
 import { JOBS } from "@/server/ops/tick";
 import { emitTaskDueEvents } from "@/server/crm/tasks";
 import {
@@ -51,7 +52,7 @@ import { sha256Hex } from "@/lib/crm/workflow/sha256";
 import { WORKFLOW_TEMPLATES } from "@/lib/crm/workflow/templates";
 import { addMember, createUser, ctxFor, uid } from "./support/fixtures";
 import { crmOrg, type CrmOrg } from "./support/crm";
-import { inbound, messagingOrg } from "./support/messaging";
+import { inbound, messagingOrg, recordingProvider } from "./support/messaging";
 
 const n8nMock = vi.mocked(callN8nWorkflow);
 const webhookMock = vi.mocked(enqueueWorkflowWebhook);
@@ -1196,6 +1197,24 @@ describe("send_message", () => {
     expect(msgs[0].body).toMatch(/Hi Olga, thanks for getting in touch with us\./);
     expect((await stepsOf(r2.runId))[0]).toMatchObject({ status: "completed", result: { status: "queued" } });
 
+    const queued = await one<{ conversation_id: string; body: string }>("select conversation_id, body from conversation_messages where id = $1", [msgs[0].id]);
+    const dispatchRequest = {
+      orgId: m.org.id,
+      conversationId: queued.conversation_id,
+      scope: "followup" as const,
+      purpose: "service" as const,
+      actor: { kind: "ai" as const, agentId: m.salesAgentId, approvalId: req.approvalId },
+      body: queued.body,
+      dedupeKey: msgs[0].dedupe_key,
+      dispatchMessageId: msgs[0].id,
+      businessHoursOnly: false,
+      hasReservation: true,
+    };
+    expect(await withSystem((db) => evaluateSend(db, dispatchRequest))).toMatchObject({ allow: true });
+    expect(await withSystem((db) => evaluateSend(db, { ...dispatchRequest, dispatchMessageId: U() }))).toMatchObject({
+      allow: false, reason: "workflow_approval_invalid",
+    });
+
     // Running the step again (a person moved the run back) finds the message and sends nothing new.
     await withSystem((db) => db.query("update crm_workflow_runs set status = 'failed', current_step = 'send', finished_at = now() where id = $1", [r2.runId]));
     await retryRunStep(owner, r2.runId);
@@ -1222,6 +1241,14 @@ describe("send_message", () => {
     expect(run4.status).toBe("failed");
     expect(run4.lastError).toMatch(/approved wording changed/);
     expect(await outbound(ok)).toHaveLength(1);
+
+    // Recheck the original queued result too. The saved approval cannot carry changed template wording into dispatch.
+    const recorder = recordingProvider("twilio");
+    const now = new Date(Date.now() + 24 * 60 * 60_000);
+    expect(await dispatchMessage(msgs[0].id, { now, transport: recorder.transport })).toEqual({ status: "blocked" });
+    expect(recorder.calls).toHaveLength(0);
+    expect(await one<{ blocked_reason: string }>("select blocked_reason from conversation_messages where id = $1", [msgs[0].id]))
+      .toEqual({ blocked_reason: "workflow_approval_invalid" });
   });
 });
 

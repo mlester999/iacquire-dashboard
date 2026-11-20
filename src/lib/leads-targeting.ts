@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+/** Influencer research stays unavailable until there is a source adapter to run it. */
+export const INFLUENCER_RESEARCH_AVAILABLE = false;
+export const INFLUENCER_PLATFORM_ADAPTERS: readonly string[] = [];
+
 const list = (max: number) => z.array(z.string().trim().min(1).max(120)).max(max).default([]);
 
 /** Lead targeting rules captured in the Leads workspace. Company-provided data only. */

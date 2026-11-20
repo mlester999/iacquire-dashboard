@@ -122,4 +122,23 @@ describe("AI Growth Partner application memory", () => {
     expect(removed).toEqual({ deleted: true });
     expect(await listGrowthPartnerMemories(ownerCtx)).toEqual([]);
   });
+
+  it("rejects credential-shaped text and contact details before creating an app memory note", async () => {
+    const before = (await listGrowthPartnerMemories(ownerCtx)).map((note) => note.id);
+    const unsafeNotes = [
+      "My password is hunter2-QA-ONLY.",
+      "Use this API key: sk_live_1234567890abcdef.",
+      "GitHub token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.",
+      "Connect with postgresql://owner:private-password@db.example.test/app.",
+      "Email Alex at alex.private@example.test.",
+      "Call Alex at +1 415 555 0136.",
+    ];
+
+    for (const content of unsafeNotes) {
+      await expect(saveGrowthPartnerMemory(ownerCtx, { kind: "working_context", content }))
+        .rejects.toMatchObject({ code: "invalid_input" });
+    }
+
+    expect((await listGrowthPartnerMemories(ownerCtx)).map((note) => note.id)).toEqual(before);
+  });
 });

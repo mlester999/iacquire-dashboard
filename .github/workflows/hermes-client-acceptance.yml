@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/hermes-gha-acceptance
+      - codex/growth-partner-release-candidate
       - codex/ai-growth-partner
     paths:
       - .github/hermes-acceptance.trigger
@@ -31,7 +32,7 @@ jobs:
         && github.event.inputs.confirm_external_execution == 'RUN_SYNTHETIC_HERMES_ACCEPTANCE')
         || (github.event_name == 'push'
         && (github.ref_name == 'codex/hermes-gha-acceptance'
-        || github.ref_name == 'codex/ai-growth-partner')) }}
+        || github.ref_name == 'codex/ai-growth-partner' || github.ref_name == 'codex/growth-partner-release-candidate')) }}
     name: Build and provision two synthetic tenants
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -64,7 +65,7 @@ jobs:
             [[ "$HERMES_ACCEPTANCE_CONFIRMATION" == RUN_SYNTHETIC_HERMES_ACCEPTANCE ]]
           else
             [[ "$GITHUB_EVENT_NAME" == push ]]
-            [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance || "$GITHUB_REF_NAME" == codex/ai-growth-partner ]]
+            [[ "$GITHUB_REF_NAME" == codex/hermes-gha-acceptance || "$GITHUB_REF_NAME" == codex/ai-growth-partner || "$GITHUB_REF_NAME" == codex/growth-partner-release-candidate ]]
           fi
           docker buildx inspect --bootstrap >/dev/null
           docker compose version >/dev/null

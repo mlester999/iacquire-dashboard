@@ -42,7 +42,7 @@ export function InboxView() {
 
   return (
     <div className="space-y-8">
-      <SectionHead as="h1" eyebrow="Inbox & appointments" title="Every conversation in one place." lead="Texts, emails, website chats and missed calls arrive in one inbox. The AI Growth Partner prepares replies; you approve what goes out." />
+      <SectionHead as="h1" eyebrow="Inbox & appointments" title="Every conversation in one place." lead="Texts, emails, website chats and missed calls from the channels you connect arrive in one inbox. The AI Growth Partner prepares replies; customer-facing actions follow your approval rules." />
 
       <div className="sx-panel overflow-hidden">
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">

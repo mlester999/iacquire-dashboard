@@ -270,7 +270,7 @@ export async function uploadKnowledgeDocument(
     const { rows } = await withSystem((db) =>
       db.query("select 1 from agent_instances where id = $1 and org_id = $2", [agentInstanceId, ctx.org.orgId]),
     );
-    if (!rows[0]) throw new AppError("not_found", "AI employee not found.");
+    if (!rows[0]) throw new AppError("not_found", "AI profile not found.");
   }
   const filename = path.basename(file.name).replace(/[^\w.\- ()]+/g, "_").slice(0, 200) || "document";
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";

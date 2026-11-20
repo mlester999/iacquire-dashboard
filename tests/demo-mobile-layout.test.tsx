@@ -198,6 +198,24 @@ describe("the bottom bar", () => {
   });
 });
 
+describe("the Growth Partner sample panels on a phone", () => {
+  it("keeps the Work Board lanes scrollable at phone width and approval local to the demo", () => {
+    screenIs(true);
+    room({ initialView: "workforce" });
+
+    expect(screen.getByRole("heading", { name: "What goes into the Business Brain" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "AI Work Board" })).toBeTruthy();
+    const board = screen.getByRole("region", { name: "AI Work Board sample lanes" });
+    expect(board.tabIndex).toBe(0);
+    expect(board.className).toMatch(/overflow-x-auto/);
+    expect(board.querySelector(".min-w-\\[1080px\\]")).toBeTruthy();
+
+    fireEvent.click(within(board).getByRole("button", { name: "Approve" }));
+    expect(within(board).getByRole("status").textContent).toBe("Approved in this demo. Nothing was sent.");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("AQi's sheet on a phone", () => {
   it("is a modal dialog over a page nobody can reach through, that stops the page scrolling, closes from the keyboard and gives everything back", async () => {
     screenIs(true);

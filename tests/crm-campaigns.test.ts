@@ -188,6 +188,23 @@ describe("campaign preview", () => {
     expect(reasonLabel("no_marketing_consent", "sms")).toBe("Hasn't agreed to SMS marketing");
   });
 
+  it("excludes public-form promotional ticks from the audience before and after identity confirmation", async () => {
+    const isolated = await workspace();
+    const lead = await contact(isolated.m.org.id, { name: "Dana Lee", sms: "granted" });
+    await withSystem(async (db) => {
+      await db.query("update contact_identities set verified = false, verified_via = null, typed_by_visitor = true where org_id = $1 and contact_id = $2 and kind = 'phone'", [isolated.m.org.id, lead.id]);
+      await db.query("insert into contact_consent_events (org_id, contact_id, channel, purpose, status, source, evidence) values ($1, $2, 'sms', 'marketing', 'granted', 'website_form', 'Marketing opt-in ticked on public form')", [isolated.m.org.id, lead.id]);
+    });
+    const { id } = await draft(isolated);
+    const before = await previewCampaign(isolated.manager, { campaignId: id });
+    expect(before.eligible).toBe(0);
+    expect(Object.fromEntries(before.exclusions.map((e) => [e.reason, e.count]))).toEqual({ no_marketing_consent: 1 });
+    await withSystem((db) => db.query("update contact_identities set verified = true, verified_via = 'staff_confirmed' where org_id = $1 and contact_id = $2 and kind = 'phone'", [isolated.m.org.id, lead.id]));
+    const after = await previewCampaign(isolated.manager, { campaignId: id });
+    expect(after.eligible).toBe(0);
+    expect(Object.fromEntries(after.exclusions.map((e) => [e.reason, e.count]))).toEqual({ no_marketing_consent: 1 });
+  });
+
   it("prices it only from the provider's published rate", async () => {
     const { id } = await draft(w);
     const p = await previewCampaign(w.manager, { campaignId: id });

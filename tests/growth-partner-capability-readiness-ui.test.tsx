@@ -1,13 +1,24 @@
 // @vitest-environment jsdom
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { GrowthPartnerControlCenter } from "@/components/growth-partner/control-center";
+import { GrowthPartnerAbilityEditor } from "@/components/growth-partner/ability-editor";
 import { deriveGrowthPartnerCapabilityAccess } from "@/lib/ai-growth-partner-capability-access";
 import { ROLE_ABILITIES } from "@/lib/employee-tool-policy";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import type { GrowthPartnerAbilityControls } from "@/server/ai-growth-partner/ability-controls";
 
-vi.mock("@/app/actions/ai-growth-partner", () => ({ prepareGrowthPartnerFromSubmittedOnboardingAction: vi.fn() }));
+const mocks = vi.hoisted(() => ({ restrict: vi.fn(), restore: vi.fn(), refresh: vi.fn() }));
+vi.mock("@/app/actions/ai-growth-partner", () => ({
+  prepareGrowthPartnerFromSubmittedOnboardingAction: vi.fn(),
+  restrictGrowthPartnerAbilitiesAction: mocks.restrict,
+  requestGrowthPartnerAbilityRestorationAction: mocks.restore,
+}));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/navigation")>(),
+  useRouter: () => ({ refresh: mocks.refresh }),
+}));
 vi.mock("@/components/growth-partner/memory-panel", () => ({ GrowthPartnerMemoryPanel: () => null }));
 vi.mock("@/components/growth-partner/goals-panel", () => ({ GrowthPartnerGoalsPanel: () => null }));
 vi.mock("@/components/growth-partner/legacy-knowledge-review", () => ({ GrowthPartnerLegacyKnowledgeReview: () => null }));
@@ -16,6 +27,49 @@ vi.mock("@/components/workforce/safety-controls", () => ({ WorkforceSafetyContro
 afterEach(cleanup);
 
 describe("Growth Partner capability readiness UI", () => {
+  it("submits only the newly selected ability and reports a held configuration accurately", async () => {
+    mocks.restrict.mockResolvedValue({ ok: true, data: { version: 4, status: "review_pending" } });
+    render(<GrowthPartnerAbilityEditor controls={{
+      state: "ready",
+      version: 3,
+      versionId: "current-version",
+      abilities: [{ key: "analytics.read", restricted: false }, { key: "crm.contacts.create", restricted: true }],
+    }} />);
+    const restricted = screen.getByRole("checkbox", { name: /Create individual CRM contacts/ }) as HTMLInputElement;
+    expect(restricted.checked).toBe(true);
+    expect(restricted.disabled).toBe(true);
+    const save = screen.getByRole("button", { name: "Save restrictions" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Read workspace analytics" }));
+    fireEvent.click(save);
+    expect(await screen.findByText("Configuration v4 is waiting for review before these restrictions apply.")).toBeTruthy();
+    expect(mocks.restrict).toHaveBeenCalledWith({ expectedVersionId: "current-version", restrict: ["analytics.read"] });
+    expect(mocks.refresh).toHaveBeenCalled();
+    expect(save.disabled).toBe(true);
+  });
+
+  it("keeps the ability restricted during review and allows another request after rejection", async () => {
+    mocks.restore.mockResolvedValue({ ok: true, data: { version: 4, status: "review_pending" } });
+    const ready: GrowthPartnerAbilityControls = {
+      state: "ready",
+      version: 3,
+      versionId: "current-version",
+      abilities: [{ key: "analytics.read", restricted: false }, { key: "crm.contacts.create", restricted: true }],
+    };
+    const { rerender } = render(<GrowthPartnerAbilityEditor controls={ready} />);
+    const restorationButton = { name: "Request restoration for Create individual CRM contacts" };
+    fireEvent.click(screen.getByRole("button", restorationButton));
+    expect(await screen.findByText("Restoration requested in configuration v4. Access changes after agency approval.")).toBeTruthy();
+    expect(mocks.restore).toHaveBeenCalledWith({ expectedVersionId: "current-version", restore: ["crm.contacts.create"] });
+    const restricted = screen.getByRole("checkbox", { name: /Create individual CRM contacts/ }) as HTMLInputElement;
+    expect(restricted.checked).toBe(true);
+    expect(restricted.disabled).toBe(true);
+    rerender(<GrowthPartnerAbilityEditor controls={{ ...ready, state: "review_pending" }} />);
+    expect(screen.queryByRole("button", restorationButton)).toBeNull();
+    rerender(<GrowthPartnerAbilityEditor controls={ready} />);
+    expect((screen.getByRole("button", restorationButton) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows each skill's actual access state inside the one six-domain control center", () => {
     const capabilityAccess = deriveGrowthPartnerCapabilityAccess({
       partnerExists: true,
@@ -45,7 +99,7 @@ describe("Growth Partner capability readiness UI", () => {
       safetyControls={{ messagingPaused: false, outboundPaused: false, agencyPaused: false, canPause: false }}
     />);
 
-    expect(screen.getByRole("heading", { name: "One partner, six capabilities" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Capability Access" })).toBeTruthy();
     const salesDomain = container.querySelector('[data-capability-domain="sales"]');
     expect(salesDomain).toBeTruthy();
     expect(within(salesDomain as HTMLElement).getByText("Sales follow-up drafts")).toBeTruthy();
@@ -59,7 +113,7 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(workBoard).getByText("Waiting for approval")).toBeTruthy();
     expect(within(workBoard).getByText("Needs attention")).toBeTruthy();
     expect(within(workBoard).getByText("Completed today")).toBeTruthy();
-    expect(within(workBoard).getByRole("link", { name: /Open Work Board/ }).getAttribute("href")).toBe("/work");
+    expect(within(workBoard).getByRole("link", { name: /Open AI Work Board/ }).getAttribute("href")).toBe("/work");
     expect(screen.getByText("Your AI Growth Partner has not been connected yet.")).toBeTruthy();
   });
 
@@ -121,10 +175,10 @@ describe("Growth Partner capability readiness UI", () => {
     expect(within(section).getByText("premium", { selector: "dd" })).toBeTruthy();
     expect(within(section).getByText("Steady and evidence-led.")).toBeTruthy();
     expect(within(section).getByRole("link", { name: /Edit AI preferences/ }).getAttribute("href")).toBe("/settings/ai");
-    expect(within(section).getByText(/has not finished syncing to its Hermes runtime/i)).toBeTruthy();
+    expect(within(section).getByText(/check the connection status to see when the AI Growth Partner has received this version/i)).toBeTruthy();
     expect(screen.getByText("Sync pending")).toBeTruthy();
     expect(screen.getByText("Online")).toBeTruthy();
-    expect(screen.getByText("The active runtime configuration passed its latest health check.")).toBeTruthy();
+    expect(screen.getByText("The runtime passed its latest health check.")).toBeTruthy();
 
     view.rerender(<GrowthPartnerControlCenter {...props} state={{
       ...state,
@@ -137,7 +191,7 @@ describe("Growth Partner capability readiness UI", () => {
     }} />);
     expect(screen.getByText("Configured")).toBeTruthy();
 
-    view.rerender(<GrowthPartnerControlCenter {...props} state={{ ...state, status: "setup_required" }} />);
+    view.rerender(<GrowthPartnerControlCenter {...props} state={{ ...state, status: "setup_required", runtimeStatus: "setup_required", runtimeHealthOk: null }} />);
     expect(screen.getByText("Health check needed")).toBeTruthy();
     expect(screen.queryByText("Online")).toBeNull();
     expect(screen.getByText("Partner connection").parentElement?.textContent).not.toContain("Connected");

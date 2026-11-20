@@ -41,7 +41,7 @@ const inRegistryOrder = (wanted: string[]) => ALL_NAMES.filter((n) => wanted.inc
 // The jobs added by Phases 2 to 4. None may run unless it is named.
 const PHASE_2_TO_4 = ["leadScoreReassessment", "missedCallRecovery", "phase2Retention", "webChatRetention", "socialPublisher", "socialAccountHealth", "socialMetrics", "socialCleanup"];
 // The jobs of the documented first steps of the activation plan, plus the inbox and workflow jobs that run alongside them: none of them is a Phase 2 to 4 job.
-const EARLIER_STEPS = ["expiredReservations", "approvalExpiry", "bookingHolds", "aiWorkRecovery", "crmWorkflowRecovery", "setupEvidence", "studioEntitlementSweep", "inboxAttention", "crmEventDispatch", "crmWorkflowRuns", "messagesDispatched", "notificationEmails"];
+const EARLIER_STEPS = ["expiredReservations", "approvalExpiry", "bookingHolds", "aiWorkRecovery", "aiWorkRunQueued", "crmWorkflowRecovery", "setupEvidence", "studioEntitlementSweep", "inboxAttention", "crmEventDispatch", "crmWorkflowRuns", "messagesDispatched", "notificationEmails"];
 
 describe("which jobs a tick may run", () => {
   it("runs every job when nothing is set, as before", () => {
@@ -69,7 +69,7 @@ describe("which jobs a tick may run", () => {
 
   it("names only real jobs in the documented first steps of the activation plan", () => {
     const real = new Set(JOBS.map((j) => j.name));
-    const FIRST_STEPS = ["expiredReservations", "approvalExpiry", "bookingHolds", "aiWorkRecovery", "crmWorkflowRecovery", "setupEvidence", "studioEntitlementSweep", "aqiTutorialEventRetention", "aqiOperationsRetention", "inboxAttention", "crmEventDispatch", "crmWorkflowRuns"];
+    const FIRST_STEPS = ["expiredReservations", "approvalExpiry", "bookingHolds", "aiWorkRecovery", "aiWorkRunQueued", "crmWorkflowRecovery", "setupEvidence", "studioEntitlementSweep", "aqiTutorialEventRetention", "aqiOperationsRetention", "inboxAttention", "crmEventDispatch", "crmWorkflowRuns"];
     for (const n of FIRST_STEPS) expect(real.has(n), n).toBe(true);
   });
 });

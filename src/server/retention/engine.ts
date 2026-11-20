@@ -1,5 +1,5 @@
 import "server-only";
-import crypto from "node:crypto";
+import { programHash } from "@/server/retention/approval";
 import { withSystem, type Queryable } from "@/server/db";
 import { notifyOrgRoles } from "@/server/notifications";
 import { getConsent } from "@/server/messaging/contacts";
@@ -9,6 +9,7 @@ import { queueFeedbackLinkStep } from "@/server/reputation/program-link";
 import { DAILY_ENROLLMENT_CAP, DEFAULT_PROGRAMS, hasFeedbackLink, REENGAGEMENT_COOLDOWN_DAYS, renderStep, STALE_STEP_DAYS, STOP_REASONS, stepDueAt, type ProgramKind, type ProgramPurpose, type ProgramStep, type ProgramTrigger } from "@/lib/retention";
 import { contactAddress } from "@/server/messaging/contacts";
 import type { Channel } from "@/lib/messaging";
+import { partnerFirstAgentSql } from "@/server/workforce/partner-runtime";
 
 export interface ProgramRow {
   id: string;
@@ -25,12 +26,6 @@ export interface ProgramRow {
   approved_hash: string | null;
   approval_id: string | null;
   approved_at: Date | null;
-}
-
-/** What the owner approves is exactly this: who gets it, under what purpose, when, and the words. Any change to it withdraws the approval. */
-export function programHash(p: { kind: string; trigger: string; purpose: string; steps: ProgramStep[]; businessHoursOnly: boolean; inactiveDays: number | null }): string {
-  const canonical = JSON.stringify([p.kind, p.trigger, p.purpose, p.businessHoursOnly, p.inactiveDays, p.steps.map((s) => [s.key, s.delayDays, s.body.trim()])]);
-  return crypto.createHash("sha256").update(canonical).digest("hex");
 }
 
 /** Makes sure the workspace has the five standard programs, all switched off. Safe to call repeatedly; existing programs are never touched. */
@@ -150,7 +145,16 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
   const out = { queued: 0, blocked: 0, skipped: 0, reconciled: 0 };
 
   out.reconciled = await withSystem(async (db) => {
-    await db.query("update retention_steps set status = 'scheduled' where status = 'queued' and message_id is null and updated_at < $1::timestamptz - interval '10 minutes'", [now.toISOString()]);
+    // Expired claims are retried only if their enrollment is still active.
+    await db.query(
+      `update retention_steps s
+       set status = case when e.status = 'active' then 'scheduled' else 'cancelled' end,
+         reason = case when e.status = 'active' then null else e.cancel_reason end
+       from retention_enrollments e
+       where e.id = s.enrollment_id and e.org_id = s.org_id and s.status = 'queued'
+         and s.message_id is null and s.updated_at < $1::timestamptz - interval '10 minutes'`,
+      [now.toISOString()],
+    );
     const done = await db.query<{ enrollment_id: string; org_id: string; reason: string | null; contact_id: string }>(
       `update retention_steps s set status = case when m.status in ('sent', 'delivered', 'read') then 'sent' else 'blocked' end,
          reason = case when m.status in ('sent', 'delivered', 'read') then null else coalesce(m.blocked_reason, 'The message could not be sent.') end
@@ -158,9 +162,9 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
        returning s.enrollment_id, s.org_id, s.reason, (select e.contact_id from retention_enrollments e where e.id = s.enrollment_id) as contact_id`,
     );
     for (const r of done.rows) {
-      await closeIfFinished(db, r.enrollment_id);
-      // A message stopped at the moment of sending for a "never this way" reason (an opt-out, a pause, a person taking over) ends the customer's whole program.
+      // A refusal such as an opt-out cancels the enrollment even when its last message was due.
       if (r.reason && STOP_REASONS.has(r.reason)) await cancelRetention(db, r.org_id, r.contact_id, r.reason);
+      else await closeIfFinished(db, r.enrollment_id);
     }
     return done.rowCount;
   });
@@ -180,12 +184,13 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
       const ctx = (await db.query<{
         program_id: string; kind: ProgramKind; purpose: ProgramPurpose; steps: ProgramStep[]; trigger: ProgramTrigger; enabled: boolean; content_hash: string; approved_hash: string | null; approval_id: string | null;
         business_hours_only: boolean; approval_live: boolean | null; contact_id: string; contact_name: string; deleted_at: Date | null; paused: boolean; stage: string; trigger_ref: string; org_name: string;
-        org_timezone: string | null; agent_id: string | null; appt_status: string | null;
+        org_timezone: string | null; agent_id: string | null; appt_status: string | null; enrollment_status: string; cancel_reason: string | null;
       }>(
         `select p.id as program_id, p.kind, p.purpose, p.steps, p.trigger, p.enabled, p.content_hash, p.approved_hash, p.approval_id, p.business_hours_only,
            (select a.status = 'approved' and (a.expires_at is null or a.expires_at > $2) from approval_requests a where a.id = p.approval_id) as approval_live,
            c.id as contact_id, c.display_name as contact_name, c.deleted_at, c.retention_paused as paused, c.lifecycle_stage as stage, e.trigger_ref, o.name as org_name, o.timezone as org_timezone,
-           (select g.id from agent_instances g where g.org_id = p.org_id and g.role_key = 'crm_manager') as agent_id,
+           e.status as enrollment_status, e.cancel_reason,
+           (${partnerFirstAgentSql("p.org_id", "crm_manager")}) as agent_id,
            (select r.status from appointment_refs r where p.trigger = 'appointment_showed' and r.id::text = e.trigger_ref and r.org_id = p.org_id) as appt_status
          from retention_enrollments e join retention_programs p on p.id = e.program_id and p.org_id = e.org_id
          join contacts c on c.id = e.contact_id and c.org_id = e.org_id join organizations o on o.id = e.org_id where e.id = $1`,
@@ -200,6 +205,15 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
         await db.query("update retention_steps set status = 'blocked', reason = $2 where id = $1 and status in ('queued')", [s.id, reason]);
       };
       if (!ctx) return finish("cancelled", "enrollment_missing");
+      // An earlier step in the same batch may already have stopped the customer's enrollment.
+      if (ctx.enrollment_status !== "active") {
+        await db.query(
+          "update retention_steps set status = 'cancelled', reason = $2 where id = $1 and status = 'queued' and message_id is null",
+          [s.id, ctx.cancel_reason],
+        );
+        out.skipped += 1;
+        return;
+      }
       if (!ctx.enabled) {
         out.skipped += 1;
         return finish("cancelled", "program_off");
@@ -244,8 +258,8 @@ export async function prepareDueSteps(opts: { now?: Date; limit?: number } = {})
           });
       if (res.status === "blocked") {
         out.blocked += 1;
-        await finish("blocked", res.reason ?? "blocked");
         if (res.reason && STOP_REASONS.has(res.reason)) await stopAll(res.reason);
+        else await finish("blocked", res.reason ?? "blocked");
         return;
       }
       out.queued += 1;

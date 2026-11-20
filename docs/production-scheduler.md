@@ -4,6 +4,9 @@
 
 The scheduler is **prepared but not activated**.
 
+The scheduler remains **OFF until the founder explicitly approves setting `SCHEDULER_ENABLED=true`**. This implementation does not change
+that switch or any scheduler default.
+
 - `POST /api/internal/tick` exists and runs every job in `src/server/ops/tick.ts` (or only those named in `SCHEDULER_JOBS_ONLY`, see below).
 - Production has **no `CRON_SECRET`**, so the endpoint returns `503 Worker endpoint is not configured`.
 - `SCHEDULER_ENABLED` is not set in production. Even with a secret, the endpoint returns `503` until it is explicitly `true`.
@@ -31,7 +34,7 @@ Both are required. Deploying a cron definition cannot start work by itself; a pe
 
 ### Starting with some jobs only: `SCHEDULER_JOBS_ONLY`
 
-Switching the scheduler on starts **every** registered job (77 on 2026-11-02, with the launch watch and the booking confirmation watch; 75 earlier that day, with the client business tool credential expiry job; 74 on 2026-10-26, with the two prospect demo jobs, the staff Messages job, the staff workload job, the custom project review job and the maintenance renewal sweep; 65 before them, 53 on 2026-10-23 and 45 on 2026-10-22, before the missed-call, lead-scoring, website-chat and social media jobs and the 12 Wave 1 jobs for proposals, signing, invoices and payments, and reputation; `tests/docs-scheduler.test.ts` fails when this number or the inventory drifts from the registry). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
+Switching the scheduler on starts **every** registered job (78 on 2026-11-16, including the queued AI work runner; 77 on 2026-11-02, with the launch watch and the booking confirmation watch; 75 earlier that day, with the client business tool credential expiry job; 74 on 2026-10-26, with the two prospect demo jobs, the staff Messages job, the staff workload job, the custom project review job and the maintenance renewal sweep; 65 before them, 53 on 2026-10-23 and 45 on 2026-10-22, before the missed-call, lead-scoring, website-chat and social media jobs and the 12 Wave 1 jobs for proposals, signing, invoices and payments, and reputation; `tests/docs-scheduler.test.ts` fails when this number or the inventory drifts from the registry). To start in stages, set `SCHEDULER_JOBS_ONLY` to a comma-separated list of exact job names from `src/server/ops/tick.ts`
 (for example `aiWorkRecovery,crmWorkflowRecovery,inboxAttention`). A tick then runs only those, in the registry's order, and the others do not run and leave no heartbeat. The job inventory, what each can do, and a suggested order of steps are in
 [unified-inbox/scheduler-impact.md](unified-inbox/scheduler-impact.md).
 
@@ -49,7 +52,7 @@ Switching the scheduler on starts **every** registered job (77 on 2026-11-02, wi
 `last_error` of the `scheduler_tick` row of `worker_job_runs`, whose failure count rises with every refused tick. The next tick after the list is corrected runs normally and the count starts again from zero. The list is checked by the tick, not when the server starts, so a bad list stops the scheduler only: it cannot make the
 application's configuration invalid or take the web application down. A request cannot change the list: the endpoint reads only the `Authorization` header, and a query string, body or other header is ignored (`GET` and `POST` alike).
 
-**What "unset" means in production.** With the variable unset or empty, a tick runs all 77 jobs, but only behind two other switches: `CRON_SECRET` must exist and the request must carry it (otherwise `503` / `401`), and `SCHEDULER_ENABLED` must be `true` (or `1`; `false`, `0`, empty or absent answer
+**What "unset" means in production.** With the variable unset or empty, a tick runs all 78 jobs, but only behind two other switches: `CRON_SECRET` must exist and the request must carry it (otherwise `503` / `401`), and `SCHEDULER_ENABLED` must be `true` (or `1`; `false`, `0`, empty or absent answer
 `503`, with the list not even read). So the staged start is not a safety switch that has to be remembered: the scheduler as a whole is off until a person sets `SCHEDULER_ENABLED=true`. But once it is on and the list is unset or empty, everything
 starts. Set the list **before** setting `SCHEDULER_ENABLED=true`, and after the first tick check that `worker_job_runs` shows a recent `last_started_at` for the named jobs only. The Phase 2 to 4 jobs (`leadScoreReassessment`, `missedCallRecovery`, `phase2Retention`, `webChatRetention`, `socialPublisher`,
 `socialAccountHealth`, `socialMetrics`, `socialCleanup`) run only when named, or when the list is unset. So do the 12 Wave 1 jobs (`proposalExpiry`, `proposalHousekeeping`, `esignSync`, `feedbackSla`, `appointmentOutcomeNudge`, `reviewRequestBatches`, `reviewSync`, `renewalReminders`, `reputationRetention`, `customerPaymentReconcile`, `invoiceOverdueSweep`, `invoiceReminders`): **a staged list written before they existed does not run them, and nothing here adds them to an approved stage.** Five of them reach outside iAcquire: `reviewRequestBatches` and `invoiceReminders` queue messages to customers, and `esignSync`, `reviewSync` and `customerPaymentReconcile` call a provider. The three the founder approves by name before they join a stage are `invoiceReminders`, `reviewRequestBatches` and `customerPaymentReconcile`; see "The 12 Wave 1 jobs at a glance" below.
@@ -155,9 +158,12 @@ a URL query string.
 - `/admin/health` shows the scheduler state, every job's last success/duration/failure count, and the last seven days of sanitized
   diagnostics. It is agency-only and does not expose customer data.
 
-## Proactive AI employee jobs
+## AI workforce jobs
 
-Four jobs relate to proactive AI employees and are all inert until separately authorized:
+The following six jobs run only when the scheduler runs; schedules, triggers and briefings also require their own settings:
+
+- `aiWorkRecovery` (every 5 minutes) retries jobs with an expired worker lease, settles queued cancellation requests, and cancels never-claimed jobs still queued after 30 minutes with `failure_code=stale_queued` plus a visible notice event.
+- `aiWorkRunQueued` (every tick, no interval gate) runs queued work one job at a time for a 45-second start budget. It starts another job only while at least the claim API's 30-second minimum lease window remains. The budget stops new starts; it does not interrupt a handler already running.
 
 - `aiWorkSchedules` creates jobs for enabled tenant schedules only when `WORKFORCE_SCHEDULES_ENABLED=true`.
   Business-hour windows are evaluated in the schedule's time zone; an enabled row outside its window is
@@ -167,8 +173,9 @@ Four jobs relate to proactive AI employees and are all inert until separately au
 - `aiProactiveBriefings` generates opted-in daily/weekly briefings only when
   `WORKFORCE_BRIEFINGS_ENABLED=true`. It never contacts a provider.
 
-The tick still never runs provider work. It creates durable `ai_work_jobs` rows and wakes the worker; a Lead Hunter
-research schedule also creates the linked `lead_research_requests` row. See
+The queue runner makes the scheduler tick an execution path as well as a recovery path; a request-time kick and the optional dedicated
+worker remain earlier and separate ways to start work. A Lead Hunter research schedule also creates the linked `lead_research_requests`
+row. The runner budget limits new starts, not the duration of the handler already under way. See
 [Proactive AI employees](proactive-ai-employees.md) for the delivery policy, safety boundaries and activation
 checkpoint.
 

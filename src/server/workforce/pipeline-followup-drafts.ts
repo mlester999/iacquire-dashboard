@@ -222,7 +222,7 @@ export async function runPipelineFollowUpDraftsJob(
     return;
   }
   if (!agent.enabled || !agent.active_config_version_id || !canChat(agent.status as AgentStatus)) {
-    await blockJob(job, "agent_unavailable", "The selected AI employee is no longer configured and available. No follow-up draft was created.");
+    await blockJob(job, "agent_unavailable", "The AI runtime became unavailable before the follow-up draft could be created.");
     return;
   }
   if (!await requesterStillAuthorized(job)) {

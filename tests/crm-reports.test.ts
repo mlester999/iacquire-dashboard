@@ -792,7 +792,7 @@ describe("agency CRM operations", () => {
     expect(h.events.deadLetters24h).toBeGreaterThanOrEqual(1);
     expect(h.webhooks.dead24h).toBeGreaterThanOrEqual(1);
     expect(h.forms.failed24h).toBeGreaterThanOrEqual(0);
-    const full = await getSystemHealth();
+    const full = await getSystemHealth((await agencyPeople()).superAdmin);
     expect(full.crm.events.backlog).toBeGreaterThanOrEqual(1);
   });
 });

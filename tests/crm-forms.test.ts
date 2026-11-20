@@ -578,6 +578,9 @@ describe("processing submissions", () => {
       "select org_id, first_name, last_name, email::text as email, phone, created_via, source from contacts where id = $1", [s.contact_id],
     );
     expect(contact).toMatchObject({ org_id: A.c.org.id, first_name: "Ana", last_name: "Reyes", email, phone: "+639170001001", created_via: "form", source: "Form: Kitchen quote" });
+    expect(await all<{ kind: string; verified: boolean; typed_by_visitor: boolean }>("select kind, verified, typed_by_visitor from contact_identities where contact_id = $1 order by kind", [s.contact_id])).toEqual([
+      { kind: "email", verified: false, typed_by_visitor: true }, { kind: "phone", verified: false, typed_by_visitor: true },
+    ]);
     expect((await one<{ n: string }>("select count(*)::text as n from contacts where org_id = $1", [B.c.org.id]))!.n).toBe(bContactsBefore);
 
     // Custom fields through the CRM's own rules: the "Bathroom"-style label match and a number.
@@ -636,7 +639,9 @@ describe("processing submissions", () => {
     // The name the team recorded stays and the missing last name is filled in. The phone typed on a public form is not added to the
     // contact (anyone could have typed it); it stays on the submission, with a note for the team.
     expect(c).toMatchObject({ first_name: "Bea", last_name: "Santos", phone: null });
-    expect(await all("select kind, value from contact_identities where contact_id = $1 order by kind", [existing.id])).toEqual([{ kind: "email", value: "bea.match@example.test" }]);
+    expect(await all("select kind, value, verified, typed_by_visitor from contact_identities where contact_id = $1 order by kind", [existing.id])).toEqual([
+      { kind: "email", value: "bea.match@example.test", verified: false, typed_by_visitor: true },
+    ]);
     expect(s.answers.phone).toBe("+639175550101");
     expect(s.error).toMatch(/phone number given isn't on this contact, so it wasn't added/);
     // Consent only for the address that is the contact's own: email, never texts to the number typed.
@@ -661,7 +666,9 @@ describe("processing submissions", () => {
     const [s] = await submissionsOf(f.id);
     expect(s).toMatchObject({ status: "processed", contact_id: maria.id });
     expect(await one("select phone from contacts where id = $1", [maria.id])).toEqual({ phone: null });
-    expect(await all("select kind, value, verified from contact_identities where contact_id = $1 order by kind", [maria.id])).toEqual([{ kind: "email", value: "maria.only@example.test", verified: false }]);
+    expect(await all("select kind, value, verified, typed_by_visitor from contact_identities where contact_id = $1 order by kind", [maria.id])).toEqual([
+      { kind: "email", value: "maria.only@example.test", verified: false, typed_by_visitor: true },
+    ]);
     // Nobody else has the number either: it is only on the submission.
     expect(await all("select 1 from contact_identities where org_id = $1 and value = '+639176660199'", [A.c.org.id])).toEqual([]);
     const consent = await all<{ channel: string; purpose: string }>("select channel, purpose from contact_consent_events where contact_id = $1 order by purpose, channel", [maria.id]);

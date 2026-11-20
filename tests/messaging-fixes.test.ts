@@ -171,8 +171,8 @@ describe("WhatsApp templates on Meta", () => {
   describe("finding 3: the inbox records exactly what the customer receives", () => {
     it("refuses typed text that isn't the template's fixed wording, and sends it when it is", async () => {
       const c = await closedWindow();
-      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready for pickup. The total is $420.", { templateId: "900779" })).rejects.toThrow(/fixed wording/);
-      const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready  for pickup today. ", { templateId: "900779" });
+      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready for pickup. The total is $420.", { purpose: "service", templateId: "900779" })).rejects.toThrow(/fixed wording/);
+      const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready  for pickup today. ", { purpose: "service", templateId: "900779" });
       expect(q.status).toBe("queued");
       const rec = recordingProvider("meta_whatsapp");
       expect(await dispatchMessage(q.messageId, { transport: rec.transport })).toEqual({ status: "sent" });
@@ -182,9 +182,9 @@ describe("WhatsApp templates on Meta", () => {
 
     it("needs every value of a template with placeholders, and passes them in order", async () => {
       const c = await closedWindow();
-      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready.", { templateId: "900778" })).rejects.toThrow(/doesn't follow the template/);
-      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi {{1}}, your car is ready. The total is $420.", { templateId: "900778" })).rejects.toThrow(/Replace every/);
-      const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi Ana, your car is ready. The total is $420.", { templateId: "900778" });
+      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Your car is ready.", { purpose: "service", templateId: "900778" })).rejects.toThrow(/doesn't follow the template/);
+      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi {{1}}, your car is ready. The total is $420.", { purpose: "service", templateId: "900778" })).rejects.toThrow(/Replace every/);
+      const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi Ana, your car is ready. The total is $420.", { purpose: "service", templateId: "900778" });
       const rec = recordingProvider("meta_whatsapp");
       expect(await dispatchMessage(q.messageId, { transport: rec.transport })).toEqual({ status: "sent" });
       expect(rec.calls[0].template).toMatchObject({ name: "car_ready", params: ["Ana", "$420"] });
@@ -217,12 +217,12 @@ describe("WhatsApp templates on Meta", () => {
       const promo = "Spring sale! 20% off every service this week. Book now.";
       const c = await closedWindow();
       await withSystem((db) => recordConsent(db, { orgId: wa.org.id, contactId: c.contactId!, channel: "whatsapp", purpose: "marketing", status: "revoked", source: "provider_opt_out", evidence: "test" }));
-      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, promo, { templateId: "900777" })).rejects.toThrow(/withdrew consent/);
+      await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, promo, { purpose: "marketing", templateId: "900777" })).rejects.toThrow(/withdrew consent/);
       // Service consent alone (the customer wrote in) isn't enough either.
       const d = await closedWindow();
-      await expect(sendHumanReply(wa.ctx("owner"), d.conversationId, promo, { templateId: "900777" })).rejects.toThrow(/marketing template/);
+      await expect(sendHumanReply(wa.ctx("owner"), d.conversationId, promo, { purpose: "service", templateId: "900777" })).rejects.toThrow(/marketing template/);
       await withSystem((db) => recordConsent(db, { orgId: wa.org.id, contactId: d.contactId!, channel: "whatsapp", purpose: "marketing", status: "granted", source: "form", evidence: "test" }));
-      const q = await sendHumanReply(wa.ctx("owner"), d.conversationId, promo, { templateId: "900777" });
+      const q = await sendHumanReply(wa.ctx("owner"), d.conversationId, promo, { purpose: "marketing", templateId: "900777" });
       expect(q.status).toBe("queued");
       expect((await messageRow(q.messageId)).purpose).toBe("marketing");
       // Revoked after it was queued: the check before sending refuses it.

@@ -30,7 +30,7 @@ describe("OpenStreetMap acceptance adapter", () => {
     const query = buildOpenStreetMapQuery(BOUNDS, 12, 20);
     expect(query).toContain("[out:json][timeout:20]");
     expect(query).toContain("nwr[\"name\"][\"shop\"](1.25,103.7,1.4,103.9);");
-    expect(query).toContain("out center tags 12;");
+    expect(query).toContain("out body center 12;");
     expect(() => buildOpenStreetMapQuery({ ...BOUNDS, east: 106 }, 12)).toThrow("bounded local area");
     expect(() => buildOpenStreetMapQuery(BOUNDS, 51)).toThrow("between 1 and 50");
   });
@@ -85,7 +85,11 @@ describe("OpenStreetMap acceptance adapter", () => {
       usageEvents.push("fetch");
       return new Response(JSON.stringify({
         osm3s: { timestamp_osm_base: "2026-10-30T12:00:00Z" },
-        elements: [{ type: "node", id: 88, lat: 1.3, lon: 103.8, tags: { name: "Fixture Cafe", amenity: "cafe" } }],
+        elements: [
+          { type: "node", id: 88, lat: 1.3, lon: 103.8, tags: { name: "Fixture Cafe", amenity: "cafe" } },
+          { type: "node", id: 89, lat: 1.5, lon: 103.8, tags: { name: "Outside Fixture", amenity: "cafe" } },
+          { type: "node", id: 90, tags: { name: "Unlocated Fixture", amenity: "cafe" } },
+        ],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     };
     const result = await searchOpenStreetMap(OSM_CONFIG, BOUNDS, fetcher, usageTracker);
@@ -94,7 +98,7 @@ describe("OpenStreetMap acceptance adapter", () => {
     expect(initSeen?.method).toBe("POST");
     expect(initSeen?.redirect).toBe("error");
     expect(new Headers(initSeen?.headers).get("User-Agent")).toBe(OSM_CONFIG.userAgent);
-    expect(decodeURIComponent(String(initSeen?.body).replace(/^data=/, ""))).toContain("out center tags 12;");
+    expect(decodeURIComponent(String(initSeen?.body).replace(/^data=/, ""))).toContain("out body center 12;");
     expect(result).toMatchObject({
       attribution: "© OpenStreetMap contributors",
       license: "ODbL-1.0",
@@ -110,6 +114,26 @@ describe("OpenStreetMap acceptance adapter", () => {
     const oversized = vi.fn(async () => new Response("x".repeat(1_000_001), { status: 200 }));
     await expect(searchOpenStreetMap(OSM_CONFIG, BOUNDS, oversized as never)).rejects.toThrow("size limit");
     expect(oversized).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the timeout active until parsing finishes and records incomplete responses", async () => {
+    const finishRequest = vi.fn();
+    const usage = { finishRequest, reserveRequest: vi.fn().mockResolvedValue("source-request") };
+    const fetcher = vi.fn(async (_url: URL, init: RequestInit) => new Response(new ReadableStream({
+      start(stream) {
+        init.signal?.addEventListener("abort", () => stream.error(new Error("fixture timer stopped stalled body")), { once: true });
+      },
+    }), { status: 200 }));
+    vi.useFakeTimers();
+    try {
+      const result = expect(searchOpenStreetMap({ ...OSM_CONFIG, timeoutSeconds: 1 }, BOUNDS, fetcher, usage)).rejects.toThrow(/bounded research request/);
+      await vi.advanceTimersByTimeAsync(1000);
+      await result;
+      expect(finishRequest).toHaveBeenCalledWith("source-request", { responseReceived: true, httpStatus: 200, metadata: { validPayload: false } });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

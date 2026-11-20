@@ -2,7 +2,6 @@ import "server-only";
 import { z } from "zod";
 import { CONTACT_FILTER_FIELDS, OPS_BY_KIND } from "@/lib/crm/filters";
 import { EVENT_TRIGGER_TYPES, OTHER_TRIGGER_TYPES, STEP_KINDS, STEP_KIND_LIST, TRIGGERS, TRIGGER_FILTER_KEYS, WORKFLOW_LIMITS, triggerFiltersSchema, type StepKind } from "@/lib/crm/workflow/spec";
-import { AGENT_BY_KEY, AGENT_ROLE_KEYS } from "@/lib/agents";
 import { TOKEN_KEYS } from "@/lib/messaging/tokens";
 import { LIMIT_LABELS } from "@/lib/automation-studio/plan";
 
@@ -86,10 +85,6 @@ export function conditionCatalog(): string {
   return `Condition group: {"op":"and"|"or","conditions":[{"field":<key>,"op":<operator>,"value":<value>}, ...nested groups allowed]}.\n`
     + `Examples: {"field":"lead_status","op":"in","value":["new"]}, {"field":"tags","op":"has_any","value":[<tag id>]}, {"field":"lead_score","op":"gt","value":50}.\n`
     + `Contact fields:\n${fields}\nA custom field is written "cf:<field id>". An if / else on a deal (subject "opportunity") can test status, pipeline, stage, value, owner, tags, source, created_at, expected_close_date.`;
-}
-
-export function employeeCatalog(): string {
-  return AGENT_ROLE_KEYS.map((k) => `  - ${k}: ${AGENT_BY_KEY[k].name}: ${AGENT_BY_KEY[k].tagline}`).join("\n");
 }
 
 export function limitsNote(): string {

@@ -1,6 +1,6 @@
 import "server-only";
 import { withSystem } from "@/server/db";
-import { AGENT_BY_KEY, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_BY_KEY, AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
 import { LAUNCH_VERIFICATION_CAPABILITY, checkCoversInputs, launchVerificationInput, launchVerificationKey, verificationInputs } from "@/lib/launch-verification";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { dispatchSystemCapabilityJob } from "@/server/workforce/capability-dispatch";
@@ -37,8 +37,8 @@ async function dueRoles(orgId: string): Promise<AgentRoleKey[]> {
           where j.org_id = a.org_id and j.agent_instance_id = a.id and j.input ->> 'launchVerification' = 'true'
           order by j.created_at desc limit 1) lj on true
       where a.org_id = $1 and o.kind = 'client' and not o.is_demo and o.status = 'active' and o.onboarding_completed_at is not null
-        and a.enabled and a.last_health_ok is true`,
-    [orgId],
+        and a.enabled and a.last_health_ok is true and a.role_key = any($2::text[])`,
+    [orgId, [...AGENT_ROLE_KEYS]],
   ));
   const due: AgentRoleKey[] = [];
   for (const r of rows) {

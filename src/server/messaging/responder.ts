@@ -25,6 +25,7 @@ import { detectRestrictedTopics, restrictedTopicsOf, restrictedTopicSummary, TOP
 export interface ReplyContext {
   orgId: string;
   agentId: string;
+  agentRole?: string | null;
   conversationId: string;
   contactId: string;
   inboundMessageId: string;
@@ -96,10 +97,14 @@ Never say or imply any other time is available. If the customer clearly chooses 
 If none suit them, ask what days they prefer and say the team will confirm. Do not book without a clear choice.\n`;
 }
 
+export function customerReplyCopy(roleKey: string | null | undefined, legacyCopy: string, growthPartnerCopy: string): string {
+  return roleKey === "growth_partner" ? growthPartnerCopy : legacyCopy;
+}
+
 /** Reads the model's answer. A malformed escalation is never sent to the customer. */
-export function parseReply(raw: string): ReplyOutcome {
+export function parseReply(raw: string, roleKey?: string | null): ReplyOutcome {
   const text = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
-  if (!text) return { kind: "unavailable", reason: "The AI employee returned an empty reply." };
+  if (!text) return { kind: "unavailable", reason: customerReplyCopy(roleKey, "The previous AI profile returned an empty reply.", "Your AI Growth Partner returned an empty reply.") };
   if (text.startsWith("{") || text.includes('"escalate"') || text.includes('"book"')) {
     try {
       const parsed = JSON.parse(text) as { escalate?: unknown; summary?: unknown; book?: unknown };
@@ -112,7 +117,7 @@ export function parseReply(raw: string): ReplyOutcome {
     } catch {
       /* fall through */
     }
-    return { kind: "unavailable", reason: "The AI employee's reply was not in a usable format, so it was not sent." };
+    return { kind: "unavailable", reason: customerReplyCopy(roleKey, "The previous AI profile's reply was not in a usable format, so it was not sent.", "Your AI Growth Partner's reply was not in a usable format, so it was not sent.") };
   }
   return { kind: "reply", text };
 }
@@ -133,32 +138,33 @@ export const hermesReplyGenerator: ReplyGenerator = async (ctx) => {
   const prepared = await withSystem(async (db) => {
     const conn = await loadConnection(db, ctx.agentId);
     if (!conn) return null;
-    const { instructions } = await buildRunInstructions(db, ctx.orgId, ctx.agentId, ctx.customerMessage);
+    const { instructions } = await buildRunInstructions(db, ctx.orgId, ctx.agentId, ctx.customerMessage, { audience: "customer" });
     return { conn, instructions };
   }).catch(() => null);
-  if (!prepared) return { kind: "unavailable", reason: "The AI employee is not connected." };
+  if (!prepared) return { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile is not connected.", "Your AI Growth Partner is not connected.") };
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 60_000);
   try {
+    const growthPartnerCustomerRun = ctx.agentRole === "growth_partner";
     const { runId } = await startAgentRun(ctx.agentId, ctx.orgId, prepared.conn, {
       input: ctx.customerMessage,
       instructions: customerInstructions(prepared.instructions, ctx),
       conversationHistory: ctx.history,
       idempotencyKey: `reply:${ctx.inboundMessageId}`,
-      // One memory scope per customer, so what one customer says never reaches another customer's conversation.
-      memoryScope: `iaq:${ctx.orgId}:contact:${ctx.contactId}`,
-    });
+      // Customer replies never enter Hermes-native memory. Internal chats and research keep their own scopes.
+      ...(!growthPartnerCustomerRun ? { memoryScope: `iaq:${ctx.orgId}:contact:${ctx.contactId}` } : {}),
+    }, growthPartnerCustomerRun ? { toolScope: "no_tools" } : {});
     let output = "";
     for await (const ev of streamRunEvents(prepared.conn, runId, ac.signal)) {
       if (ev.type === "delta") output += ev.text;
-      else if (ev.type === "completed") return attachUsage(parseReply(ev.output ?? output), ev.usage);
-      else if (ev.type === "failed" || ev.type === "interrupted") return { kind: "unavailable", reason: "The AI employee could not finish a reply." };
-      else if (ev.type === "cancelled") return { kind: "unavailable", reason: "The AI employee's run was stopped." };
-      else if (ev.type === "approval_request") return { kind: "unavailable", reason: "The AI employee asked for a tool approval, so it did not answer on its own." };
+      else if (ev.type === "completed") return attachUsage(parseReply(ev.output ?? output, ctx.agentRole), ev.usage);
+      else if (ev.type === "failed" || ev.type === "interrupted") return { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile could not finish a reply.", "Your AI Growth Partner could not finish a reply.") };
+      else if (ev.type === "cancelled") return { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile's run was stopped.", "Your AI Growth Partner's run was stopped.") };
+      else if (ev.type === "approval_request") return { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile asked for a tool approval, so it did not answer on its own.", "Your AI Growth Partner asked for a tool approval, so it did not answer on its own.") };
     }
-    return { kind: "unavailable", reason: "The AI employee did not finish a reply." };
+    return { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile did not finish a reply.", "Your AI Growth Partner did not finish a reply.") };
   } catch (err) {
-    return { kind: "unavailable", reason: err instanceof HermesError ? err.message : "The AI employee could not be reached." };
+    return { kind: "unavailable", reason: err instanceof HermesError ? err.message : customerReplyCopy(ctx.agentRole, "The previous AI profile could not be reached.", "Your AI Growth Partner could not be reached.") };
   } finally {
     clearTimeout(timer);
   }
@@ -175,19 +181,19 @@ export type RespondResult =
   | { status: "unavailable"; reason: string };
 
 async function loadContext(db: Queryable, orgId: string, conversationId: string): Promise<(ReplyContext & { aiDisclosure: string; aiMessageCount: number; ownerKind: string; ownershipVersion: number; aiPaused: boolean }) | null> {
-  const { rows } = await db.query<{ contact_id: string; channel: ConversationChannel; ai_agent_id: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null; allow_booking: boolean | null }>(
-    `select c.contact_id, c.channel, c.ai_agent_id, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure, w.allow_booking
-     from conversations c join organizations o on o.id = c.org_id left join messaging_settings s on s.org_id = c.org_id left join web_chat_widgets w on w.org_id = c.org_id
+  const { rows } = await db.query<{ contact_id: string; channel: ConversationChannel; ai_agent_id: string | null; agent_role: string | null; owner_kind: string; ownership_version: number; ai_paused_at: Date | null; name: string; disclosure: string | null; allow_booking: boolean | null }>(
+    `select c.contact_id, c.channel, c.ai_agent_id, a.role_key as agent_role, c.owner_kind, c.ownership_version, c.ai_paused_at, o.name, s.ai_disclosure as disclosure, w.allow_booking
+     from conversations c join organizations o on o.id = c.org_id left join agent_instances a on a.id = c.ai_agent_id and a.org_id = c.org_id left join messaging_settings s on s.org_id = c.org_id left join web_chat_widgets w on w.org_id = c.org_id
      where c.id = $1 and c.org_id = $2`,
     [conversationId, orgId],
   );
   const c = rows[0];
   if (!c?.ai_agent_id) return null;
-  const last = await db.query<{ id: string; body: string }>("select id, body from conversation_messages where conversation_id = $1 and direction = 'inbound' order by created_at desc, id desc limit 1", [conversationId]);
-  if (!last.rows[0]) return null;
+  const last = await db.query<{ id: string; body: string; sender_verified: boolean }>("select id, body, sender_verified from conversation_messages where conversation_id = $1 and direction = 'inbound' order by created_at desc, id desc limit 1", [conversationId]);
+  if (!last.rows[0]?.sender_verified) return null;
   const hist = await db.query<{ direction: string; body: string }>(
     `select direction, body from conversation_messages where conversation_id = $1 and id <> $2
-       and ((direction = 'inbound') or (direction = 'outbound' and status in ('sent', 'delivered', 'read'))) order by created_at desc, id desc limit 12`,
+       and ((direction = 'inbound' and sender_verified = true) or (direction = 'outbound' and status in ('sent', 'delivered', 'read'))) order by created_at desc, id desc limit 12`,
     [conversationId, last.rows[0].id],
   );
   const facts = await db.query<{ content: string }>("select content from contact_memories where contact_id = $1 and kind = 'confirmed_fact' and deleted_at is null order by created_at desc limit 10", [c.contact_id]);
@@ -195,6 +201,7 @@ async function loadContext(db: Queryable, orgId: string, conversationId: string)
   return {
     orgId,
     agentId: c.ai_agent_id,
+    agentRole: c.agent_role,
     conversationId,
     contactId: c.contact_id,
     inboundMessageId: last.rows[0].id,
@@ -230,12 +237,16 @@ export async function restrictedTopicsFor(db: Queryable, orgId: string): Promise
  * never gave (the net the website chat already applies). Empty when the reply stays inside what was approved. When the knowledge cannot be read at all the reply is NOT trusted: a
  * reply nobody could check is held like one that failed the check.
  */
-export async function replyClaimProblems(orgId: string, reply: string, visitorSaid: string): Promise<string[]> {
+export async function replyClaimProblems(orgId: string, reply: string, visitorSaid: string, agentRole?: string | null): Promise<string[]> {
   // Loaded on demand for the same reason as the website generator: that module imports this one.
-  const { widgetKnowledge } = await import("@/server/webchat/generator");
+  const { customerSafeBrainKnowledge, widgetKnowledge } = await import("@/server/webchat/generator");
   let knowledge: string;
   try {
-    knowledge = (await widgetKnowledge(orgId, KNOWLEDGE_SECTION_KEYS)).text;
+    // A Growth Partner customer run only sees the audience-filtered Brain. Internal company-knowledge sections must not
+    // be allowed to ground claims that the model never received. Other reply paths retain their approved Knowledge Center source.
+    knowledge = agentRole === "growth_partner"
+      ? await customerSafeBrainKnowledge(orgId)
+      : (await widgetKnowledge(orgId, KNOWLEDGE_SECTION_KEYS)).text;
   } catch {
     return ["a statement that could not be checked against the approved knowledge"];
   }
@@ -246,8 +257,11 @@ export async function replyClaimProblems(orgId: string, reply: string, visitorSa
 }
 
 /** The staff-only summary of a reply the claims net held. It quotes the AI's own words, never the customer's. */
-function heldReplySummary(problems: string[]): string {
-  return `The AI employee's draft was held, not sent: it made ${problems.slice(0, 2).join(" and ")} that the approved knowledge does not back. Please reply yourself.`.slice(0, 600);
+function heldReplySummary(problems: string[], roleKey?: string | null): string {
+  return customerReplyCopy(roleKey,
+    `The previous AI profile's draft was held, not sent: it made ${problems.slice(0, 2).join(" and ")} that the approved knowledge does not back. Please reply yourself.`,
+    `Your AI Growth Partner's draft was held, not sent: it made ${problems.slice(0, 2).join(" and ")} that the approved knowledge does not back. Please reply yourself.`,
+  ).slice(0, 600);
 }
 
 /**
@@ -271,7 +285,7 @@ export async function respondToConversation(orgId: string, conversationId: strin
     const bal = await getBalance(db, orgId);
     if (bal.availableMicros <= 0) return { skip: "credits" as const };
     // The optional monthly cap on AI replies to customers (none is set unless the agency sets one): over it, no model call is made and a person is asked to reply instead.
-    if (customerReplyCapReached(await usageSummary(db, orgId))) return { skip: "usage_limit" as const, agentId: ctx.agentId, inboundMessageId: ctx.inboundMessageId };
+    if (customerReplyCapReached(await usageSummary(db, orgId))) return { skip: "usage_limit" as const, agentId: ctx.agentId, agentRole: ctx.agentRole, inboundMessageId: ctx.inboundMessageId };
     // The client's own "a person handles these" answers decide before any model is asked: no cost, and nothing the model could say.
     const restricted = detectRestrictedTopics(ctx.customerMessage, await restrictedTopicsFor(db, orgId))[0];
     if (restricted) return { restricted, ctx };
@@ -284,8 +298,8 @@ export async function respondToConversation(orgId: string, conversationId: strin
         // One note and one escalation per conversation per day: every further message from the same customer must not add another note, another open case and another email.
         const already = await db.query("select 1 from conversation_messages where org_id = $1 and conversation_id = $2 and status_detail = 'ai_usage_limit' and created_at > now() - interval '1 day' limit 1", [orgId, conversationId]);
         if (already.rows.length > 0) return;
-        await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_usage_limit')", [orgId, conversationId, pre.agentId, "The AI employee did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself."]);
-        const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: "This workspace has reached its monthly limit on AI replies, so the AI employee did not answer. Please reply.", sourceMessageId: pre.inboundMessageId, agentId: pre.agentId, now: deps.now });
+        await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_usage_limit')", [orgId, conversationId, pre.agentId, customerReplyCopy(pre.agentRole, "The previous AI profile did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself.", "Your AI Growth Partner did not answer: this workspace has reached its monthly limit on AI replies to customers. Please reply yourself.")]);
+        const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: customerReplyCopy(pre.agentRole, "This workspace has reached its monthly limit on AI replies, so the assigned AI profile did not answer. Please reply.", "This workspace has reached its monthly limit on AI replies, so your AI Growth Partner did not answer. Please reply."), sourceMessageId: pre.inboundMessageId, agentId: pre.agentId, now: deps.now });
         capEmails.push(...esc.emails);
       });
       await Promise.all(capEmails.map((e) => sendEmail(e)));
@@ -320,10 +334,10 @@ export async function respondToConversation(orgId: string, conversationId: strin
   let heldClaims = false;
   if (outcome.kind === "reply" && ctx.channel !== "web_chat") {
     const visitorSaid = [...ctx.history.filter((h) => h.role === "user").map((h) => h.content), ctx.customerMessage].join("\n");
-    const problems = await replyClaimProblems(orgId, outcome.text, visitorSaid);
+    const problems = await replyClaimProblems(orgId, outcome.text, visitorSaid, ctx.agentRole);
     if (problems.length) {
       heldClaims = true;
-      outcome = { kind: "escalate", category: "unsafe_or_uncertain", summary: heldReplySummary(problems), usage: outcome.usage ?? null };
+      outcome = { kind: "escalate", category: "unsafe_or_uncertain", summary: heldReplySummary(problems, ctx.agentRole), usage: outcome.usage ?? null };
     }
   }
   let bookingNote: BookingResult | null = null;
@@ -332,7 +346,7 @@ export async function respondToConversation(orgId: string, conversationId: strin
     const offered = ctx.availability?.state === "slots" ? ctx.availability.slots.find((s) => s.start === chosen) : undefined;
     if (!offered) {
       // The employee named a time that was not on the list. Nothing is booked, and a person looks at the conversation.
-      outcome = { kind: "unavailable", reason: "The AI employee chose a time that was not on the calendar's list, so nothing was booked." };
+      outcome = { kind: "unavailable", reason: customerReplyCopy(ctx.agentRole, "The previous AI profile chose a time that was not on the calendar's list, so nothing was booked.", "Your AI Growth Partner chose a time that was not on the calendar's list, so nothing was booked.") };
     } else {
       const usage = outcome.usage;
       bookingNote = await requestBooking(
@@ -356,9 +370,9 @@ export async function respondToConversation(orgId: string, conversationId: strin
     // prepared means it was written for a situation that no longer holds. Compared by revision, not by owner kind alone.
     if (!fresh || fresh.ownerKind !== "ai" || fresh.ownershipVersion !== ctx.ownershipVersion || fresh.aiPaused || fresh.inboundMessageId !== ctx.inboundMessageId) return { status: "skipped", reason: "conversation_changed" };
     if (outcome.kind === "unavailable") {
-      await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_unavailable')", [orgId, conversationId, ctx.agentId, `The AI employee could not prepare a reply: ${outcome.reason}`]);
+      await db.query("insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail) values ($1, $2, 'internal', 'system', $3, $4, 'note', 'ai_unavailable')", [orgId, conversationId, ctx.agentId, customerReplyCopy(ctx.agentRole, `The previous AI profile could not prepare a reply: ${outcome.reason}`, `Your AI Growth Partner could not prepare a reply: ${outcome.reason}`)]);
       // Nobody should be left waiting unseen: ask a person to look.
-      const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: "The AI employee could not answer this message. Please reply.", sourceMessageId: ctx.inboundMessageId, agentId: ctx.agentId, now: deps.now });
+      const esc = await createEscalation(db, { orgId, conversationId, category: "unanswered_question", summary: customerReplyCopy(ctx.agentRole, "The previous AI profile could not answer this message. Please reply.", "Your AI Growth Partner could not answer this message. Please reply."), sourceMessageId: ctx.inboundMessageId, agentId: ctx.agentId, now: deps.now });
       emails.push(...esc.emails);
       return { status: "unavailable", reason: outcome.reason };
     }
@@ -397,6 +411,11 @@ export async function respondToPending(deps: { generate?: ReplyGenerator; limit?
       `select c.org_id, c.id from conversations c
        where c.owner_kind = 'ai' and c.status <> 'closed' and c.last_inbound_at is not null and c.last_inbound_at < now() - ($2 || ' seconds')::interval
          and coalesce(c.last_outbound_at, 'epoch') < c.last_inbound_at
+         and (c.channel <> 'email' or (
+           (select m.sender_verified from conversation_messages m
+            where m.org_id = c.org_id and m.conversation_id = c.id and m.direction = 'inbound'
+            order by m.created_at desc, m.id desc limit 1) = true
+         ))
          and not exists (select 1 from conversation_messages m where m.conversation_id = c.id and m.direction = 'outbound' and m.author_kind = 'ai' and m.created_at > c.last_inbound_at)
        order by c.last_inbound_at limit $1`,
       [deps.limit ?? 20, String(deps.olderThanSeconds ?? 30)],

@@ -5,6 +5,9 @@ import { Globe, Info, MapPin, Save, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, Input, SectionHeading, Textarea } from "@/components/ui/primitives";
 import { saveResearchSourcePolicyAction, type ResearchSourcePolicyActionState } from "@/app/actions/leads";
+import { formatDateTime } from "@/lib/utils";
+import { FSA_DIRECTORY_LICENCE, FSA_DIRECTORY_NAME, type ResearchSourceKey } from "@/lib/lead-research-sources";
+import type { ResearchSourceHealth } from "@/server/leads/research-source-policy";
 
 export type ResearchSourcePolicyView = {
   enabled: boolean;
@@ -14,14 +17,15 @@ export type ResearchSourcePolicyView = {
   perJobSpendCapUsd: number;
   perDaySpendCapUsd: number;
   sourceConfig: Record<string, unknown>;
+  health?: ResearchSourceHealth | null;
+  approvalCurrent?: boolean;
 };
 
 export type ResearchSourcePoliciesView = {
   openstreetmap: ResearchSourcePolicyView | null;
   company_website: ResearchSourcePolicyView | null;
+  fsa_directory?: ResearchSourcePolicyView | null;
 };
-
-type SourceKey = keyof ResearchSourcePoliciesView;
 
 const initialActionState: ResearchSourcePolicyActionState = { status: "idle", message: "" };
 
@@ -60,16 +64,46 @@ function SourceField({ label, children, className = "" }: { label: string; child
   );
 }
 
-function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: ResearchSourcePolicyView | null }) {
+function SourceHealthSummary({ health, timeZone }: { health?: ResearchSourceHealth | null; timeZone: string }) {
+  const style = "rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-[12px] leading-relaxed text-muted";
+  if (!health) return <p className={style}>Source history is unavailable.</p>;
+  if (!health.lastResponseAt && !health.lastError) {
+    return <p className={style}>Waiting for the first recorded result under this approval.</p>;
+  }
+  const time = (value: string) => <time dateTime={value}>{formatDateTime(value, timeZone)}</time>;
+  return (
+    <dl className={style}>
+      <div className="flex flex-wrap gap-x-2">
+        <dt className="font-medium text-ink-2">Last successful response</dt>
+        <dd>{health.lastResponseAt ? time(health.lastResponseAt) : "None recorded"}</dd>
+      </div>
+      <div className="flex flex-wrap gap-x-2">
+        <dt className="font-medium text-ink-2">Last completed run with a successful response</dt>
+        <dd>{health.lastCompletedRunAt ? time(health.lastCompletedRunAt) : "None recorded"}</dd>
+      </div>
+      <div className="flex flex-wrap gap-x-2">
+        <dt className="font-medium text-ink-2">Last request error</dt>
+        <dd>{health.lastError ? <>{health.lastError.invalidResponse ? "Invalid provider response" : health.lastError.httpStatus ? `HTTP ${health.lastError.httpStatus}` : "Transport failure"} · {time(health.lastError.at)}</> : "None recorded"}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function SourcePolicyCard({ source, policy, timeZone, workspaceId }: {
+  source: ResearchSourceKey; policy: ResearchSourcePolicyView | null; timeZone: string; workspaceId?: string;
+}) {
   const [state, formAction, pending] = useActionState(saveResearchSourcePolicyAction, initialActionState);
   const isOpenStreetMap = source === "openstreetmap";
-  const title = isOpenStreetMap ? "OpenStreetMap discovery" : "Company websites";
+  const isDirectory = source === "fsa_directory";
+  const title = isOpenStreetMap ? "OpenStreetMap discovery" : isDirectory ? FSA_DIRECTORY_NAME : "Company websites";
   const description = isOpenStreetMap
     ? "Find local businesses within an approved area using read-only map requests."
-    : "Review only the exact company domains you approve. No customer contact is sent.";
+    : isDirectory ? "Find restaurants, cafés and canteens in one approved UK local authority. Listings are a starting point for human review."
+      : "Review only the exact company domains you approve. No customer contact is sent.";
   const Icon = isOpenStreetMap ? MapPin : Globe;
   const config = policy?.sourceConfig ?? {};
   const bounds = configRecord(config.bounds);
+  const approved = policy?.enabled && policy.approvalCurrent !== false;
 
   return (
     <Card className="border border-line bg-surface shadow-soft">
@@ -82,7 +116,7 @@ function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: Resea
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
-                <Badge tone={policy?.enabled ? "success" : "neutral"}>{policy?.enabled ? "Enabled" : "Disabled"}</Badge>
+                <Badge tone={approved ? "success" : "neutral"}>{approved ? "Enabled" : policy?.enabled ? "Needs approval" : "Disabled"}</Badge>
               </div>
               <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
             </div>
@@ -100,6 +134,8 @@ function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: Resea
             </label>
           </div>
 
+          {approved && <SourceHealthSummary health={policy.health} timeZone={timeZone} />}
+
           <input type="hidden" name="source" value={source} />
 
           {isOpenStreetMap ? (
@@ -113,6 +149,23 @@ function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: Resea
                 </SourceField>
               </div>
               <p className="text-[12px] leading-relaxed text-muted">Only the exact approved HTTPS host is used. The endpoint and area are set under advanced details.</p>
+            </div>
+          ) : isDirectory ? (
+            <div className="space-y-3">
+              <input type="hidden" name="workspaceId" value={workspaceId} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SourceField label="FSA local authority ID"><Input name="authorityId" type="number" min="1" max="9999" step="1" required defaultValue={configFieldNumber(config, "authorityId")} /></SourceField>
+                <SourceField label="FSA local authority code"><Input name="authorityCode" required maxLength={12} defaultValue={configText(config, "authorityCode")} /></SourceField>
+                <SourceField label="FSA local authority name"><Input name="authorityName" required maxLength={100} defaultValue={configText(config, "authorityName")} /></SourceField>
+                <SourceField label="Business name keyword (optional)"><Input name="nameKeyword" maxLength={40} defaultValue={configText(config, "nameKeyword")} /></SourceField>
+                <SourceField label="Maximum results per request"><Input name="maxResults" type="number" min="1" max="20" step="1" required defaultValue={configNumber(config, "maxResults", 10)} /></SourceField>
+                <SourceField label="Approval expires at midnight UTC"><Input name="approvalExpiresOn" type="date" required defaultValue={configText(config, "approvalExpiresOn")} /></SourceField>
+              </div>
+              <p className="text-[12px] leading-relaxed text-muted">Provider fee is $0.00 per request. Approval can last up to 30 days. Review the <a className="font-semibold text-primary underline" href="https://ratings.food.gov.uk/terms-and-conditions" target="_blank" rel="noreferrer">FSA terms</a> and the <a className="font-semibold text-primary underline" href={FSA_DIRECTORY_LICENCE} target="_blank" rel="noreferrer">Open Government Licence</a>.</p>
+              <label className="flex items-start gap-2.5 text-[12px] leading-relaxed text-ink-2">
+                <input type="checkbox" name="rightsAcknowledged" value="true" className="mt-0.5 size-4 shrink-0 accent-primary" />
+                <span>I have reviewed the terms and confirmed this workspace may use these public business listings for prospect review.</span>
+              </label>
             </div>
           ) : (
             <div className="space-y-3">
@@ -135,10 +188,10 @@ function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: Resea
             <legend className="text-[12px] font-semibold text-ink-2">Request limits</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <SourceField label="Maximum requests per job">
-                <Input name="perJobRequestCap" type="number" min="0" max="10000" step="1" required defaultValue={policy?.perJobRequestCap ?? 0} />
+                <Input name="perJobRequestCap" type="number" min="0" max={isDirectory ? 1 : 10000} step="1" required defaultValue={policy?.perJobRequestCap ?? 0} />
               </SourceField>
               <SourceField label="Maximum requests per day">
-                <Input name="perDayRequestCap" type="number" min="0" max="100000" step="1" required defaultValue={policy?.perDayRequestCap ?? 0} />
+                <Input name="perDayRequestCap" type="number" min="0" max={isDirectory ? 12 : 100000} step="1" required defaultValue={policy?.perDayRequestCap ?? 0} />
               </SourceField>
               <SourceField label="Provider spend cap per job (USD)">
                 <Input name="perJobSpendCapUsd" type="number" min="0" max="1000000" step="0.01" required defaultValue={policy?.perJobSpendCapUsd ?? 0} />
@@ -196,7 +249,9 @@ function SourcePolicyCard({ source, policy }: { source: SourceKey; policy: Resea
   );
 }
 
-export function ResearchSourceSettings({ policies }: { policies: ResearchSourcePoliciesView }) {
+export function ResearchSourceSettings({ policies, timeZone = "UTC", workspaceId }: {
+  policies: ResearchSourcePoliciesView; timeZone?: string; workspaceId?: string;
+}) {
   return (
     <section aria-label="Research sources" className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -211,8 +266,9 @@ export function ResearchSourceSettings({ policies }: { policies: ResearchSourceP
         <p><span className="font-semibold text-ink-2">About costs.</span> Provider fees are shown separately. Hosting and data-transfer costs are not currently measured and are not included in provider-fee limits.</p>
       </div>
       <div className="grid gap-3 xl:grid-cols-2">
-        <SourcePolicyCard source="openstreetmap" policy={policies.openstreetmap} />
-        <SourcePolicyCard source="company_website" policy={policies.company_website} />
+        <SourcePolicyCard source="openstreetmap" policy={policies.openstreetmap} timeZone={timeZone} />
+        <SourcePolicyCard source="company_website" policy={policies.company_website} timeZone={timeZone} />
+        {workspaceId && <SourcePolicyCard source="fsa_directory" policy={policies.fsa_directory ?? null} timeZone={timeZone} workspaceId={workspaceId} />}
       </div>
     </section>
   );

@@ -4,7 +4,7 @@
 // leaves everyone else's untouched. The Hermes runtime itself is simulated by the results a verified worker reports (it is not live); this proves the portal's side, not the runtime.
 import { createHash, randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { AGENT_ROLE_KEYS, type AgentRoleKey } from "@/lib/agents";
+import { AGENT_ROLE_KEYS, AI_GROWTH_PARTNER_ROLE_KEY, type AgentRoleKey } from "@/lib/agents";
 import { withSystem } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { claimHermesProvisionerWork, completeHermesProvisionerJob } from "@/server/workforce/hermes-provisioner";
@@ -13,7 +13,8 @@ import { suggestedProfileName } from "@/server/workforce/service";
 import { agencyPeople } from "./support/crm";
 import { agentId } from "./support/fixtures";
 import { approveHeldFirstConfigurations } from "./support/launch";
-import { submitRealOnboarding } from "./support/billing";
+import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
 
 const q = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await withSystem((db) => db.query<T>(sql, params))).rows;
 const sha = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
@@ -186,4 +187,30 @@ describe("containing one client's employee", () => {
     expect(await q("select 1 from integration_credentials where org_id in ($1, $2) and provider = 'hermes' and revoked_at is null", [a.org.id, b.org.id])).toHaveLength(a.roles.length + b.roles.length - 1);
     expect(await claimHermesProvisionerWork(gatewayId)).toBeNull();
   });
+});
+
+describe("provisioning a Growth-Partner-only client", () => {
+  it("claims and completes one dedicated Partner profile without creating legacy employee rows", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Chain Client" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+
+    expect(await withSystem((db) => requestProvisioning(db, tenant.org.id, tenant.owner.id))).toBe(1);
+    const queued = await q<{ role_key: string }>(
+      `select a.role_key from agent_provisioning_jobs j join agent_instances a on a.id = j.agent_instance_id
+       where j.org_id = $1 and j.kind = 'provision'`, [tenant.org.id],
+    );
+    expect(queued.map((row) => row.role_key)).toEqual([AI_GROWTH_PARTNER_ROLE_KEY]);
+
+    const job = (await claimAll()).find((claimed) => claimed.orgId === tenant.org.id);
+    expect(job).toMatchObject({ kind: "provision", orgId: tenant.org.id, agentId: tenant.runtimeAgentId, role: AI_GROWTH_PARTNER_ROLE_KEY });
+    await expect(completeHermesProvisionerJob(resultOf(job!), gatewayId)).resolves.toMatchObject({ accepted: true, duplicate: false, awaitingHealthCheck: true });
+    await expectNoLegacyEmployeeRows(tenant.org.id);
+
+    const profile = await mapped(tenant.org.id);
+    expect(profile).toHaveLength(1);
+    expect(profile[0]).toMatchObject({ role_key: AI_GROWTH_PARTNER_ROLE_KEY, hermes_gateway_id: gatewayId, status: "provisioning" });
+    expect(profile[0].hermes_profile).toBe(suggestedProfileName(tenant.org.slug, AI_GROWTH_PARTNER_ROLE_KEY));
+    expect(await claimHermesProvisionerWork(gatewayId)).toBeNull();
+  }, 120_000);
 });

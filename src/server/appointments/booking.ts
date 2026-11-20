@@ -165,7 +165,7 @@ export async function requestBooking(req: BookingRequest, d: { provider?: Appoin
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${formatSlot(b.start_at.toISOString(), b.timezone)}`,
       action: { bookingId: b.id }, targetType: "appointment_booking", targetId: b.id, targetLabel: held.contactName || undefined,
       reason: req.requestSource === "staff_chat"
-        ? "A team member selected and explicitly confirmed this contact and time in AI Employee Chat. The booking still needs your approval."
+        ? "A team member selected and explicitly confirmed this contact and time in the AI conversation. The booking still needs your approval."
         : "AI Growth Partner found this time on your real calendar and the customer asked to book it.",
       expectedEffect: req.requestSource === "staff_chat"
         ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."

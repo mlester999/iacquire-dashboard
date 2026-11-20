@@ -152,7 +152,7 @@ async function permittedConversation(db: Queryable, ctx: ToolContext, conversati
      where c.id = $1 and c.org_id = $2 and c.ai_agent_id = $3 and k.deleted_at is null`,
     [conversationId, ctx.actor.orgId, ctx.agent.id],
   );
-  if (!rows[0]) throw new AppError("not_found", "Conversation not found, or it isn't one this AI employee handles.");
+  if (!rows[0]) throw new AppError("not_found", "Conversation not found, or it isn't one this AI profile handles.");
   return rows[0];
 }
 
@@ -326,12 +326,39 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
     inTx: true,
     async plan(db, ctx, input) {
       const orgId = ctx.actor.orgId;
+      if (input.contactId && !canSee(ctx, "contacts.view")) {
+        throw new AppError("forbidden", "Viewing contacts is required to link a task to a contact.");
+      }
       const label = input.contactId ? await contactLabel(db, orgId, input.contactId) : null;
       if (input.opportunityId) {
         const o = await db.query("select 1 from crm_opportunities where id = $1 and org_id = $2 and archived_at is null", [input.opportunityId, orgId]);
         if (!o.rows[0]) throw new AppError("not_found", "Deal not found.");
       }
       const assignee = input.assigneeId ? await assertAssignable(db, orgId, input.assigneeId) : null;
+      const idempotencyKey = `agent-tool:${ctx.approvalId ?? ctx.callKey}`.slice(0, 200);
+      const replay = await db.query("select 1 from tasks where org_id = $1 and idempotency_key = $2", [orgId, idempotencyKey]);
+      const separator = ctx.callKey.indexOf(":");
+      const callRef = separator < 0 ? ctx.callKey : ctx.callKey.slice(separator + 1);
+      const priorApproval = await db.query(
+        `select 1 from approval_requests
+          where org_id = $1 and agent_instance_id = $2 and action->>'source' = 'agent_tool'
+            and action->>'tool' = 'create_task' and action->>'callRef' = $3
+            and action->>'runId' is not distinct from $4::text and action->'input' = $5::jsonb
+          limit 1`,
+        [orgId, ctx.agent.id, callRef, ctx.runId, JSON.stringify(input)],
+      );
+      if (!replay.rows[0] && !priorApproval.rows[0]) {
+        const duplicate = await db.query(
+          `select 1 from tasks
+            where org_id = $1 and status = 'open' and created_at >= now() - interval '24 hours'
+              and lower(regexp_replace(btrim(title), '[[:space:]]+', ' ', 'g')) = lower($2)
+              and contact_id is not distinct from $3::uuid
+              and due_at is not distinct from $4::timestamptz
+            limit 1`,
+          [orgId, input.title.replace(/\s+/g, " ").trim(), input.contactId ?? null, input.dueAt ?? null],
+        );
+        if (duplicate.rows[0]) throw new AppError("conflict", "That task already exists");
+      }
       return {
         summary: `create the task ${quote(input.title)}${label ? ` for ${label}` : ""}`, targetType: "task", targetId: input.contactId ?? input.opportunityId ?? "new", targetLabel: input.title.slice(0, 200),
         expectedEffect: `A task ${quote(input.title)} is added${assignee ? ` and assigned to ${assignee.name}` : ""}${input.dueAt ? `, due ${input.dueAt.slice(0, 16).replace("T", " ")}` : ""}.`,
@@ -343,8 +370,11 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
       const r = await createTaskInTx(q, ctx.actor, {
         title: input.title, description: input.description ?? null, dueAt: input.dueAt ?? null, priority: input.priority, contactId: input.contactId ?? null,
         opportunityId: input.opportunityId ?? null, assigneeId: input.assigneeId ?? null,
-      }, { source: "agent" });
-      return { outcome: "done", summary: `Created the task ${quote(input.title)}`, targetType: "task", targetId: r.id, targetLabel: input.title.slice(0, 200), result: { taskId: r.id } };
+      }, { source: "agent", idempotencyKey: `agent-tool:${ctx.approvalId ?? ctx.callKey}`.slice(0, 200) });
+      return {
+        outcome: "done", summary: r.created ? `Created the task ${quote(input.title)}` : `This task was already created ${quote(input.title)}`,
+        targetType: "task", targetId: r.id, targetLabel: input.title.slice(0, 200), result: { taskId: r.id, created: r.created },
+      };
     },
   },
 
@@ -482,9 +512,9 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
         const visible = await conversationsVisibleToUser(forPerson, orgId, candidates);
         chosen = candidates.find((id) => visible.has(id)) ?? null;
         // Named directly and not visible to this person: exactly what a conversation of another workspace looks like.
-        if (!chosen && input.conversationId) throw new AppError("not_found", "Conversation not found, or it isn't one this AI employee handles.");
+        if (!chosen && input.conversationId) throw new AppError("not_found", "Conversation not found, or it isn't one this AI profile handles.");
       }
-      if (!chosen) return { outcome: "done", summary: "No conversation found", result: { conversation: null, messages: [], detail: "This AI employee doesn't handle a conversation with that contact." } };
+      if (!chosen) return { outcome: "done", summary: "No conversation found", result: { conversation: null, messages: [], detail: "This AI profile doesn't handle a conversation with that contact." } };
       const conversationId = chosen;
       return withSystem(async (q) => {
         const conv = await permittedConversation(q, ctx, conversationId);
@@ -513,11 +543,11 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
     async run(ctx, input, db) {
       const q = need(db);
       const conv = await permittedConversation(q, ctx, input.conversationId);
-      if (conv.owner_kind !== "ai") throw new AppError("conflict", "A person has taken over this conversation, so the AI employee can't draft in it.");
+      if (conv.owner_kind !== "ai") throw new AppError("conflict", "A person has taken over this conversation, so AI drafting is unavailable in it.");
       const key = `agent-draft:${ctx.callKey}`.slice(0, 200);
       const ins = await q.query<{ id: string }>(
         `insert into conversation_messages (org_id, conversation_id, direction, author_kind, agent_id, body, status, status_detail, blocked_reason, scope, dedupe_key)
-         values ($1, $2, 'outbound', 'ai', $3, $4, 'draft', 'Prepared by an AI employee. Not sent.', 'needs_approval', 'reply', $5)
+         values ($1, $2, 'outbound', 'ai', $3, $4, 'draft', 'Prepared by AI. Awaiting approval.', 'needs_approval', 'reply', $5)
          on conflict (org_id, dedupe_key) do nothing returning id`,
         [ctx.actor.orgId, conv.id, ctx.agent.id, input.body, key],
       );
@@ -544,7 +574,7 @@ export const HANDLERS: { [N in AgentToolName]: Handler<N> } = {
         [input.messageId, orgId],
       );
       const m = rows[0];
-      if (!m || m.agent_id !== ctx.agent.id || m.ai_agent_id !== ctx.agent.id) throw new AppError("not_found", "Draft not found, or it isn't one this AI employee wrote.");
+      if (!m || m.agent_id !== ctx.agent.id || m.ai_agent_id !== ctx.agent.id) throw new AppError("not_found", "Draft not found, or it isn't one this AI profile wrote.");
       if (m.status !== "draft") throw new AppError("conflict", "This draft was already handled, so there is nothing to approve.");
       const base = { targetType: "conversation", targetId: m.conversation_id, targetLabel: m.contact_name };
       if (m.approval_id && m.approval_pending) {

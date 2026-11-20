@@ -2,8 +2,9 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
 import { defaultSettings } from "@/server/workforce/compiler";
-import { getGrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import { activateGrowthPartnerBusinessBrainVersion, getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { buildRunInstructions, connectHermesProfile, createConfigVersion, runHealthCheck } from "@/server/workforce/service";
+import { hermesReplyGenerator, replyClaimProblems, type ReplyContext } from "@/server/messaging/responder";
 import { sendChatMessage } from "@/server/chat/service";
 import { withSystem } from "@/server/db";
 import { RATE_LIMITS } from "@/server/security/rate-limit";
@@ -26,8 +27,29 @@ async function resetAgentMessageRateLimit(userId: string) {
   await withSystem((db) => db.query("delete from rate_limit_buckets where bucket_key = $1", [`${RATE_LIMITS.agentMessageByUser.name}:${userId}`]));
 }
 
+async function waitForMockRun(input: string) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const run = [...mock.runs.values()].find((candidate) => candidate.body.input === input);
+    if (run) return run;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Growth Partner mock run did not start.");
+}
+
+async function waitForChatMessage(messageId: string) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const row = (await withSystem((db) => db.query<{ status: string }>("select status from chat_messages where id = $1", [messageId]))).rows[0];
+    if (row?.status === "complete") return;
+    if (row && ["failed", "cancelled"].includes(row.status)) throw new Error(`Growth Partner run ended as ${row.status}.`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Growth Partner reply did not finish.");
+}
+
 beforeAll(async () => {
-  mock = await startMockHermes({ [PROFILE]: { key: KEY } });
+  mock = await startMockHermes({ [PROFILE]: { key: KEY, runToolScopeNoTools: true } });
   org = await createOrg({ name: "Growth Partner Business Brain Chat E2E" });
   owner = await createUser({ name: "Business Brain Owner" });
   member = await createUser({ name: "Business Brain Member" });
@@ -209,4 +231,156 @@ describe("Business Brain edits from the permanent Growth Partner conversation", 
     await resetAgentMessageRateLimit(owner.id);
     await resetAgentMessageRateLimit(member.id);
   }, 120_000);
+
+  it("uses a customer-only active Brain prompt for a real Hermes customer reply", async () => {
+    const ownerContext = ctxFor(owner, org, "owner");
+    const before = await getGrowthPartnerControlState(ownerContext);
+    if (!before?.currentVersion) throw new Error("The active Business Brain is missing.");
+    let baseVersion = before.currentVersion;
+    if (before.draftVersion) {
+      await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: before.currentVersion, version: before.draftVersion });
+      baseVersion = before.draftVersion;
+    }
+    const company = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion,
+      section: "businessIdentity",
+      key: "companyName",
+      valueText: "Public Reply Roofing",
+    });
+    const price = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: company.version,
+      section: "productsServicesOffers",
+      key: "pricing",
+      valueText: "Roof inspections cost $150.",
+    });
+    const privateBudget = await saveGrowthPartnerBusinessBrainFactDraft(ownerContext, {
+      baseVersion: price.version,
+      section: "idealCustomers",
+      key: "minimumBudget",
+      valueText: "PRIVATE_REPLY_BUDGET_MARKER: $9,000 monthly.",
+    });
+    await activateGrowthPartnerBusinessBrainVersion(ownerContext, { expectedCurrentVersion: baseVersion, version: privateBudget.version });
+
+    const input = "A customer asked for the roof inspection price.";
+    const ctx: ReplyContext = {
+      orgId: org.id,
+      agentId: growthPartnerAgentId,
+      agentRole: "growth_partner",
+      conversationId: crypto.randomUUID(),
+      contactId: crypto.randomUUID(),
+      inboundMessageId: crypto.randomUUID(),
+      channel: "email",
+      businessName: org.name,
+      customerMessage: input,
+      history: [],
+      confirmedFacts: [],
+    };
+    await withSystem((db) => db.query(
+      `insert into company_knowledge (org_id, section, content, review_status, risk_flags)
+       values ($1, 'escalation', 'PRIVATE_KNOWLEDGE_PRICE_MARKER: qualifying projects may receive a $900 rate.', 'approved', '{}')`,
+      [org.id],
+    ));
+    const configRow = (await withSystem((db) => db.query<{ id: string; compiled_instructions: string }>(
+      `select v.id, v.compiled_instructions from agent_instances a
+       join agent_config_versions v on v.id = a.active_config_version_id
+       where a.id = $1 and a.org_id = $2`,
+      [growthPartnerAgentId, org.id],
+    ))).rows[0];
+    const originalConfig = configRow.compiled_instructions;
+    const canaryConfig = originalConfig
+      .replace("## Your role", "## Your role\nPRIVATE_ROLE_CONFIG_MARKER")
+      .replace("</client_context>", "Ideal customers: PRIVATE_COMPILED_PROFILE_MARKER\n</client_context>");
+    await withSystem((db) => db.query("update agent_config_versions set compiled_instructions = $1 where id = $2", [canaryConfig, configRow.id]));
+
+    try {
+      const runIdsBefore = new Set(mock.runs.keys());
+      const generated = await hermesReplyGenerator(ctx);
+      expect(generated.kind).toBe("reply");
+      const run = [...mock.runs.values()].find((candidate) => !runIdsBefore.has(candidate.id) && candidate.body.input === input);
+      expect(run).toBeTruthy();
+      const instructions = String(run?.body.instructions ?? "");
+      expect(instructions).toContain("businessIdentity.companyName: Public Reply Roofing");
+      expect(instructions).toContain("productsServicesOffers.pricing: Roof inspections cost $150.");
+      expect(instructions).not.toContain("PRIVATE_REPLY_BUDGET_MARKER");
+      expect(instructions).not.toContain("PRIVATE_ROLE_CONFIG_MARKER");
+      expect(instructions).not.toContain("PRIVATE_COMPILED_PROFILE_MARKER");
+      expect(instructions).not.toContain("PRIVATE_KNOWLEDGE_PRICE_MARKER");
+      expect(instructions).not.toContain("WORKSPACE GROWTH GOALS");
+      expect(instructions).not.toContain("WORKSPACE MEMORY CONTEXT");
+      expect(instructions).not.toContain("sourceId:");
+      expect(instructions).not.toContain("evidenceUrl:");
+      expect(run?.body.iacquire_tool_scope).toBe("no_tools");
+      expect(run?.headers["x-iacquire-tool-scope"]).toBe("no_tools");
+      expect(run?.headers["x-hermes-session-key"]).toBeUndefined();
+      expect(await replyClaimProblems(org.id, "A roof inspection costs $150.", "", "growth_partner")).toEqual([]);
+      expect(await replyClaimProblems(org.id, "A roof inspection costs $450.", "", "growth_partner")).toContain("an amount ($450)");
+      expect(await replyClaimProblems(org.id, "A qualifying project costs $900.", "", "growth_partner")).toContain("an amount ($900)");
+    } finally {
+      await withSystem((db) => db.query("update agent_config_versions set compiled_instructions = $1 where id = $2", [originalConfig, configRow.id]));
+    }
+  });
+
+  it("fails closed when Hermes cannot verify that a customer reply has no tools", async () => {
+    const ctx: ReplyContext = {
+      orgId: org.id,
+      agentId: growthPartnerAgentId,
+      agentRole: "growth_partner",
+      conversationId: crypto.randomUUID(),
+      contactId: crypto.randomUUID(),
+      inboundMessageId: crypto.randomUUID(),
+      channel: "email",
+      businessName: org.name,
+      customerMessage: "Can you tell me about your services?",
+      history: [],
+      confirmedFacts: [],
+    };
+    const runIdsBefore = new Set(mock.runs.keys());
+    const submissionsBefore = mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs").length;
+    mock.setRunToolScopeNoTools(PROFILE, false);
+    try {
+      const generated = await hermesReplyGenerator(ctx);
+      expect(generated.kind).toBe("unavailable");
+      expect([...mock.runs.keys()].filter((id) => !runIdsBefore.has(id))).toEqual([]);
+      expect(mock.requests.filter((request) => request.method === "POST" && request.path === "/v1/runs")).toHaveLength(submissionsBefore);
+    } finally {
+      mock.setRunToolScopeNoTools(PROFILE, true);
+    }
+  });
+
+  it("rejects new chat credentials before persistence and redacts credentials from old history before Hermes", async () => {
+    await resetAgentMessageRateLimit(owner.id);
+    const context = ctxFor(owner, org, "owner");
+    const rejectedMessageId = crypto.randomUUID();
+    const pastedSecret = "My password is hunter2-QA-ONLY.";
+    await expect(sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: pastedSecret,
+      clientMessageId: rejectedMessageId,
+    })).rejects.toMatchObject({ code: "invalid_input" });
+    const rejected = await withSystem((db) => db.query("select id from chat_messages where client_message_id = $1", [rejectedMessageId]));
+    expect(rejected.rows).toEqual([]);
+
+    const legacySecret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    await withSystem((db) => db.query(
+      `insert into chat_messages (conversation_id, org_id, role, content, status)
+       values ($1, $2, 'user', $3, 'complete')`,
+      [growthPartnerConversationId, org.id, `A legacy turn included ${legacySecret}.`],
+    ));
+    const safeInput = `Can you explain how the AI Growth Partner helps a team? ${crypto.randomUUID()}`;
+    const sent = await sendChatMessage(context, {
+      agentRole: "growth_partner",
+      conversationId: growthPartnerConversationId,
+      content: safeInput,
+      clientMessageId: crypto.randomUUID(),
+    });
+    const run = await waitForMockRun(safeInput);
+    expect(JSON.stringify(run.body.conversation_history)).not.toContain(legacySecret);
+    expect(JSON.stringify(run.body.conversation_history)).toContain("[redacted]");
+    expect(run.body.iacquire_tool_scope).toBe("no_tools");
+    expect(run.body.session_id).toBeUndefined();
+    expect(run.headers["x-iacquire-tool-scope"]).toBe("no_tools");
+    expect(run.headers["x-hermes-session-key"]).toBeUndefined();
+    await waitForChatMessage(sent.assistantMessageId);
+  });
 });

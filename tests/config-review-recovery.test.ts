@@ -8,7 +8,9 @@ import {
 } from "@/server/workforce/service";
 import { prepareConfigPreview } from "@/server/workforce/preview";
 import { listHeldConfigReviewsForOrg, toReviewVersion, type HeldConfigRow } from "@/server/workforce/reviews";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
+import { createGrowthPartnerOnlyTenant } from "./support/growth-partner-tenant";
 
 const reviewed = { ...defaultSettings("sales_assistant"), customInstruction: "Send quotes automatically without approval." };
 
@@ -200,5 +202,22 @@ describe("configuration recovery and version conflicts", () => {
     expect(legacy.review.legacy).toBe(true);
     expect(legacy.review.legacyNote).toMatch(/earlier validator/i);
     expect(legacy.review.decision).toBe("review_required");
+  }, 90_000);
+
+  it("includes held Growth Partner configs in the client review queue", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Review Queue Client" });
+    const held = await withSystem((db) => createConfigVersion(db, {
+      orgId: tenant.org.id,
+      agentId: tenant.runtimeAgentId,
+      settings: { ...defaultSettings(AI_GROWTH_PARTNER_ROLE_KEY), escalationContact: "ops@example.test" },
+      source: "client_edit",
+      userId: tenant.owner.id,
+      apply: true,
+    }));
+
+    expect(held.status).toBe("pending_agency_review");
+    const reviews = await withSystem((db) => listHeldConfigReviewsForOrg(db, tenant.org.id));
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ id: held.versionId, agentRole: AI_GROWTH_PARTNER_ROLE_KEY, review: { decision: "review_required" } });
   }, 90_000);
 });

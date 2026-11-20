@@ -145,8 +145,8 @@ describe("native routing", () => {
     const c = await inbound(wa.org.id, { provider: "meta_whatsapp", channel: "whatsapp" });
     const rec = recordingProvider("meta_whatsapp");
     // GoHighLevel's approval doesn't count for Meta: the fixture's GoHighLevel template is refused on a Meta channel.
-    await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Following up", { templateId: "tmpl_followup" })).rejects.toThrow(/not approved/);
-    const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi Ana, your visit is on Friday 3pm.", { templateId: "visit_reminder" });
+    await expect(sendHumanReply(wa.ctx("owner"), c.conversationId, "Following up", { purpose: "service", templateId: "tmpl_followup" })).rejects.toThrow(/not approved/);
+    const q = await sendHumanReply(wa.ctx("owner"), c.conversationId, "Hi Ana, your visit is on Friday 3pm.", { purpose: "service", templateId: "visit_reminder" });
     expect(await dispatchMessage(q.messageId, { transport: rec.transport })).toEqual({ status: "sent" });
     expect(rec.calls[0].template).toEqual({ name: "visit_reminder", language: "en_US", params: ["Ana", "Friday 3pm"] });
     expect((await usageFor(q.messageId))[0]).toMatchObject({ provider: "meta_whatsapp", unit_type: "whatsapp_message", wholesale_micros: String(FIXTURE_RATES.meta_whatsapp.whatsapp_message) });
@@ -248,7 +248,7 @@ describe("a provider switch in progress", () => {
     expect(row.reservation_id).not.toBeNull();
     // A person is told to wait rather than the message being dropped.
     await withSystem((db) => db.query("update conversations set owner_kind = 'human', owner_user_id = $2 where id = $1", [c.conversationId, org.people.sales.id]));
-    await expect(sendHumanReply(org.ctx("sales"), c.conversationId, "One moment")).rejects.toThrow(/switching providers/);
+    await expect(sendHumanReply(org.ctx("sales"), c.conversationId, "One moment", { purpose: "service" })).rejects.toThrow(/switching providers/);
     await withSystem((db) => db.query("update conversations set owner_kind = 'ai', owner_user_id = null where id = $1", [c.conversationId]));
 
     const rec = recordingProvider();

@@ -5,6 +5,8 @@
 // appears only when that workspace owns a GoHighLevel capability or has a recorded GoHighLevel check, and the page offers
 // it as an optional add-on otherwise. Nothing here claims a connection that was not recorded.
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
+import type { ConnectionView as CalendarConnection } from "@/server/calendars/connections";
+import type { ConnectionView as StudioConnection } from "@/lib/automation-studio/connections";
 
 export interface ClientCardStatus {
   provider: string;
@@ -139,4 +141,59 @@ export function buildClientCrmCards(facts: ClientCrmFacts): ClientIntegrationCar
   }
 
   return cards;
+}
+
+export function buildOAuthCalendarCard(
+  provider: { key: "google" | "microsoft"; label: string; configured: boolean },
+  connections: readonly Pick<CalendarConnection, "provider" | "status" | "lastSuccessAt">[],
+  canConnect: boolean,
+  syncPaused: boolean,
+): ClientIntegrationCard {
+  const mine = connections.filter((connection) => connection.provider === provider.key);
+  const connected = mine.find((connection) => connection.status === "connected");
+  const base = { key: provider.key, name: provider.label, link: { href: "/crm/calendar-connections", label: "Open Calendar Connections" } };
+  if (!provider.configured) {
+    return { ...base, statusLabel: "Requires setup", body: "iAcquire needs to set up sign-in for this provider." };
+  }
+  if (connected) return {
+    ...base,
+    status: { provider: provider.key, status: "connected", detail: null, last_checked_at: connected.lastSuccessAt },
+    statusLabel: "Connected",
+    body: syncPaused ? "Your connection passed verification. Calendar sync is currently paused." : "Your connection passed an availability check.",
+  };
+  if (mine.some((connection) => connection.status === "needs_reauth")) {
+    return { ...base, status: { provider: provider.key, status: "degraded", detail: null, last_checked_at: null }, statusLabel: "Needs authorization", body: "Reconnect your calendar to restore access." };
+  }
+  if (mine.some((connection) => connection.status === "error")) {
+    return { ...base, status: { provider: provider.key, status: "error", detail: null, last_checked_at: null }, statusLabel: "Needs attention", body: "Open Calendar Connections to review the failed sync." };
+  }
+  return canConnect
+    ? { ...base, statusLabel: "Available", body: "Authorize an account to check availability and manage calendar sync." }
+    : { ...base, statusLabel: "Requires authorization", body: "Ask your workspace admin for permission to connect your calendar." };
+}
+
+export function buildSlackWebhookCard(
+  entitled: boolean | null,
+  connections: readonly Pick<StudioConnection, "kind" | "status" | "verifiedAt">[],
+): ClientIntegrationCard {
+  const body = "Automation Studio can post through a Slack incoming webhook. iAcquire staff alerts use a separate connection.";
+  const base = { key: "slack", name: "Slack", body, check: "Managed Maintenance + Automation Studio" };
+  if (entitled === null) return { ...base, statusLabel: "Status unavailable", body: "Slack connection status could not be loaded. Refresh to try again." };
+  if (!entitled) return { ...base, statusLabel: "Requires managed plan" };
+  const link = { href: "/automation-studio/connections", label: "Open Automation Studio Connections" };
+  const webhooks = connections.filter((connection) => connection.kind === "slack_webhook");
+  const verified = webhooks.find((connection) => connection.status === "active" && connection.verifiedAt);
+  if (verified) return {
+    ...base,
+    link,
+    statusLabel: "Verified webhook",
+    status: { provider: "slack", status: "connected", detail: null, last_checked_at: verified.verifiedAt },
+  };
+  if (webhooks.some((connection) => connection.status === "needs_attention")) return {
+    ...base,
+    link,
+    statusLabel: "Needs attention",
+    status: { provider: "slack", status: "degraded", detail: null, last_checked_at: null },
+  };
+  return { ...base, link, statusLabel: webhooks.length ? "Needs verification" : "Available" };
 }

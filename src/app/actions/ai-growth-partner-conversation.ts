@@ -3,6 +3,21 @@
 import { getGrowthPartnerConversationPage, searchGrowthPartnerConversation } from "@/server/ai-growth-partner/service";
 import { actionError, AppError } from "@/server/errors";
 import { requireOrgContext } from "@/server/tenancy/context";
+import { z } from "zod";
+
+const cursorSchema = z.object({
+  createdAt: z.string().datetime({ offset: true }),
+  id: z.string().uuid(),
+}).strict();
+const beforeSchema = z.union([z.string().datetime({ offset: true }), cursorSchema]);
+
+function serializeCursor(cursor: { createdAt: Date | string; id: string } | null) {
+  if (!cursor) return null;
+  return {
+    id: cursor.id,
+    createdAt: cursor.createdAt instanceof Date ? cursor.createdAt.toISOString() : new Date(cursor.createdAt).toISOString(),
+  };
+}
 
 function requireClientWorkspace(kind: string) {
   if (kind !== "client") throw new AppError("forbidden", "The AI Growth Partner is available in client workspaces.");
@@ -24,6 +39,7 @@ export async function refreshGrowthPartnerConversationAction() {
         },
         messages: data.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
         hasMore: data.hasMore,
+        nextCursor: serializeCursor(data.nextCursor),
       },
     };
   } catch (err) {
@@ -31,20 +47,25 @@ export async function refreshGrowthPartnerConversationAction() {
   }
 }
 
-export async function loadOlderGrowthPartnerMessagesAction(before: string) {
+export async function loadOlderGrowthPartnerMessagesAction(before: string | { createdAt: string; id: string }) {
   try {
     const ctx = await requireOrgContext();
     requireClientWorkspace(ctx.org.kind);
-    if (typeof before !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(before) || Number.isNaN(Date.parse(before))) {
+    const parsedBefore = beforeSchema.safeParse(before);
+    if (!parsedBefore.success) {
       throw new AppError("invalid_input", "That message page is invalid.");
     }
-    const data = await getGrowthPartnerConversationPage(ctx, new Date(before));
+    const cursor = typeof parsedBefore.data === "string"
+      ? new Date(parsedBefore.data)
+      : { createdAt: parsedBefore.data.createdAt, id: parsedBefore.data.id };
+    const data = await getGrowthPartnerConversationPage(ctx, cursor);
     if (!data) throw new AppError("not_found", "The permanent AI Growth Partner conversation is not connected.");
     return {
       ok: true as const,
       data: {
         messages: data.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() })),
         hasMore: data.hasMore,
+        nextCursor: serializeCursor(data.nextCursor),
       },
     };
   } catch (err) {

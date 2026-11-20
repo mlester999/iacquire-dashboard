@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { withSystem } from "@/server/db";
 import { getProvisioningBundle, requeueProvisioningJob, requestProvisioning, updateProvisioningJob } from "@/server/workforce/provisioning";
-import type { AgentRoleKey } from "@/lib/agents";
+import { AI_GROWTH_PARTNER_ROLE_KEY, type AgentRoleKey } from "@/lib/agents";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { createConfigVersion, suggestedProfileName } from "@/server/workforce/service";
 import { addMember, createOrg, createUser } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
+import { createGrowthPartnerOnlyTenant, expectNoLegacyEmployeeRows } from "./support/growth-partner-tenant";
 
 async function eligibleClient() {
   const org = await createOrg();
@@ -47,6 +48,22 @@ describe("eligible client employee provisioning queue", () => {
     expect(rows.every((row) => row.status !== "online" && row.hermes_profile === null)).toBe(true);
     const jobs = await withSystem((db) => db.query<{ n: number }>("select count(*)::int as n from agent_provisioning_jobs where org_id = $1", [org.id]));
     expect(jobs.rows[0].n).toBe(6);
+  });
+
+  it("queues one Growth Partner runtime for a Growth-Partner-only workspace and deduplicates retries", async () => {
+    const tenant = await createGrowthPartnerOnlyTenant({ name: "Partner Provisioning Client", runtime: "setup_required" });
+    await clearSetupPayment(tenant.org.id);
+    await withSystem((db) => db.query("update organizations set onboarding_completed_at = now() where id = $1", [tenant.org.id]));
+
+    expect(await withSystem((db) => requestProvisioning(db, tenant.org.id, tenant.owner.id))).toBe(1);
+    expect(await withSystem((db) => requestProvisioning(db, tenant.org.id, tenant.owner.id))).toBe(0);
+    await expectNoLegacyEmployeeRows(tenant.org.id);
+
+    const jobs = await withSystem((db) => db.query<{ role_key: string; status: string }>(
+      `select a.role_key, j.status from agent_provisioning_jobs j
+       join agent_instances a on a.id = j.agent_instance_id where j.org_id = $1`, [tenant.org.id],
+    ));
+    expect(jobs.rows).toEqual([{ role_key: AI_GROWTH_PARTNER_ROLE_KEY, status: "requested" }]);
   });
 
   it("does not queue costly profiles for demos, unverified owners or unfinished onboarding", async () => {

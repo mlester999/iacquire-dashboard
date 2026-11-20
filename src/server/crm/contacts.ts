@@ -166,6 +166,8 @@ export interface CreateContactOptions {
   tagSource?: Parameters<typeof applyContactTags>[4];
   enforceRequiredFields?: boolean;
   causedBy?: { eventId: number; depth: number } | null;
+  /** Mark the addresses from a public form as typed by its submitter, not confirmed by their owners. */
+  typedByVisitor?: boolean;
 }
 
 export interface CreateContactResult {
@@ -196,8 +198,8 @@ export async function createContactInTx(db: Queryable, actor: CrmActor, input: C
   );
   const id = rows[0].id;
   // Addresses typed or submitted by someone are not proof of ownership, so they start unverified.
-  for (const e of n.emails) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified) values ($1, $2, 'email', $3, false)", [actor.orgId, id, e]);
-  for (const p of n.phones) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified) values ($1, $2, 'phone', $3, false)", [actor.orgId, id, p]);
+  for (const e of n.emails) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'email', $3, false, $4)", [actor.orgId, id, e, Boolean(opts.typedByVisitor)]);
+  for (const p of n.phones) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'phone', $3, false, $4)", [actor.orgId, id, p, Boolean(opts.typedByVisitor)]);
   if (input.companyId) await linkCompanyInTx(db, actor, id, input.companyId, { title: input.companyTitle ?? null, primary: true });
   if (input.customFields && Object.keys(input.customFields).length) {
     await writeFieldValues(db, actor, "contact", id, input.customFields, { enforceRequired: opts.enforceRequiredFields, isNew: true, defaultCallingCode: await callingCode(db, actor.orgId) });

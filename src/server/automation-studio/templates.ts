@@ -70,7 +70,7 @@ function resolveInput(spec: StudioInputSpec, v: unknown, o: WorkflowBuilderOptio
     case "form":
       return (o.forms ?? []).some((f) => f.id === id(v)) ? (v as string) : bad("that form doesn't exist.");
     case "employee":
-      return typeof v === "string" && o.agents.some((a) => a.roleKey === v) ? v : bad("that AI employee isn't in this workspace.");
+      return typeof v === "string" && o.agents.some((a) => a.roleKey === v) ? v : bad("that AI profile is unavailable in this workspace.");
     case "slack":
     case "http": {
       const wanted = spec.kind === "slack" ? "slack_webhook" : "http";

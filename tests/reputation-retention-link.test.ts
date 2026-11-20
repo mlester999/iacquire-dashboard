@@ -7,6 +7,7 @@ import { withSystem } from "@/server/db";
 import { setClientPause } from "@/server/automation/controls";
 import { setContactConsent } from "@/server/crm/contacts";
 import { loadReviewPage, reviewLinkForMessage, submitReviewFeedback } from "@/server/crm/reviews";
+import { approveDraft } from "@/server/messaging/inbox";
 import { dispatchDue, dispatchMessage } from "@/server/messaging/send";
 import { suppressAddress } from "@/server/messaging/contacts";
 import { queueFeedbackLinkStep } from "@/server/reputation/program-link";
@@ -269,16 +270,36 @@ describe("withdrawing the message takes its request with it", () => {
 
   it("holds a message that needs a person's approval as a draft, with its request, and sends nothing until it is approved", async () => {
     const c = await attended();
+    const other = await attended();
     const agent = await one<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'crm_manager'", [s.m.org.id]);
+    const draft = (contactId: string) => withSystem((db) => queueFeedbackLinkStep(db, {
+      orgId: s.m.org.id, orgName: "Link Shop", orgTimezone: "UTC", contactId, contactName: "Maria Draft", agentId: agent.id, programKind: "feedback_request", purpose: "service",
+      body: LINK_WORDING, businessHoursOnly: false, approvalId: null, stepId: crypto.randomUUID(), triggerRef: null, now: new Date(),
+    }));
     await withSystem((db) => db.query("update agent_instances set mode = 'approval_required' where id = $1", [agent.id]));
     try {
-      const res = await withSystem((db) => queueFeedbackLinkStep(db, {
-        orgId: s.m.org.id, orgName: "Link Shop", orgTimezone: "UTC", contactId: c.contactId, contactName: "Maria Draft", agentId: agent.id, programKind: "feedback_request", purpose: "service",
-        body: LINK_WORDING, businessHoursOnly: false, approvalId: null, stepId: crypto.randomUUID(), triggerRef: null, now: new Date(),
-      }));
+      const res = await draft(c.contactId);
+      const otherDraft = await draft(other.contactId);
       expect(res.status).toBe("draft");
+      expect(otherDraft.status).toBe("draft");
       expect(await messageOf(res.messageId!)).toMatchObject({ status: "draft", scope: "retention" });
       expect(await requestsOf(c.contactId)).toMatchObject([{ status: "queued", requested_via: "program", message_id: res.messageId, appointment_id: null }]);
+
+      const recorder = recordingProvider("twilio");
+      expect(await dispatchMessage(res.messageId!, { transport: recorder.transport, now: hours(1) })).toEqual({ status: "skipped" });
+      expect(recorder.calls).toHaveLength(0);
+      const { approvalId } = await approveDraft(owner(), res.messageId!);
+      expect(await one("select kind, status, action->>'messageId' as message_id from approval_requests where id = $1", [approvalId]))
+        .toMatchObject({ kind: "follow_up_message", status: "approved", message_id: res.messageId });
+
+      // An approved request cannot be moved to another draft, even under the same employee.
+      await withSystem((db) => db.query("update conversation_messages set status = 'queued', approval_id = $2 where id = $1", [otherDraft.messageId, approvalId]));
+      expect(await dispatchMessage(otherDraft.messageId!, { transport: recorder.transport, now: hours(1) })).toEqual({ status: "blocked" });
+      expect(await messageOf(otherDraft.messageId!)).toMatchObject({ blocked_reason: "authorization_needed" });
+      expect(recorder.calls).toHaveLength(0);
+      expect(await dispatchMessage(res.messageId!, { transport: recorder.transport, now: hours(1) })).toEqual({ status: "sent" });
+      expect(recorder.calls.map((call) => call.messageId)).toEqual([res.messageId]);
+      expect(recorder.calls[0].body).toContain("/r/");
     } finally {
       await withSystem((db) => db.query("update agent_instances set mode = 'autonomous' where id = $1", [agent.id]));
     }

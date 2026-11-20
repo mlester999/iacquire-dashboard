@@ -6,6 +6,7 @@ import { withUser } from "@/server/db";
 import { WorkforceGallery } from "@/components/workforce/gallery";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import { getControlState } from "@/server/automation/controls";
+import { outboundMessagingEnabled } from "@/server/messaging/transports/policy";
 import { currentTime } from "@/lib/utils";
 
 export const metadata = { title: "Retained profile settings" };
@@ -23,6 +24,7 @@ export default async function WorkforcePage() {
   return (
     <div className="space-y-6">
       <WorkforceSafetyControls
+        outboundMessagingEnabled={outboundMessagingEnabled()}
         messagingPaused={controls.pauses.messaging.active}
         outboundPaused={controls.pauses.outbound.active}
         agencyPaused={controls.pauses.agency.active}

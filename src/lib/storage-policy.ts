@@ -17,7 +17,7 @@ export type PrivateBucket = (typeof PRIVATE_BUCKETS)[number];
 export type StorageClass = "core" | "managed_media";
 
 export const BUCKET_STORAGE: Record<PrivateBucket, { class: StorageClass; what: string }> = {
-  "company-documents": { class: "core", what: "Company knowledge documents the AI employees read" },
+  "company-documents": { class: "core", what: "Company knowledge documents for the AI Growth Partner" },
   "support-attachments": { class: "core", what: "Attachments on support requests" },
   "project-files": { class: "core", what: "Files iAcquire attaches to a client's projects (internal)" },
   "project-uploads": { class: "core", what: "Files a client uploads to their own projects" },

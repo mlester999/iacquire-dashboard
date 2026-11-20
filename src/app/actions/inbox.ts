@@ -36,8 +36,9 @@ async function sendNow(messageId: string) {
   }
 }
 
-export async function sendReplyAction(conversationId: string, body: string, templateId?: string | null) {
+export async function sendReplyAction(conversationId: string, body: string, purpose: "service" | "marketing", templateId?: string | null) {
   try {
+    if (purpose !== "service" && purpose !== "marketing") throw new AppError("invalid_input", "Choose whether this is a service or marketing message.");
     const ctx = await requireOrgContextOrThrow("inbox.reply");
     const limit = await consumeRateLimit(RATE_LIMITS.inboxSendByUser, ctx.user.id);
     if (!limit.allowed) throw new AppError("rate_limited", "You are sending quickly. Please wait a moment.", { retryAfterSeconds: limit.retryAfterSeconds });
@@ -45,7 +46,7 @@ export async function sendReplyAction(conversationId: string, body: string, temp
     // customer exactly as typed, so the reply is refused until it is replaced.
     const leftover = extractTokens(body ?? "").find((t) => t.known);
     if (leftover) throw new AppError("invalid_input", `Replace ${leftover.raw} with the real details before sending.`);
-    const queued = await sendHumanReply(ctx, id(conversationId, "conversation"), body, { templateId: templateId ?? null });
+    const queued = await sendHumanReply(ctx, id(conversationId, "conversation"), body, { purpose, templateId: templateId ?? null });
     const status = await sendNow(queued.messageId);
     refresh();
     return { ok: true as const, data: { messageId: queued.messageId, status } };
@@ -189,7 +190,7 @@ export async function assignAiEmployeeAction(conversationId: string, agentId: st
   try {
     const ctx = await requireOrgContextOrThrow("inbox.assign");
     await assertInboxEnabledFor(ctx.org.orgId);
-    const out = await assignAiEmployee(ctx, id(conversationId, "conversation"), id(agentId, "AI employee"));
+    const out = await assignAiEmployee(ctx, id(conversationId, "conversation"), id(agentId, "AI profile"));
     refresh();
     return { ok: true as const, data: out };
   } catch (err) {

@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 const instrument = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-instrument", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "iAcquire Client Portal", template: "%s · iAcquire" },
+  title: { default: "iAcquireOS", template: "%s · iAcquireOS" },
   description: "Manage leads, appointments, sales and customer relationships with an AI Growth Partner built around your business.",
   robots: { index: false, follow: false },
   icons: {

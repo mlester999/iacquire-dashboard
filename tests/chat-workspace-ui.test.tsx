@@ -278,7 +278,8 @@ describe("dedicated employee chat surface", () => {
       view.container.querySelectorAll("[class]").forEach((element) => element.classList.forEach((candidate) => candidates.add(candidate)));
       cleanup();
     }
-    const source = (await readFile(cssPath, "utf8")).replace('@import "tailwindcss";', '@import "tailwindcss" source(none);');
+    // Decode the stylesheet as a browser does when loading it from a file. A UTF-8 BOM inside a style tag changes how CSS rules parse.
+    const source = new TextDecoder().decode(await readFile(cssPath)).replace('@import "tailwindcss";', '@import "tailwindcss" source(none);');
     const css = await postcss([tailwind()]).process(`${source}\n@source inline(${JSON.stringify([...candidates].join(" "))});`, { from: cssPath });
     const browser = await chromium.launch({ headless: true });
     try {
@@ -288,7 +289,7 @@ describe("dedicated employee chat surface", () => {
           const view = renderChat({ agentName: name, lastHealthOk: !blocked, statusDetail: blocked ? "Permission denied. Reconnect to continue." : null });
           for (const width of [320, 390, 768, 1440]) {
             await page.setViewportSize({ width, height: 844 });
-            await page.setContent(`<html><head><style>${css.css}</style></head><body>${view.container.innerHTML}</body></html>`);
+            await page.setContent(`<!doctype html><html lang="en"><head><style>${css.css}</style></head><body>${view.container.innerHTML}</body></html>`);
             const measurements = await page.locator("header").evaluate((element: HTMLElement) => {
               const heading = element.querySelector("h1")!;
               const status = element.querySelector('[role="status"]')!;
@@ -298,11 +299,16 @@ describe("dedicated employee chat surface", () => {
                 overflow: document.documentElement.scrollWidth > innerWidth,
                 headingOverflow: getComputedStyle(heading).textOverflow,
                 status: status.textContent,
-                clippedControls: buttons.some((button) => { const rect = button.getBoundingClientRect(); return rect.left < 0 || rect.right > innerWidth || rect.width < 40 || rect.height < 40; }),
+                clippedControls: buttons.flatMap((button) => {
+                  const rect = button.getBoundingClientRect();
+                  return rect.left < 0 || rect.right > innerWidth || rect.width < 40 || rect.height < 40
+                    ? [{ label: button.getAttribute("aria-label"), x: rect.x, width: rect.width, height: rect.height }]
+                    : [];
+                }),
               };
             });
             expect(measurements.overflow, `${width}px, ${name}, blocked=${blocked}`).toBe(false);
-            expect(measurements.clippedControls).toBe(false);
+            expect(measurements.clippedControls, `${width}px, ${name}, blocked=${blocked}`).toEqual([]);
             expect(measurements.headerHeight).toBeLessThanOrEqual(80);
             expect(measurements.headingOverflow).toBe("ellipsis");
             expect(measurements.status).toBe(blocked ? "Needs attention" : "Ready");

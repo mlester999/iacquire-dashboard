@@ -61,8 +61,8 @@ export async function requireUserOrThrow(): Promise<SessionUser> {
  * whether the account still exists and is not banned instead of trusting a token that may be up
  * to an hour old. The built-in auth already checks the database on every request.
  */
-export async function requireFreshUserOrThrow(): Promise<SessionUser> {
-  const user = env().AUTH_PROVIDER === "supabase" ? await supabaseSessionUserStrict() : await getCurrentUser();
+export async function requireFreshUserOrThrow({ requireSessionId = false } = {}): Promise<SessionUser> {
+  const user = env().AUTH_PROVIDER === "supabase" ? await supabaseSessionUserStrict({ requireSessionId }) : await getCurrentUser();
   if (!user) throw new AppError("unauthenticated", "Your session has ended. Please sign in again.");
   return user;
 }

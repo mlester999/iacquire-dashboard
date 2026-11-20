@@ -9,7 +9,7 @@ import { agentSettingsSchema } from "@/lib/agent-settings";
 import { resetEnvCache } from "@/server/env";
 import { createClientTenant } from "@/server/admin/tenants";
 import { withSystem } from "@/server/db";
-import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
+import { getOnboardingReview, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { defaultSettings } from "@/server/workforce/compiler";
 import { requestProvisioning } from "@/server/workforce/provisioning";
 import { createConfigVersion, decideHeldVersion } from "@/server/workforce/service";
@@ -104,7 +104,8 @@ async function onboard(name: string, description: string, service: string, custo
     currentQuestionId: "f.review",
   });
   expect(saved.rejected).toEqual({});
-  const outcome = await submitOnboarding(ctx);
+  const review = await getOnboardingReview(ctx);
+  const outcome = await submitOnboarding(ctx, { confirmation: review.businessBrain?.confirmation });
   expect(outcome.employees).toHaveLength(1);
   expect(outcome.employees[0].role).toBe(AI_GROWTH_PARTNER_ROLE_KEY);
   return { org, owner, ctx, outcome };

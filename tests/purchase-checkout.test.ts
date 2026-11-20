@@ -2,7 +2,7 @@
 // can make it paid; the workspace is created from a verified payment only, once; and a refund, a dispute, a mismatch, a duplicate or a late payment never creates or removes
 // anything by itself. The provider is a stand-in (a fetch stub) and the notices are written by hand and signed with a made-up secret: nothing here reaches PayMongo.
 import crypto from "node:crypto";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.PAYMONGO_SECRET_KEY = "sk_test_notarealkey123";
 process.env.PAYMONGO_WEBHOOK_SECRET = "whsec_test_only_not_a_real_secret";
@@ -40,6 +40,10 @@ const setBilling = (over: { enabled?: boolean; rate?: number | null; reviewed?: 
 
 beforeAll(() => resetEnvCache());
 beforeEach(() => setBilling());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  resetEnvCache();
+});
 
 const make = async (w: Awaited<ReturnType<typeof world>>, over: { autoProvision?: boolean; maintenanceSelected?: boolean } = {}) => {
   const created = await createPurchaseIntent(w.superSession, {
@@ -214,6 +218,32 @@ describe("a payment the provider confirms", () => {
     expect(await rows("select 1 from organizations where kind = 'client' and name = (select company from purchase_intents where id = $1)", [c.id])).toHaveLength(1);
     expect(await rows("select 1 from payments where org_id = $1", [after.client_org_id])).toHaveLength(1);
     expect((await getCheckoutReturn(o.reference)).title).toBe("Your workspace is ready");
+  });
+
+  it("keeps manual and automatic provisioning on the same workspace when they overlap", async () => {
+    vi.stubEnv("EMAIL_PROVIDER", "capture");
+    resetEnvCache();
+    const w = await world();
+    const c = await make(w);
+    const o = await open(c.token, "cs_manual_auto_race");
+    expect(await deliver(paid({ checkoutId: o.checkoutId, reference: o.reference, paymentId: "pay_manual_auto_race" }))).toMatchObject({ outcome: "processed" });
+    await withSystem((db) => db.query("update purchase_intents set auto_provision = true where id = $1", [c.id]));
+
+    // PGlite serializes transactions through its embedded connection. This checks that both public entry paths converge on one result here; real backend lock contention remains a hosted-Postgres concern.
+    const [automatic, manual] = await Promise.all([
+      provisionPaidIntent(c.id, { now: NOW }),
+      provisionPurchaseIntent(w.superSession, c.id, { now: NOW }),
+    ]);
+    expect(["provisioned", "already_done"]).toContain(automatic);
+    const row = await intentRow(c.id);
+    expect(row).toMatchObject({ status: "provisioned", client_org_id: manual.clientOrgId, payment_id: manual.paymentId });
+    expect(await rows("select 1 from organizations where id = $1", [manual.clientOrgId])).toHaveLength(1);
+    expect(await rows("select 1 from ai_growth_partners where org_id = $1", [manual.clientOrgId])).toHaveLength(1);
+    expect(await rows("select 1 from agent_instances where org_id = $1 and role_key = 'growth_partner'", [manual.clientOrgId])).toHaveLength(1);
+    expect(await rows("select 1 from invitations where org_id = $1 and role = 'owner'", [manual.clientOrgId])).toHaveLength(1);
+    expect(await rows("select 1 from payments where org_id = $1 and kind = 'setup_fee'", [manual.clientOrgId])).toHaveLength(1);
+    expect(await rows("select 1 from email_outbox where to_email = (select buyer_email from purchase_intents where id = $1) and template = 'invitation'", [c.id])).toHaveLength(1);
+    expect(await rows("select 1 from purchase_intent_events where intent_id = $1 and kind = 'workspace_created'", [c.id])).toHaveLength(1);
   });
 
   it("will not let a manager allow automatic creation, which needs the billing and client-creation permissions", async () => {

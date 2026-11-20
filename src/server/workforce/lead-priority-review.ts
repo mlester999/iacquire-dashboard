@@ -97,7 +97,7 @@ const backlog: ReviewCheck = async (db, job) => {
   });
 };
 
-export async function runLeadPriorityReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runLeadPriorityReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "lead_priority_review",
     allowedRoles: ["sales_assistant", "growth_partner"],
@@ -112,5 +112,5 @@ export async function runLeadPriorityReviewJob(job: WorkJobRow, _context: { work
     sourceArea: "contacts",
     limitations: "Only the stored priorities and records in this workspace were read. No lead was scored, contacted or changed.",
     subject: "Lead priority",
-  });
+  }, context.controller.signal);
 }

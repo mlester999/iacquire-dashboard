@@ -23,6 +23,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       hunterReady={Boolean(partner?.enabled && canChat(partner.status))}
       hunterStatus={partner?.enabled ? partner.status : "disabled"}
       canResearch={ctx.can("leads.research")}
+      canUpload={ctx.can("leads.research") && !ctx.org.isDemo}
       canReview={ctx.can("leads.review")}
       canExport={ctx.can("leads.export")}
       initialTab={tab ?? "review"}

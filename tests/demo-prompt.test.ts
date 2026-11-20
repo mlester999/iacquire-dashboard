@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
-import { buildDemoPrompt, fence, messageLooksLikeInjection, PRICE_FACTS, safeBusiness, type PromptInput } from "@/server/demo/prompt";
+import { DEMO_AQI_SUGGESTIONS } from "@/lib/demo/showroom/content";
+import { buildDemoPrompt, factLines, fence, messageLooksLikeInjection, PRICE_FACTS, safeBusiness, type PromptInput } from "@/server/demo/prompt";
 
 const base = (over: Partial<PromptInput> = {}): PromptInput => ({
   business: "Pat's Roofing",
@@ -12,6 +13,35 @@ const base = (over: Partial<PromptInput> = {}): PromptInput => ({
   catalog: { services: ["Website build", "Logo design"], plan: { name: "Managed Maintenance", included: ["Monthly updates", "Priority help"] } },
   ...over,
 });
+
+const SUGGESTION_FACT_EVIDENCE: Record<string, readonly string[]> = {
+  "What can the AI Growth Partner do for a business like mine?": ["One AI Growth Partner shares one Business Brain across six connected capabilities.", "Lead Discovery & Qualification:", "Sales & Outreach:"],
+  "What is included in the implementation?": ["Your agreed system, configured, verified and activated by the iAcquire team", "Your pipeline stages, contact fields and forms", "A test of the whole path before activation"],
+  "Do I need to pay a monthly fee?": ["The optional monthly plan is $299 per month."],
+  "What is the AI Work Board?": ["The AI Work Board shows work states", "Completed means saved execution evidence", "The demo AI Work Board uses invented tasks and evidence"],
+  "How does a fact in the Business Brain get confirmed?": ["A Business Brain fact can be verified", "A saved Business Brain edit becomes a draft", "Unknown Business Brain facts stay unknown"],
+  "What is in the native CRM?": ["The native CRM: contacts, pipelines, deals, a unified inbox, calendars and tasks"],
+  "How does a lead move through the pipeline?": ["The demo pipeline stages are New Lead, Qualified, Appointment Scheduled, Proposal, Won."],
+  "Can I use my own pipeline stages?": ["Your pipeline stages, contact fields and forms"],
+  "Which channels can the inbox bring together?": ["The demo sample inbox illustrates texts, emails, website chats and missed calls."],
+  "How does the Growth Partner use my calendar?": ["Calendar & Appointment Management: Use connected availability and booking rules to prepare appointment actions for review."],
+  "Who approves a reply before it is sent?": ["Customer-facing actions follow your approval rules."],
+  "What is Automation Studio?": ["Automation Studio: describe an automation in plain words and watch it get built on a visual canvas"],
+  "Is Automation Studio part of the core system?": ["It is part of the optional Managed Maintenance plan."],
+  "Can I use n8n or Zapier instead?": ["Connect external automation tools such as n8n, Zapier or Make through supported APIs and webhooks"],
+  "What does the Growth Partner report on?": ["Performance & Analytics: Explain recorded acquisition activity and outcomes with their evidence and limits."],
+  "Where do the numbers come from?": ["The demo report uses invented sample figures"],
+  "Can I see reports for my own pipeline?": ["Performance & Analytics: Explain recorded acquisition activity and outcomes with their evidence and limits."],
+  "What does the implementation cost?": ["The one-time setup is $1,499, paid once."],
+  "What does Managed Maintenance add?": ["Monitoring of your connected integrations and AI Growth Partner health, with alerts to our team"],
+  "What costs are separate?": ["Usage-based costs, such as AI model calls and messaging, are separate and shown in your portal."],
+  "Why not build this myself?": ["The native CRM: contacts, pipelines, deals, a unified inbox, calendars and tasks", "One AI Growth Partner, configured to your approved scope"],
+  "How is this different from a normal CRM?": ["One AI Growth Partner shares one Business Brain across six connected capabilities.", "The native CRM: contacts, pipelines, deals, a unified inbox, calendars and tasks"],
+  "What happens after I ask for a consultation?": ["Pressing the button does not book anything or charge anything."],
+  "What happens when I request a consultation?": ["Pressing the button does not book anything or charge anything."],
+  "What would you set up for me first?": ["Your AI Growth Partner: its six capability areas, priorities, tone of voice and approval rules", "Your calendar and the meeting types it may offer"],
+  "How long does setup take?": ["A written scope and timeline are confirmed before work starts"],
+};
 
 describe("the system prompt", () => {
   it("is the same text for every prospect and every message", () => {
@@ -51,6 +81,16 @@ describe("the system prompt", () => {
     const { system, user } = buildDemoPrompt(base());
     for (const word of ["org_id", "organization", "customer data", "api key", "token", "workspace data", "Hermes", "tool call"]) {
       expect(`${system}\n${user}`.toLowerCase(), word).not.toContain(word.toLowerCase());
+    }
+  });
+
+  it("grounds every AQi suggestion in approved public facts", () => {
+    const suggestions = Object.values(DEMO_AQI_SUGGESTIONS).flat();
+    const grounded = factLines(base().catalog).join("\n");
+    expect(new Set(suggestions).size).toBe(suggestions.length);
+    expect(Object.keys(SUGGESTION_FACT_EVIDENCE).sort()).toEqual([...suggestions].sort());
+    for (const [question, facts] of Object.entries(SUGGESTION_FACT_EVIDENCE)) {
+      for (const fact of facts) expect(grounded, `${question}: ${fact}`).toContain(fact);
     }
   });
 });

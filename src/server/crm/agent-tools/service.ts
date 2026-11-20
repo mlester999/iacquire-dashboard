@@ -283,7 +283,7 @@ async function execute(s: CallScope, def: AgentToolDef, input: Record<string, un
     if (def.kind !== "write") return;
     // The mode is read again right before the change: a pause or mode change since the first check wins.
     const gate = await automationGate(db, { orgId: s.agent.org_id, agentId: s.agent.id, scope: "job", approvalId: ctx.approvalId });
-    if (gate.decision !== "allow") throw new AppError("conflict", gate.decision === "blocked" ? gate.detail : "This AI employee now needs approval for changes. Try the call again.");
+    if (gate.decision !== "allow") throw new AppError("conflict", gate.decision === "blocked" ? gate.detail : "This AI action now needs approval. Try the call again.");
   };
   if (handler.inTx) {
     return withSystem(async (db) => {
@@ -308,9 +308,9 @@ export async function describeAgentTools(token: string | null, opts: { ipHash?: 
   const auth = await withSystem((db) => verifyAgentToolToken(db, token));
   if (!auth) return unauthorized(opts.ipHash);
   const agent = await withSystem((db) => loadAgent(db, auth));
-  if (!agent || !agentToolAccessEnabled(agent) || !agent.enabled) return refuse(403, "forbidden", "This AI employee can't use business tools.");
+  if (!agent || !agentToolAccessEnabled(agent) || !agent.enabled) return refuse(403, "forbidden", "The AI profile's business tools are unavailable.");
   const limit = await consumeRateLimit(RATE_LIMITS.agentToolCallsByEmployee, agent.id);
-  if (!limit.allowed) return refuse(429, "rate_limited", "Too many CRM tool calls from this AI employee. Wait a moment and try again.", { retryAfterSeconds: limit.retryAfterSeconds });
+  if (!limit.allowed) return refuse(429, "rate_limited", "Too many CRM tool calls from this AI profile. Wait a moment and try again.", { retryAfterSeconds: limit.retryAfterSeconds });
   const s = scopeFor(auth, agent);
   const names = (Object.keys(AGENT_TOOLS) as AgentToolName[]).filter((n) => allowsTool(s, AGENT_TOOLS[n]));
   return { ok: true, httpStatus: 200, tools: toolManifest(names), agent: { name: agent.display_name, role: agent.role_key }, scopes: s.scopes.map((x) => ({ scope: x, label: SCOPE_INFO[x].label })) };
@@ -335,7 +335,7 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
   const limit = await consumeRateLimit(RATE_LIMITS.agentToolCallsByEmployee, agent.id);
   if (!limit.allowed) {
     await safeLog(s, { ...base, outcome: "refused", result: "denied", detail: "Rate limited" });
-    return refuse(429, "rate_limited", "Too many CRM tool calls from this AI employee. Wait a moment and try again.", { retryAfterSeconds: limit.retryAfterSeconds });
+    return refuse(429, "rate_limited", "Too many CRM tool calls from this AI profile. Wait a moment and try again.", { retryAfterSeconds: limit.retryAfterSeconds });
   }
 
   if (!known) {
@@ -345,7 +345,7 @@ export async function callAgentTool(call: AgentToolCall): Promise<AgentToolReply
   const def = AGENT_TOOLS[toolName];
   if (!agent.enabled) {
     await safeLog(s, { ...base, outcome: "refused", result: "denied", detail: "Employee not included in the workspace" });
-    return refuse(403, "forbidden", "This AI employee is not included in the workspace.");
+    return refuse(403, "forbidden", "The AI runtime is disabled in this workspace.");
   }
   if (!allowsTool(s, def)) {
     await safeLog(s, { ...base, outcome: "refused", result: "denied", detail: "Not allowed for this role or credential" });
@@ -461,15 +461,15 @@ export async function executeApprovedAgentToolCall(input: { orgId: string; appro
   if (!parsed.success || typeof a.inputHash !== "string" || inputHash(tool, parsed.data) !== a.inputHash) {
     return { status: "failed", detail: "The request's details are no longer valid, so it was not run. Nothing was changed." };
   }
-  if (!input.agentInstanceId) return { status: "failed", detail: "The AI employee that asked for this no longer exists. Nothing was changed." };
+  if (!input.agentInstanceId) return { status: "failed", detail: "The AI profile that requested this is unavailable. Nothing was changed." };
   const agentId = input.agentInstanceId;
   const runId = typeof a.runId === "string" ? a.runId : null;
   const accessId = typeof a.accessId === "string" ? a.accessId : "approval";
   const scopes = Array.isArray(a.scopes) ? a.scopes.filter((x): x is string => typeof x === "string") : [];
   const agent = await withSystem((db) => loadAgent(db, { tokenId: accessId, orgId: input.orgId, agentInstanceId: agentId, runId, scopes }));
-  if (!agent || !agentToolAccessEnabled(agent)) return { status: "failed", detail: "The AI employee that asked for this no longer exists. Nothing was changed." };
+  if (!agent || !agentToolAccessEnabled(agent)) return { status: "failed", detail: "The AI profile that requested this is unavailable. Nothing was changed." };
   if (agent.org_kind === "agency" && (!env().HERMES_BUSINESS_MCP_WRITES_ENABLED || a.forcedApproval !== true)) {
-    return { status: "blocked", detail: "Internal AI employee changes can only proceed through the approved business-tool path. Nothing was changed." };
+    return { status: "blocked", detail: "Internal AI profile changes can only proceed through the approved business-tool path. Nothing was changed." };
   }
   const s = scopeFor({ tokenId: accessId, orgId: input.orgId, agentInstanceId: agent.id, runId, scopes }, agent);
   const def = AGENT_TOOLS[tool];

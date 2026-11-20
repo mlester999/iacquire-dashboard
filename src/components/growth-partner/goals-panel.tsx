@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Pause, Play, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge, Card, CardContent, CardHeader, CardTitle, Select } from "@/components/ui/primitives";
+import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from "@/components/ui/primitives";
 import {
   GROWTH_PARTNER_GOAL_CADENCES,
   GROWTH_PARTNER_GOAL_DEFINITIONS,
@@ -104,7 +104,7 @@ export function GrowthPartnerGoalsPanel({
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Target className="size-5" aria-hidden /></div>
             <div className="min-w-0">
-              <CardTitle><span id="growth-goals-title">Growth goals</span></CardTitle>
+              <CardTitle><span id="growth-goals-title">Goals</span></CardTitle>
               <p className="mt-1 text-[13px] leading-relaxed text-muted">Set measurable targets and compare them with activity recorded in this workspace.</p>
             </div>
           </div>
@@ -166,7 +166,7 @@ export function GrowthPartnerGoalsPanel({
                 </Select>
               </label>
               <label className="block space-y-1.5 text-[13px] font-medium text-ink-2">Target count
-                <input className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-[14px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-primary/40" type="number" min={1} max={100_000} step={1} inputMode="numeric" required value={targetText} onChange={(event) => setTargetText(event.target.value)} aria-label="Target count" />
+                <Input className="text-[16px] sm:text-[16px]" type="number" min={1} max={100_000} step={1} inputMode="numeric" required value={targetText} onChange={(event) => setTargetText(event.target.value)} aria-label="Target count" />
               </label>
               <Button type="submit" loading={busy === "save"} disabled={!hasPartner || busy !== null || !targetText}>{selectedGoal ? "Update target" : "Save target"}</Button>
               <p className="text-[12px] leading-relaxed text-muted sm:col-span-4">Counts are capped at 100,000 and are stored for this workspace only. The result definitions are shown with each target.</p>

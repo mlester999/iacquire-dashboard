@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { env } from "@/server/env";
+import { redactSecrets } from "@/server/aqi/ops/redact";
 import { recordAudit } from "@/server/audit";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { assertWithinLimits, recordUsage } from "@/server/usage";
@@ -32,10 +33,11 @@ import { parseGrowthPartnerMemoryCommand } from "@/lib/ai-growth-partner-memory"
 import { forgetGrowthPartnerMemoryFromChat, rememberGrowthPartnerMemoryFromChat } from "@/server/ai-growth-partner/memory";
 import { markEmployeeKnowledgeUsed } from "@/server/workforce/knowledge";
 import { kickWorkJob } from "@/server/workforce/work-kick";
-import { createResearchRequest, getTargeting, saveTargeting } from "@/server/leads/service";
+import { createResearchRequest, getTargeting, requestCrmImport, saveTargeting } from "@/server/leads/service";
 import { parseResearchAssignment, researchClarification } from "@/lib/research-intent";
 import { targetingSchema } from "@/lib/leads-targeting";
 import { parseWorkforceChatCrmIntent } from "@/lib/workforce-chat-crm-intent";
+import { parseWorkforceChatTaskIntent, type WorkforceChatTaskIntent } from "@/lib/workforce-chat-task-intent";
 import { parseWorkforceChatAppointmentPolicyIntent, type WorkforceChatAppointmentPolicyIntent } from "@/lib/workforce-chat-appointment-policy-intent";
 import { parseWorkforceChatCalendarCreateIntent, type WorkforceChatCalendarCreateIntent } from "@/lib/workforce-chat-calendar-create-intent";
 import { parseWorkforceChatBookingIntent, type WorkforceChatBookingIntent } from "@/lib/workforce-chat-booking-intent";
@@ -45,6 +47,8 @@ import { parseWorkforceChatBusinessBrainIntent } from "@/lib/workforce-chat-busi
 import { parseWorkforceChatGoalIntent } from "@/lib/workforce-chat-goal-intent";
 import { parseWorkforceChatPreferencesIntent } from "@/lib/workforce-chat-preferences-intent";
 import { parseWorkforceChatAssignment } from "@/lib/workforce-chat-assignment";
+import { parseWorkforceChatReadIntent } from "@/lib/workforce-chat-read-intent";
+import { runChatReadIntent } from "@/server/chat/read-intents";
 import { workforceChatRefusal } from "@/lib/workforce-chat-guardrail";
 import { explicitlyAddressedWorkforceRole, isAutomationBuilderRequest, parseNamedWorkforceHandoff } from "@/lib/workforce-chat-routing";
 import { capabilityDefinition, isCapabilityKey, type CapabilityKey } from "@/lib/workforce-capabilities";
@@ -71,6 +75,7 @@ import { createAppointmentType, createCalendar, listCalendars, listSchedulingPeo
 import { getPolicyView, savePolicy } from "@/server/appointments/settings";
 import { createContact, DuplicateContactError } from "@/server/crm/contacts";
 import { createOpportunity } from "@/server/crm/opportunities";
+import { createTaskInTx } from "@/server/crm/tasks";
 import { assertCan, auditActor, crmWrite, memberActor } from "@/server/crm/actor";
 import { moveOpportunityInTx } from "@/server/crm/opportunities";
 import type { BookedAppointmentStatus } from "@/server/appointments/confirmation-watch";
@@ -91,6 +96,7 @@ import { setClientPause } from "@/server/automation/controls";
 import { listGrowthPartnerGoalProgress, saveGrowthPartnerGoal } from "@/server/ai-growth-partner/goals";
 import { getGrowthPartnerControlState, saveGrowthPartnerBusinessBrainFactDraft } from "@/server/ai-growth-partner/service";
 import { getMessagingSettings, updateMessagingSettings } from "@/server/messaging/inbox";
+import { isValidTimeZone, zonedDate } from "@/lib/calendars/slots";
 
 const MAX_MESSAGE = 8000;
 const HISTORY_TURNS = 20;
@@ -98,6 +104,7 @@ const HEALTH_MAX_AGE_MS = 10 * 60 * 1000;
 const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const BOOKING_PREVIEW_TTL_MS = 15 * 60 * 1000;
 const APPOINTMENT_CHANGE_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const CHAT_TASK_PREVIEW_TTL_MS = 15 * 60 * 1000;
 
 function chatIdentityLabel(role: WorkforceRoleKey): string {
   return role === "growth_partner" ? "Your AI Growth Partner" : `The ${workforceRoleShortName(role)} profile`;
@@ -164,6 +171,23 @@ type PendingChatAppointmentChange = {
   processingAt?: string;
   approvalId?: string | null;
   acceptedAt?: string;
+};
+
+type PendingChatTask = {
+  version: 1;
+  proposalId: string;
+  status: "pending" | "accepted" | "cancelled" | "expired";
+  requestedBy: string;
+  agentInstanceId: string;
+  agentRole: "growth_partner";
+  title: string;
+  dueDate: string;
+  dueAt: string;
+  timezone: string;
+  contactId: string | null;
+  contactName: string | null;
+  expiresAt: string;
+  taskId: string | null;
 };
 
 type ChatScheduleAction =
@@ -367,6 +391,56 @@ function parsePendingChatAppointmentChange(value: unknown): PendingChatAppointme
   };
 }
 
+function parsePendingChatTask(value: unknown): PendingChatTask | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isoDate = typeof item.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate)
+    && Number.isFinite(Date.parse(`${item.dueDate}T00:00:00.000Z`))
+    && new Date(`${item.dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) === item.dueDate;
+  if (
+    item.version !== 1
+    || !uuid.test(String(item.proposalId ?? ""))
+    || !["pending", "accepted", "cancelled", "expired"].includes(String(item.status))
+    || typeof item.requestedBy !== "string"
+    || !uuid.test(String(item.agentInstanceId ?? ""))
+    || item.agentRole !== "growth_partner"
+    || typeof item.title !== "string"
+    || !item.title.trim()
+    || item.title.length > 200
+    || !isoDate
+    || typeof item.dueAt !== "string"
+    || !Number.isFinite(Date.parse(item.dueAt))
+    || typeof item.timezone !== "string"
+    || !isValidTimeZone(item.timezone)
+    || (item.contactId !== null && !uuid.test(String(item.contactId)))
+    || (item.contactName !== null && (typeof item.contactName !== "string" || !item.contactName.trim() || item.contactName.length > 200))
+    || ((item.contactId === null) !== (item.contactName === null))
+    || typeof item.expiresAt !== "string"
+    || !Number.isFinite(Date.parse(item.expiresAt))
+    || (item.taskId !== null && !uuid.test(String(item.taskId)))
+    || (item.status === "accepted" && !uuid.test(String(item.taskId ?? "")))
+  ) return null;
+  const dueAt = new Date(item.dueAt as string).toISOString();
+  if (zonedDate(Date.parse(dueAt), item.timezone as string) !== item.dueDate) return null;
+  return {
+    version: 1,
+    proposalId: item.proposalId as string,
+    status: item.status as PendingChatTask["status"],
+    requestedBy: item.requestedBy,
+    agentInstanceId: item.agentInstanceId as string,
+    agentRole: "growth_partner",
+    title: item.title,
+    dueDate: item.dueDate as string,
+    dueAt,
+    timezone: item.timezone,
+    contactId: item.contactId as string | null,
+    contactName: item.contactName as string | null,
+    expiresAt: item.expiresAt,
+    taskId: item.taskId as string | null,
+  };
+}
+
 function schedulePermissionAllowed(ctx: OrgContext, role: WorkforceRoleKey, capability: string): boolean {
   const definition = capabilityDefinition(capability);
   return Boolean(
@@ -433,6 +507,21 @@ function bookingResultEvidence(status: BookingResult["status"], ids: { bookingId
 }
 
 async function insertChatScheduleReply(
+  db: Queryable,
+  ctx: OrgContext,
+  input: { conversationId: string; agentId: string; content: string; evidence?: ServerEvidenceMarker },
+): Promise<string> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into chat_messages (conversation_id, org_id, role, content, status, evidence)
+     values ($1, $2, 'assistant', $3, 'complete', $4::jsonb) returning id`,
+    [input.conversationId, ctx.org.orgId, input.content, serverEvidenceJson(input.evidence)],
+  );
+  await db.query("update chat_conversations set last_message_at = now() where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId]);
+  await recordUsage(db, { orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId, kind: "agent_message" });
+  return rows[0].id;
+}
+
+async function insertChatTaskReply(
   db: Queryable,
   ctx: OrgContext,
   input: { conversationId: string; agentId: string; content: string; evidence?: ServerEvidenceMarker },
@@ -662,7 +751,7 @@ async function handleChatScheduleAction(
       const activationNotice = setEnabledOnlyForPreview && enabledAfterSave
         ? " After confirmation it will be enabled. Workspace schedule automation, source settings and usage limits must still permit work when the scheduled run starts."
         : setEnabledOnlyForPreview
-          ? " After confirmation it will be paused. A job already created remains on the Work Board and is checked under its own controls."
+          ? " After confirmation it will be paused. A job already created remains on the AI Work Board and is checked under its own controls."
           : updateExisting && enabledAfterSave
         ? " After confirmation it will stay enabled in Schedules; workspace schedule automation must also be enabled."
         : updateExisting
@@ -795,7 +884,7 @@ async function handleChatScheduleAction(
     const content = pending.setEnabledOnly
       ? saved.enabled
         ? `Resumed ${definition.label} in ${pending.timezone}. The next planned time is ${nextLabel} (${pending.timezone}). Workspace schedule automation, source settings and usage limits must still permit work when the scheduled run starts.`
-        : `Paused ${definition.label}. No future scheduled jobs will be created. A job already created remains on the Work Board and is checked under its own controls.`
+        : `Paused ${definition.label}. No future scheduled jobs will be created. A job already created remains on the AI Work Board and is checked under its own controls.`
       : pending.updateExisting
         ? `Updated ${definition.label} to ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}.${scheduleWorkWindowNotice(pending.businessHours, pending.recurrenceRule)} The next planned time is ${nextLabel} (${pending.timezone}). The schedule is ${saved.enabled ? "still enabled" : "paused"}; workspace schedule automation must also be enabled for it to run.`
       : `Saved ${definition.label} ${scheduleCadenceLabel(pending.cadence, pending.recurrenceRule)} in ${pending.timezone}, paused. The next planned time is ${nextLabel} (${pending.timezone}). It won't run until you enable it in Schedules, and workspace schedule automation must also be enabled.`;
@@ -946,7 +1035,7 @@ async function handleChatTargetingIntent(
     await saveTargeting(ctx, next);
     const saved = await getTargeting(ctx);
     if (JSON.stringify(saved.industries) !== JSON.stringify(next.industries) || JSON.stringify(saved.regions) !== JSON.stringify(next.regions)) {
-      return reply("I couldn't verify the saved targeting rules after the update, so I can't confirm the change. Please check Partner Settings before starting research.");
+      return reply("I couldn't verify the saved targeting rules after the update, so I can't confirm the change. Please check Growth Partner Settings before starting research.");
     }
     const unchanged = JSON.stringify(current.industries) === JSON.stringify(next.industries) && JSON.stringify(current.regions) === JSON.stringify(next.regions);
     const state = unchanged ? "Those lead-targeting rules were already saved" : "Saved lead targeting";
@@ -982,7 +1071,7 @@ async function handleChatBusinessBrainIntent(
       return reply("The Business Brain does not have a saved version to edit yet. Finish Partner setup and generate its first version, then try again.");
     }
     const existing = brain.sections[input.intent.section][input.intent.key];
-    if (!existing) return reply("That Business Brain fact is no longer available. Refresh Partner Controls and try again.");
+    if (!existing) return reply("That Business Brain fact is no longer available. Refresh the AI Growth Partner page and try again.");
 
     let expectedValue: unknown = input.intent.valueText;
     if (Array.isArray(existing.value)) {
@@ -991,7 +1080,7 @@ async function handleChatBusinessBrainIntent(
       try {
         expectedValue = JSON.parse(input.intent.valueText);
       } catch {
-        return reply("That Business Brain field uses structured data. Save its value in the Partner Controls editor as JSON; no draft was created.");
+        return reply("That Business Brain field uses structured data. Save its value on the AI Growth Partner page as JSON; no draft was created.");
       }
       if (typeof expectedValue !== "object" || expectedValue === null || Array.isArray(expectedValue)) {
         return reply("That Business Brain field needs a JSON object. No draft was created.");
@@ -1002,7 +1091,7 @@ async function handleChatBusinessBrainIntent(
       && JSON.stringify(existing.value) === JSON.stringify(expectedValue);
     if (matches) {
       return before.draftVersion
-        ? reply(`Those ${input.intent.label} are already saved in Business Brain draft version ${before.draftVersion}. Review and activate that draft in Partner Controls.`)
+        ? reply(`Those ${input.intent.label} are already saved in Business Brain draft version ${before.draftVersion}. Review and activate that draft on the AI Growth Partner page.`)
         : reply(`Those ${input.intent.label} are already active in Business Brain version ${before.currentVersion}. No new draft was created.`);
     }
 
@@ -1020,9 +1109,9 @@ async function handleChatBusinessBrainIntent(
       && verifiedFact.clientOverride
       && JSON.stringify(verifiedFact.value) === JSON.stringify(expectedValue);
     if (!verified) {
-      return reply(`I saved Business Brain draft version ${saved.version}, but could not verify its saved value and active version. Check Partner Controls before activating it.`, systemNoticeMarker());
+      return reply(`I saved Business Brain draft version ${saved.version}, but could not verify its saved value and active version. Check the AI Growth Partner page before activating it.`, systemNoticeMarker());
     }
-    return reply(`Saved ${input.intent.label} in Business Brain draft version ${saved.version}. It is not active yet; review and activate it in Partner Controls when it is correct.`, serverMarker("approved_write"));
+    return reply(`Saved ${input.intent.label} in Business Brain draft version ${saved.version}. It is not active yet; review and activate it on the AI Growth Partner page when it is correct.`, serverMarker("approved_write"));
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The Business Brain service could not confirm the saved draft.";
     return reply(`I couldn't save that Business Brain change. ${chatSafeText(message)} No draft was confirmed.`, systemNoticeMarker());
@@ -1077,10 +1166,10 @@ async function handleChatMessagingHoursIntent(
       return reply(`Saved Messaging hours as ${expected}. Partner setup has no active Business Brain version yet, so there was nothing active to sync. These hours control Messaging follow-up windows and replies when business-hours-only is enabled; calendar host availability is separate.`, serverMarker("approved_write"));
     }
     if (!hasConfirmedHours(afterControl.currentBusinessBrain)) {
-      return reply("Messaging hours were saved, but I couldn't verify them in the active Business Brain. Check Partner Controls before relying on its operating-hours context.", systemNoticeMarker());
+      return reply("Messaging hours were saved, but I couldn't verify them in the active Business Brain. Check the AI Growth Partner page before relying on its operating-hours context.", systemNoticeMarker());
     }
     if (beforeControl?.draftBusinessBrain && !hasConfirmedHours(afterControl.draftBusinessBrain)) {
-      return reply("Messaging hours and the active Business Brain were updated, but I couldn't verify the saved draft was rebased. Review the draft in Partner Controls before activating it.", systemNoticeMarker());
+      return reply("Messaging hours and the active Business Brain were updated, but I couldn't verify the saved draft was rebased. Review the draft on the AI Growth Partner page before activating it.", systemNoticeMarker());
     }
 
     const draftNote = afterControl.draftVersion ? ` Draft version ${afterControl.draftVersion} was also aligned.` : "";
@@ -1118,7 +1207,7 @@ async function handleChatGoalIntent(
     const before = await listGrowthPartnerGoalProgress(ctx);
     const existing = before.find((goal) => goal.metric === metric && goal.cadence === cadence);
     if (existing?.enabled && existing.targetValue === targetValue) {
-      return reply(`That ${existing.metricLabel.toLocaleLowerCase("en-US")} goal is already set to ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. Current progress is measured in Partner Controls and the Work Board.`);
+      return reply(`That ${existing.metricLabel.toLocaleLowerCase("en-US")} goal is already set to ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. Current progress is measured on your AI Growth Partner page and the AI Work Board.`);
     }
 
     const saved = await saveGrowthPartnerGoal(ctx, {
@@ -1131,17 +1220,17 @@ async function handleChatGoalIntent(
     const after = await listGrowthPartnerGoalProgress(ctx);
     const confirmed = after.find((goal) => goal.metric === metric && goal.cadence === cadence);
     if (!confirmed || !confirmed.enabled || confirmed.targetValue !== targetValue || confirmed.revision !== saved.revision) {
-      return reply("The goal was saved, but I couldn't verify its active value afterward. Check Partner Controls before relying on it.", systemNoticeMarker());
+      return reply("The goal was saved, but I couldn't verify its active value afterward. Check the AI Growth Partner page before relying on it.", systemNoticeMarker());
     }
     return reply(
-      `Saved the ${confirmed.metricLabel.toLocaleLowerCase("en-US")} goal: ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. This is a target, not a guarantee. Measured progress appears in Partner Controls and the Work Board.`,
+      `Saved the ${confirmed.metricLabel.toLocaleLowerCase("en-US")} goal: ${targetValue} per ${cadence === "weekly" ? "week" : "month"}. This is a target, not a guarantee. Measured progress appears on your AI Growth Partner page and the AI Work Board.`,
       serverMarker("approved_write"),
     );
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The goal service could not confirm the saved value.";
     return persistedRevision === null
       ? reply(`I couldn't change the Growth Partner goal. ${chatSafeText(message)} No change was confirmed.`, systemNoticeMarker())
-      : reply(`The goal was saved at revision ${persistedRevision}, but I couldn't verify it afterward. Check Partner Controls before relying on it.`, systemNoticeMarker());
+      : reply(`The goal was saved at revision ${persistedRevision}, but I couldn't verify it afterward. Check the AI Growth Partner page before relying on it.`, systemNoticeMarker());
   }
 }
 
@@ -1194,7 +1283,7 @@ async function handleChatPreferencesIntent(
       return reply(`Saved ${summary()}, but the new Growth Partner settings are waiting for review. Current behavior remains active until they are approved.`, systemNoticeMarker());
     }
     const parsed = agentSettingsSchema.safeParse(active.settings);
-    if (!parsed.success) return reply("The Growth Partner settings could not be verified after saving. Please check Partner Settings before relying on the change.", systemNoticeMarker());
+    if (!parsed.success) return reply("The Growth Partner settings could not be verified after saving. Please check Growth Partner Settings before relying on the change.", systemNoticeMarker());
     const appliedKeys = preferenceKeys.filter((key) => parsed.data[key] === preferences[key]);
     const kept = result.skipped.some((item) => item.role === "growth_partner" && item.why === "client_edit");
     if (appliedKeys.length === preferenceKeys.length) {
@@ -1209,9 +1298,9 @@ async function handleChatPreferencesIntent(
         preferences.replyLength && appliedKeys.includes("replyLength") ? `${preferences.replyLength} replies` : null,
         preferences.language && appliedKeys.includes("language") ? `${preferences.language} replies` : null,
       ].filter(Boolean).join(", ");
-      return reply(`Applied ${applied}. The Growth Partner's own wording for another requested preference was kept; update it in Partner Settings if you want to replace it.`, serverMarker("approved_write"));
+      return reply(`Applied ${applied}. The Growth Partner's own wording for another requested preference was kept; update it in Growth Partner Settings if you want to replace it.`, serverMarker("approved_write"));
     }
-    return reply("I saved the workspace defaults, but the Growth Partner's own settings were kept. Change the client-edited values in Partner Settings if you want to replace them.", systemNoticeMarker());
+    return reply("I saved the workspace defaults, but the Growth Partner's own settings were kept. Change the client-edited values in Growth Partner Settings if you want to replace them.", systemNoticeMarker());
   } catch (error) {
     const message = error instanceof AppError ? error.message : "The settings service could not save the change just now.";
     return reply(`I didn't change the Growth Partner's persistent preferences. ${chatSafeText(message)}`, systemNoticeMarker());
@@ -1277,6 +1366,196 @@ async function handleChatOutboundControlIntent(
   }
 }
 
+async function handleChatTaskIntent(
+  ctx: OrgContext,
+  input: { agentId: string; conversationId: string; userMessageId: string | null; intent: Exclude<WorkforceChatTaskIntent, { kind: "none" }> },
+): Promise<SendResult> {
+  const intent = input.intent;
+  const needsTaskPermission = intent.kind === "proposal" || intent.kind === "confirm";
+  if (needsTaskPermission && !(await chatActionAllowed(ctx, input.agentId, "chat:task_create"))) {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId, conversationId: input.conversationId,
+      content: "The AI Growth Partner's task permission is switched off, so I couldn't prepare or create a task. No task was changed.",
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+  if (needsTaskPermission && !ctx.can("tasks.manage")) {
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId, userId: ctx.user.id, agentId: input.agentId, conversationId: input.conversationId,
+      content: "Your workspace role can't create CRM tasks. Ask an owner or admin to prepare this follow-up. No task was created.",
+    });
+    return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+
+  return withSystem(async (db) => {
+    const { rows: conversations } = await db.query<{ id: string; pending_workforce_task: unknown }>(
+      `select id, pending_workforce_task from chat_conversations
+        where id = $1 and org_id = $2 and agent_instance_id = $3 and deleted_at is null
+          and (user_id = $4 or ($5::boolean and exists (
+            select 1 from ai_growth_partners p
+             where p.id = chat_conversations.growth_partner_id
+               and p.org_id = chat_conversations.org_id
+               and p.runtime_agent_instance_id = chat_conversations.agent_instance_id
+          )))
+        for update`,
+      [input.conversationId, ctx.org.orgId, input.agentId, ctx.user.id, true],
+    );
+    const conversation = conversations[0];
+    if (!conversation) throw new AppError("not_found", "Conversation not found.");
+
+    const reply = async (content: string, evidence?: ServerEvidenceMarker) => {
+      const assistantMessageId = await insertChatTaskReply(db, ctx, {
+        conversationId: input.conversationId, agentId: input.agentId, content, evidence,
+      });
+      return { conversationId: input.conversationId, userMessageId: input.userMessageId, assistantMessageId, runId: null, jobId: null };
+    };
+    const rawPending = conversation.pending_workforce_task;
+    const pending = parsePendingChatTask(rawPending);
+    if (rawPending !== null && !pending) {
+      await db.query("update chat_conversations set pending_workforce_task = null where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId]);
+      if (intent.kind === "clarification") return reply(intent.message);
+      return reply("I couldn't verify the saved task preview, so I discarded it. No task was created. Please request a fresh preview.");
+    }
+
+    if (intent.kind === "clarification") return reply(intent.message);
+
+    if (intent.kind === "cancel") {
+      if (!pending) return reply("There is no task preview to cancel. No task was created.");
+      if (pending.requestedBy !== ctx.user.id) return reply("That task preview belongs to another workspace user. No task was changed.");
+      if (pending.status === "accepted" && pending.taskId) {
+        return reply(`That task was already created, so this chat command didn't cancel it. [Open the task](/crm/tasks?task=${pending.taskId}) to change its status.`);
+      }
+      if (pending.status !== "pending") return reply("There is no active task preview to cancel. No task was created.");
+      pending.status = "cancelled";
+      await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(pending)]);
+      return reply("Cancelled the task preview. No task was created.");
+    }
+
+    if (intent.kind === "proposal") {
+      const switchedOff = await chatAbilityRefusal(ctx, {
+        agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:task_create", need: chatActionNeed("chat:task_create"),
+      }, db);
+      if (switchedOff) return reply(switchedOff);
+      if (intent.contactName && !ctx.can("contacts.view")) {
+        return reply("Your workspace role can't view CRM contacts, so I couldn't verify that task link. No preview was saved and no task was created.");
+      }
+      const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
+      if (!orgRows[0]?.timezone || orgRows[0].timezone !== ctx.org.timezone || orgRows[0].timezone !== intent.timezone) {
+        return reply("The workspace time zone changed while I was preparing this request. No preview was saved; repeat the request to use the current time zone.");
+      }
+
+      let contact: { id: string; name: string } | null = null;
+      if (intent.contactName) {
+        const { rows } = await db.query<{ id: string; name: string }>(
+          `select id, coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')) as name
+             from contacts
+            where org_id = $1 and deleted_at is null and archived_at is null
+              and lower(btrim(coalesce(nullif(display_name, ''), nullif(concat_ws(' ', first_name, last_name), '')))) = lower($2)
+            order by id limit 2`,
+          [ctx.org.orgId, intent.contactName],
+        );
+        if (rows.length > 1) return reply(`More than one active CRM contact is named “${chatSafeText(intent.contactName)}”. Give a more specific contact name. No task preview was saved.`);
+        if (!rows[0]) return reply(`I couldn't find one active CRM contact named “${chatSafeText(intent.contactName)}”. Check CRM or remove the contact link, then request a new preview. No task was created.`);
+        contact = rows[0];
+      }
+
+      const now = new Date();
+      const next: PendingChatTask = {
+        version: 1,
+        proposalId: crypto.randomUUID(),
+        status: "pending",
+        requestedBy: ctx.user.id,
+        agentInstanceId: input.agentId,
+        agentRole: "growth_partner",
+        title: intent.title,
+        dueDate: intent.dueDate,
+        dueAt: intent.dueAt,
+        timezone: intent.timezone,
+        contactId: contact?.id ?? null,
+        contactName: contact?.name ?? null,
+        expiresAt: new Date(now.getTime() + CHAT_TASK_PREVIEW_TTL_MS).toISOString(),
+        taskId: null,
+      };
+      await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(next)]);
+      const dueLabel = new Intl.DateTimeFormat("en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: next.timezone,
+      }).format(new Date(next.dueAt));
+      const contactLabel = contact ? ` Link: ${chatSafeText(contact.name)}.` : "";
+      return reply(`Task preview: “${chatSafeText(next.title)}”, due ${dueLabel} (${next.timezone}).${contactLabel} Nothing has been created. Reply “confirm task” to create it, or “cancel task” to discard this preview.`, serverMarker("proposed_change"));
+    }
+
+    const switchedOff = await chatAbilityRefusal(ctx, {
+      agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:task_create", need: chatActionNeed("chat:task_create"),
+    }, db);
+    if (switchedOff) return reply(switchedOff);
+    if (!pending) return reply("There is no task preview to confirm. Ask me to prepare one first; no task was created.");
+    if (pending.requestedBy !== ctx.user.id || pending.agentInstanceId !== input.agentId) {
+      return reply("That task preview is no longer available to confirm. No task was created.");
+    }
+    if (pending.status === "accepted" && pending.taskId) {
+      return reply(`That task was already created. [Open the task](/crm/tasks?task=${pending.taskId}).`, serverMarker("record_retrieval", { kind: "task", id: pending.taskId }));
+    }
+    if (pending.status !== "pending") {
+      return reply("That task preview is no longer available to confirm. No task was created.");
+    }
+    const now = new Date();
+    if (Date.parse(pending.expiresAt) <= now.getTime() || Date.parse(pending.dueAt) <= now.getTime()) {
+      pending.status = "expired";
+      await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(pending)]);
+      return reply("That task preview has expired or its due time has passed. No task was created; request a new preview with a future due date.");
+    }
+    const { rows: orgRows } = await db.query<{ timezone: string }>("select timezone from organizations where id = $1", [ctx.org.orgId]);
+    if (!orgRows[0]?.timezone || orgRows[0].timezone !== pending.timezone || orgRows[0].timezone !== ctx.org.timezone) {
+      pending.status = "expired";
+      await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(pending)]);
+      return reply("The workspace time zone changed after the preview. It has expired; no task was created. Request a fresh preview.");
+    }
+    if (pending.contactId) {
+      if (!ctx.can("contacts.view")) return reply("Your workspace role can't view the linked CRM contact, so I couldn't confirm this task. No task was created.");
+      const contact = await db.query("select 1 from contacts where id = $1 and org_id = $2 and deleted_at is null and archived_at is null", [pending.contactId, ctx.org.orgId]);
+      if (!contact.rows[0]) {
+        pending.status = "expired";
+        await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(pending)]);
+        return reply("The linked CRM contact is no longer active. This preview has expired; no task was created.");
+      }
+    }
+
+    try {
+      const actor = memberActor(ctx);
+      assertCan(actor, "tasks.manage");
+      if (pending.contactId) assertCan(actor, "contacts.view");
+      const task = await createTaskInTx(db, actor, {
+        title: pending.title,
+        dueAt: pending.dueAt,
+        contactId: pending.contactId,
+      }, {
+        source: "user",
+        idempotencyKey: `growth-partner-chat-task:${input.userMessageId ?? crypto.randomUUID()}`,
+      });
+      if (task.created) {
+        await recordAudit({
+          orgId: ctx.org.orgId,
+          actorUserId: ctx.user.id,
+          actorKind: "user",
+          agentInstanceId: input.agentId,
+          action: "crm.task_created_from_growth_partner_chat",
+          targetType: "task",
+          targetId: task.id,
+          result: "success",
+          metadata: { conversationId: input.conversationId, dueDate: pending.dueDate, timezone: pending.timezone, linkedContact: Boolean(pending.contactId) },
+        }, db);
+      }
+      pending.status = "accepted";
+      pending.taskId = task.id;
+      await db.query("update chat_conversations set pending_workforce_task = $3::jsonb where id = $1 and org_id = $2", [input.conversationId, ctx.org.orgId, JSON.stringify(pending)]);
+      return reply(`Created “${chatSafeText(pending.title)}”, due ${new Intl.DateTimeFormat("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: pending.timezone }).format(new Date(pending.dueAt))}${pending.contactName ? ` for ${chatSafeText(pending.contactName)}` : ""}. [Open the task](/crm/tasks?task=${task.id}).`, serverMarker("approved_write", { kind: "task", id: task.id }));
+    } catch (error) {
+      if (!(error instanceof AppError) || !["forbidden", "invalid_input", "not_found", "conflict"].includes(error.code)) throw error;
+      return reply(`I couldn't create that task: ${chatSafeText(error.message)} No task was confirmed as created.`);
+    }
+  });
+}
+
 async function handleChatCrmIntent(
   ctx: OrgContext,
   input: { agentId: string; conversationId: string; userMessageId: string | null; intent: ReturnType<typeof parseWorkforceChatCrmIntent> },
@@ -1291,6 +1570,117 @@ async function handleChatCrmIntent(
   };
 
   if (intent.kind === "clarification") return reply(intent.message);
+  if (intent.kind === "import_approved_lead") {
+    if (!(await chatActionAllowed(ctx, input.agentId, "chat:crm_lead_import"))) {
+      return reply("The AI Growth Partner's lead review permission is switched off, so I couldn't request a CRM import. No CRM record was changed.");
+    }
+    const switchedOff = await chatAbilityRefusal(ctx, {
+      agentId: input.agentId, agentRole: "growth_partner", actionId: "chat:crm_lead_import", need: chatActionNeed("chat:crm_lead_import"),
+    });
+    if (switchedOff) return reply(switchedOff);
+    if (!ctx.can("leads.view") || !ctx.can("leads.review")) {
+      return reply("Only a workspace owner or admin with lead review access can request this CRM import. No CRM record was changed.");
+    }
+
+    type LeadCandidate = {
+      id: string;
+      business_name: string;
+      review_status: string;
+      qualification_state: string | null;
+      duplicate_status: string;
+      crm_sync_status: string;
+    };
+    const resolved = await withSystem(async (db) => {
+      let threadCandidates: LeadCandidate[] = [];
+      if (input.userMessageId) {
+        const { rows } = await db.query<LeadCandidate>(
+          `with latest_research as (
+             select j.id as job_id
+               from chat_messages m
+               join ai_work_jobs j on j.id = m.work_job_id and j.org_id = m.org_id
+               join lead_research_requests r on r.work_job_id = j.id and r.org_id = j.org_id
+               join chat_messages current_message on current_message.id = $3 and current_message.org_id = m.org_id
+              where m.org_id = $2 and m.conversation_id = $1 and m.id <> $3
+                and m.work_job_id is not null and m.created_at < current_message.created_at
+                and j.capability = 'lead_research' and j.conversation_id = $1
+              order by m.created_at desc limit 1
+           )
+           select l.id, l.business_name, l.review_status, l.qualification_state, l.duplicate_status, l.crm_sync_status
+             from latest_research latest
+             join lead_research_requests r on r.work_job_id = latest.job_id and r.org_id = $2
+             join leads l on l.research_request_id = r.id and l.org_id = r.org_id
+            order by l.created_at desc, l.id
+            limit 2`,
+          [input.conversationId, ctx.org.orgId, input.userMessageId],
+        );
+        threadCandidates = rows;
+      }
+      if (threadCandidates.length) return { source: "thread" as const, candidates: threadCandidates };
+      const { rows } = await db.query<LeadCandidate>(
+        `select id, business_name, review_status, qualification_state, duplicate_status, crm_sync_status
+           from leads
+          where org_id = $1 and review_status = 'approved' and qualification_state = 'evidence_backed'
+            and duplicate_status = 'no_match' and crm_sync_status in ('not_synced', 'blocked', 'failed', 'awaiting_approval')
+          order by created_at desc, id
+          limit 2`,
+        [ctx.org.orgId],
+      );
+      return { source: "workspace" as const, candidates: rows };
+    });
+
+    if (resolved.candidates.length !== 1) {
+      if (resolved.candidates.length > 1) {
+        return reply("I found more than one approved lead that could match. Name the business you mean so I can prepare the correct CRM import approval. No CRM record was changed.");
+      }
+      return reply("I couldn't find one approved, evidence-backed lead that is ready for CRM review. Review a researched lead first, then ask me to create a CRM contact for that approved prospect. No CRM record was changed.");
+    }
+
+    const lead = resolved.candidates[0]!;
+    if (lead.review_status !== "approved") {
+      return reply(`“${chatSafeText(lead.business_name)}” still needs lead review before CRM import. [Review leads](/leads). No CRM record was changed.`);
+    }
+    if (lead.qualification_state !== "evidence_backed" || lead.duplicate_status !== "no_match") {
+      return reply(`“${chatSafeText(lead.business_name)}” is not verified as evidence-backed and duplicate-free, so I can't request a CRM import. Review its evidence in [Leads](/leads). No CRM record was changed.`);
+    }
+    const findPendingApproval = async () => withSystem(async (db) => (await db.query<{ id: string }>(
+      `select id from approval_requests
+        where org_id = $1 and kind = 'lead_import' and status = 'pending'
+          and action -> 'leadIds' = $2::jsonb
+        order by created_at desc limit 1`,
+      [ctx.org.orgId, JSON.stringify([lead.id])],
+    )).rows[0]?.id ?? null);
+    if (lead.crm_sync_status === "awaiting_approval") {
+      const approvalId = await findPendingApproval();
+      return approvalId
+        ? reply(`A CRM import for “${chatSafeText(lead.business_name)}” is already waiting for an owner or admin. [Review the CRM import approval](/approvals).`)
+        : reply(`“${chatSafeText(lead.business_name)}” is marked as awaiting CRM approval, but I couldn't verify a pending approval. Open [Approvals](/approvals) before requesting anything else; no CRM record was changed.`);
+    }
+    if (lead.crm_sync_status === "synced") {
+      return reply(`“${chatSafeText(lead.business_name)}” is already imported into the CRM. [Open CRM](/crm).`);
+    }
+    if (!["not_synced", "blocked", "failed"].includes(lead.crm_sync_status)) {
+      return reply(`“${chatSafeText(lead.business_name)}” isn't in a state that can be safely imported. Check [Leads](/leads); no CRM record was changed.`);
+    }
+
+    try {
+      const approvalId = await requestCrmImport(ctx, [lead.id]);
+      const verified = await withSystem(async (db) => (await db.query<{ id: string; status: string; kind: string }>(
+        `select id, status, kind from approval_requests
+          where id = $1 and org_id = $2 and kind = 'lead_import'
+            and status = 'pending' and action -> 'leadIds' = $3::jsonb`,
+        [approvalId, ctx.org.orgId, JSON.stringify([lead.id])],
+      )).rows[0] ?? null);
+      if (!verified) return reply(`The import request for “${chatSafeText(lead.business_name)}” was submitted, but I couldn't verify its pending approval. Check [Approvals](/approvals) and [AI Work Board](/work) before repeating it.`);
+      return reply(`Prepared the CRM import for “${chatSafeText(lead.business_name)}”. An owner or admin must approve it before any CRM record is created. [Review the CRM import approval](/approvals).`, serverMarker("proposed_change", { kind: "approval", id: verified.id }));
+    } catch (error) {
+      if (error instanceof AppError && error.code === "conflict") {
+        const approvalId = await findPendingApproval();
+        if (approvalId) return reply(`A CRM import for “${chatSafeText(lead.business_name)}” is already waiting for an owner or admin. [Review the CRM import approval](/approvals).`);
+      }
+      const message = error instanceof AppError ? error.message : "The CRM import service could not prepare an approval just now.";
+      return reply(`I couldn't prepare the CRM import approval: ${chatSafeText(message)} No CRM record was created.`);
+    }
+  }
   if (intent.kind !== "create_contact") return reply("I couldn't identify a safe CRM contact request. No record was changed.");
   if (!(await chatActionAllowed(ctx, input.agentId, "chat:crm_contact_create"))) {
     return reply("The AI Growth Partner's CRM contact permission is switched off, so I couldn't create a contact. No record was changed.");
@@ -2446,7 +2836,7 @@ async function ensureAgentReady(ctx: OrgContext, role: WorkforceRoleKey) {
     );
     return rows[0];
   });
-  if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", "AI employee not found.");
+  if (!agent || agent.org_id !== ctx.org.orgId) throw new AppError("not_found", role === "growth_partner" ? "AI Growth Partner not found." : "Previous role profile not found.");
   const roleName = workforceRoleShortName(role);
   if (!agent.enabled) throw new AppError("agent_unavailable", `${roleName} isn't enabled for your workspace.`);
   try {
@@ -2468,8 +2858,11 @@ async function ensureAgentReady(ctx: OrgContext, role: WorkforceRoleKey) {
     if (!check.ok) throw new AppError("agent_unavailable", check.detail);
   }
   if (!canChat(status)) {
-    const msg =
-      status === "setup_required" || status === "provisioning"
+    const msg = role === "growth_partner"
+      ? status === "setup_required" || status === "provisioning"
+        ? "Your AI Growth Partner is still being set up. You'll be notified when it's ready."
+        : "Your AI Growth Partner is offline right now. Please try again shortly."
+      : status === "setup_required" || status === "provisioning"
         ? `${roleName} is still being set up by the iAcquire team. You'll be notified when it's ready.`
         : `${roleName} is offline right now. Please try again shortly.`;
     throw new AppError("agent_unavailable", msg);
@@ -2573,6 +2966,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || workforceChatRefusal(role, content, displayName)
       || explicitlyAddressedWorkforceRole(role, content)
       || parseWorkforceChatCrmIntent(role, content).kind !== "none"
+      || parseWorkforceChatTaskIntent(role, content, { now: new Date(), timeZone: "UTC" }).kind !== "none"
       || parseWorkforceChatCalendarCreateIntent(role, content).kind !== "none"
       || parseWorkforceChatAppointmentPolicyIntent(role, content).kind !== "none"
       || parseWorkforceChatBookingIntent(role, content).kind !== "none"
@@ -2586,6 +2980,7 @@ function isReviewedStepRequest(role: WorkforceRoleKey, content: string, displayN
       || parseWorkforceChatScheduleIntent(role, content).kind !== "none"
       || parseNamedWorkforceHandoff(role, content)
       || ((role === "lead_hunter" || role === "growth_partner") && parseResearchAssignment(content))
+      || parseWorkforceChatReadIntent(role, content, { now: new Date(), timeZone: "UTC" }).kind !== "none"
       || parseWorkforceChatAssignment(role, content),
   );
 }
@@ -2606,6 +3001,10 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       [ctx.org.orgId],
     ));
     if (rows[0]) input = { ...input, agentRole: "growth_partner" };
+  }
+  const submittedContent = (input.content ?? "").trim();
+  if (input.agentRole === "growth_partner" && !input.regenerateMessageId && submittedContent && redactSecrets(submittedContent) !== submittedContent) {
+    throw new AppError("invalid_input", "This message looks like it contains a password, token, API key, or connection string. Remove it and resend; it was not saved or sent.");
   }
   const inferenceOnly = input.inferenceOnly === true;
   if (input.agentRole === "growth_partner" && inferenceOnly) {
@@ -2814,12 +3213,12 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
           if (memoryCommand.kind === "remember") {
             const saved = await rememberGrowthPartnerMemoryFromChat(ctx, memoryCommand.content, prepared.userMessageId!);
             content = saved.duplicate
-              ? "That note is already in the AI Growth Partner's workspace memory. You can review, correct or remove it in Partner Controls. This app-owned memory is separate from Hermes runtime memory."
-              : "Saved that note to the AI Growth Partner's workspace memory. You can review, correct or remove it in Partner Controls. This app-owned memory is separate from Hermes runtime memory.";
+              ? "That note is already in the AI Growth Partner's workspace memory. You can review, correct or remove it on the AI Growth Partner page. This app-owned memory is separate from the connected runtime's memory."
+              : "Saved that note to the AI Growth Partner's workspace memory. You can review, correct or remove it on the AI Growth Partner page. This app-owned memory is separate from the connected runtime's memory.";
           } else {
             const removed = await forgetGrowthPartnerMemoryFromChat(ctx, memoryCommand.content);
             content = removed.deleted
-              ? "Removed the matching note from AI Growth Partner workspace memory. Its original message remains in the permanent conversation. Hermes runtime memory is separate."
+              ? "Removed the matching note from AI Growth Partner workspace memory. Its original message remains in the Permanent Conversation. Connected runtime memory is separate."
               : "No full saved note matched, so nothing was removed. Use “Forget:” followed by the complete saved note.";
           }
         } catch (error) {
@@ -2906,6 +3305,17 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       conversationId: prepared.conversationId,
       userMessageId: prepared.userMessageId,
       intent: crmIntent,
+    });
+  }
+  const taskIntent = !input.regenerateMessageId && !namedOtherRole
+    ? parseWorkforceChatTaskIntent(input.agentRole, prepared.userContent, { now: new Date(), timeZone: ctx.org.timezone })
+    : { kind: "none" as const };
+  if (taskIntent.kind !== "none") {
+    return handleChatTaskIntent(ctx, {
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      userMessageId: prepared.userMessageId,
+      intent: taskIntent,
     });
   }
   const appointmentPolicyIntent = !input.regenerateMessageId && !namedOtherRole
@@ -3217,6 +3627,24 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
     return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: created.jobId };
   }
 
+  // Deterministic Growth Partner reads return persisted workspace facts in this same turn. This
+  // stays ahead of the reviewed-job assignment parser so read questions never create a job.
+  const readIntent = !input.regenerateMessageId && !namedOtherRole && !refusal
+    ? parseWorkforceChatReadIntent(input.agentRole, prepared.userContent, { now: new Date(), timeZone: ctx.org.timezone })
+    : { kind: "none" as const };
+  if (readIntent.kind !== "none" && prepared.userMessageId) {
+    const result = await runChatReadIntent(ctx, agent, readIntent);
+    const assistantMessageId = await persistChatAssistantMessage({
+      orgId: ctx.org.orgId,
+      userId: ctx.user.id,
+      agentId: agent.id,
+      conversationId: prepared.conversationId,
+      content: result.content,
+      evidence: result.evidence,
+    });
+    return { conversationId: prepared.conversationId, userMessageId: prepared.userMessageId, assistantMessageId, runId: null, jobId: null };
+  }
+
   // Clear, read-only role requests use the reviewed native job handlers instead of asking a
   // language model to claim that it inspected business data. The created job is exact and the
   // worker kick below names only that job; it never enables or drains the shared queue.
@@ -3226,7 +3654,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
   if (assignment) {
     const definition = capabilityDefinition(assignment.capability);
     if (!definition || !definition.allowedRoles.includes(input.agentRole)) {
-      throw new AppError("forbidden", "This employee cannot run that review.");
+      throw new AppError("forbidden", input.agentRole === "growth_partner" ? "The AI Growth Partner cannot run that review." : "This employee cannot run that review.");
     }
     if (![definition.requiredPermission, ...(definition.additionalPermissions ?? [])].every((permission) => ctx.can(permission))) {
       const assistantMessageId = await persistChatAssistantMessage({
@@ -3323,7 +3751,7 @@ export async function sendChatMessage(ctx: OrgContext, input: SendInput): Promis
       instructions = capabilityContext.instructions;
     }
     const conn = await loadConnection(db, agent.id);
-    if (!conn) throw new AppError("agent_unavailable", "This employee isn't connected yet.");
+    if (!conn) throw new AppError("agent_unavailable", input.agentRole === "growth_partner" ? "Your AI Growth Partner isn't connected yet." : "This employee isn't connected yet.");
     const { rows: msg } = await db.query<{ id: string }>(
       "insert into chat_messages (conversation_id, org_id, role, content, status, evidence) values ($1, $2, 'assistant', '', 'streaming', $3::jsonb) returning id",
       [prepared.conversationId, ctx.org.orgId, JSON.stringify(modelEvidence)],
@@ -3458,12 +3886,28 @@ interface ExecuteRunInput {
 const FRIENDLY_FAILURE: Record<string, string> = {
   start_failed: "The employee couldn't start working on this. Please try again.",
   inference_only_unavailable: "The restricted DeepSeek Chat check couldn't finish. No tools or business actions were run.",
-  connection_lost: "The connection to your AI employee dropped before it finished.",
+  connection_lost: "The connection to the previous role profile dropped before it finished.",
   timeout: "This took longer than expected, so it was stopped.",
-  run_failed: "Your AI employee couldn't finish this request.",
+  run_failed: "The previous role profile couldn't finish this request.",
   interrupted: "The AI service restarted while answering. Please try again.",
   stream_ended: "The response ended unexpectedly.",
 };
+
+export function friendlyChatFailure(errorCode: string, agentRole: WorkforceRoleKey): string {
+  if (agentRole === "growth_partner") {
+    const partnerFailure: Record<string, string> = {
+      start_failed: "Your AI Growth Partner couldn't start working on this. Please try again.",
+      connection_lost: "The connection to your AI Growth Partner dropped before it finished.",
+      run_failed: "Your AI Growth Partner couldn't finish this request.",
+    };
+    return partnerFailure[errorCode] ?? FRIENDLY_FAILURE[errorCode] ?? FRIENDLY_FAILURE.run_failed;
+  }
+  return FRIENDLY_FAILURE[errorCode] ?? FRIENDLY_FAILURE.run_failed;
+}
+
+export function approvalRequestedBody(agentRole: WorkforceRoleKey): string {
+  return agentRole === "growth_partner" ? "Your AI Growth Partner is waiting for your approval." : "A previous role profile is waiting for approval.";
+}
 
 async function safeDb(fn: (db: Queryable) => Promise<unknown>) {
   try {
@@ -3528,7 +3972,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
           r.runId,
           status,
           opts.errorCode ?? null,
-          opts.errorCode ? FRIENDLY_FAILURE[opts.errorCode] ?? null : null,
+          opts.errorCode ? friendlyChatFailure(opts.errorCode, r.agentRole) : null,
           opts.usage?.inputTokens ?? null,
           opts.usage?.outputTokens ?? null,
           opts.usage?.totalTokens ?? null,
@@ -3554,7 +3998,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
       publish(r.runId, {
         type: "error",
         code: opts.errorCode ?? "run_failed",
-        message: FRIENDLY_FAILURE[opts.errorCode ?? "run_failed"] ?? FRIENDLY_FAILURE.run_failed,
+        message: friendlyChatFailure(opts.errorCode ?? "run_failed", r.agentRole),
         retryable: true,
       });
   };
@@ -3680,7 +4124,17 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
   try {
     let startedRunId = "";
     try {
-      const started = await startAgentRun(r.agentId, r.orgId, r.conn, r.request, { expectedConfigVersionId: r.configVersionId });
+      const growthPartnerRun = r.agentRole === "growth_partner" && r.conn.orgKind === "client";
+      const request: StartRunInput = growthPartnerRun ? {
+        input: redactSecrets(r.request.input),
+        instructions: r.request.instructions,
+        conversationHistory: r.request.conversationHistory?.map((turn) => ({ ...turn, content: redactSecrets(turn.content) })),
+        idempotencyKey: r.request.idempotencyKey,
+      } : r.request;
+      const started = await startAgentRun(r.agentId, r.orgId, r.conn, request, {
+        expectedConfigVersionId: r.configVersionId,
+        ...(growthPartnerRun ? { toolScope: "no_tools" as const } : {}),
+      });
       startedRunId = started.runId;
       hermesRunId = startedRunId;
     } catch (err) {
@@ -3778,7 +4232,7 @@ export async function executeRun(r: ExecuteRunInput): Promise<void> {
                 kind: "approval_requested",
                 severity: "warning",
                 title,
-                body: "An AI employee is waiting for approval.",
+                body: approvalRequestedBody(r.agentRole),
                 link: "/approvals",
               });
             }

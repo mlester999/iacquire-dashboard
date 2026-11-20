@@ -6,6 +6,7 @@ import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { requireAgencyOrThrow, requireAgencyOrgAccessOrThrow, requireAgencyOrgPermissionOrThrow, requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
+import { requireFreshUserOrThrow } from "@/server/auth/session";
 import {
   assignStaff,
   billingSchema,
@@ -38,6 +39,12 @@ import { createInvitation } from "@/server/auth/service";
 import { copyAgencyUserPermissions, updateAgencyTeamMember, updateAgencyUserPermission, updateAgencyUserPermissions } from "@/server/admin/team";
 import { AGENCY_TEAM_MANAGED_PERMISSIONS, isAgencyTeamPermission, type AgencyPermissionOverrides, type AgencyTeamPermission } from "@/lib/permissions";
 import { acknowledgeInternalFullCapabilities, resetHermesToolPolicy, saveHermesToolPolicy, type HermesBlockableToolset, type HermesPolicyCapability } from "@/server/workforce/tool-policies";
+
+async function requireFreshSuperAdmin() {
+  const user = await requireFreshUserOrThrow();
+  if (user.platformRole !== "agency_super_admin") throw new AppError("forbidden", "Super Admin access is required.");
+  return user;
+}
 
 async function agentOrg(agentId: string) {
   const { rows } = await withSystem((db) => db.query<{ org_id: string }>("select org_id from agent_instances where id = $1", [agentId]));
@@ -85,7 +92,7 @@ export async function inviteClientUserAction(orgId: string, email: string, role:
 /** Sends a pending client invitation again with a fresh link; reports whether the email was really delivered. */
 export async function resendInvitationAction(orgId: string, inviteId: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const res = await resendOrgInvitation(admin, orgId, inviteId);
     revalidatePath(`/admin/clients/${orgId}`);
     revalidatePath("/admin/clients");
@@ -101,7 +108,7 @@ function publicDelivery(delivery: { status: string; error?: string | null } | nu
 
 export async function setTenantStatusAction(orgId: string, status: "active" | "suspended", reason?: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await setTenantStatus(admin, orgId, status, reason);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
@@ -113,7 +120,7 @@ export async function setTenantStatusAction(orgId: string, status: "active" | "s
 /** `data` says what the change did for a client workspace (configured, provisioning requested, synchronization queued, requests cancelled); it is null for the internal workspace and demos, which only switch. */
 export async function setAgentEnabledAction(orgId: string, agentId: string, enabled: boolean, reason: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const data = await setAgentEnabled(admin, orgId, agentId, enabled, reason);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const, data };
@@ -124,7 +131,7 @@ export async function setAgentEnabledAction(orgId: string, agentId: string, enab
 
 export async function connectHermesAction(agentId: string, input: { baseUrl?: string; gatewayId?: string; profile: string; apiKey: string }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     if (await agentKind(agentId) === "agency") throw new AppError("forbidden", "Map iAcquire employees from the Internal Workforce page so their existing profile identity is confirmed.");
     const orgId = await agentOrg(agentId);
     await connectHermesProfile({ agentId, ...input, agencyUserId: admin.id });
@@ -140,7 +147,7 @@ export async function connectHermesAction(agentId: string, input: { baseUrl?: st
 
 export async function connectAgencyHermesProfileAction(agentId: string, input: { gatewayId: string; profile: string; apiKey: string; confirmedExistingProfile: boolean }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const health = await connectAgencyHermesProfile(admin, { agentId, ...input });
     revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
@@ -152,7 +159,7 @@ export async function connectAgencyHermesProfileAction(agentId: string, input: {
 
 export async function testAgencyHermesProfileAction(agentId: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const health = await testAgencyHermesProfile(admin, agentId);
     revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
@@ -164,7 +171,7 @@ export async function testAgencyHermesProfileAction(agentId: string) {
 
 export async function getAgencyProfileHistoryAction(agentId: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     return { ok: true as const, data: await getAgencyProfileHistory(admin, agentId) };
   } catch (err) {
     return actionError(err);
@@ -173,7 +180,7 @@ export async function getAgencyProfileHistoryAction(agentId: string) {
 
 export async function reviewAgencyHermesToolsAction(agentId: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     return { ok: true as const, data: await reviewAgencyHermesToolPermissions(admin, agentId) };
   } catch (err) {
     return actionError(err);
@@ -182,7 +189,7 @@ export async function reviewAgencyHermesToolsAction(agentId: string) {
 
 export async function testAllAgencyProfilesAction() {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const result = await testAllAgencyHermesProfiles(admin);
     revalidatePath("/admin/employees");
     revalidatePath("/admin/integrations");
@@ -296,7 +303,7 @@ export async function decideHeldDocumentAction(orgId: string, documentId: string
 
 export async function setGhlMappingAction(orgId: string, input: z.input<typeof ghlMappingSchema>) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const parsed = ghlMappingSchema.safeParse(input);
     if (!parsed.success) throw new AppError("invalid_input", parsed.error.issues[0]?.message ?? "Check the form.");
     await setGhlMapping(admin, orgId, parsed.data);
@@ -331,7 +338,7 @@ export async function syncGhlAction(orgId: string) {
 
 export async function updateUsageLimitsAction(orgId: string, input: z.input<typeof usageLimitsSchema>) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await updateUsageLimits(admin, orgId, input);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
@@ -343,7 +350,7 @@ export async function updateUsageLimitsAction(orgId: string, input: z.input<type
 
 export async function updateBillingAction(orgId: string, input: z.input<typeof billingSchema>) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await updateBilling(admin, orgId, input);
     revalidatePath(`/admin/clients/${orgId}`);
     return { ok: true as const };
@@ -355,7 +362,7 @@ export async function updateBillingAction(orgId: string, input: z.input<typeof b
 
 export async function assignStaffAction(orgId: string, staffUserId: string, assign: boolean, expectedRevision?: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await assignStaff(admin, orgId, staffUserId, assign, expectedRevision);
     revalidatePath(`/admin/clients/${orgId}`);
     revalidatePath(`/admin/team/${staffUserId}`);
@@ -398,7 +405,7 @@ export async function inviteStaffAction(
   permissionOverrides: AgencyPermissionOverrides = {},
 ) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     if (!z.string().email().safeParse(email).success) throw new AppError("invalid_input", "Enter a valid email.");
     if (scopeMode === "all_clients" && platformRole !== "agency_manager") throw new AppError("invalid_input", "Only an Agency Manager can have all-client scope.");
     if (initialClientIds.length > 100 || initialClientIds.some((id) => !z.string().uuid().safeParse(id).success)) throw new AppError("invalid_input", "The selected client list is invalid.");
@@ -424,7 +431,7 @@ export async function updateAgencyTeamMemberAction(input: {
   permissionOverrides?: AgencyPermissionOverrides;
 }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const parsed = z.object({
       userId: z.string().uuid(),
       platformRole: z.enum(["agency_manager", "agency_staff"]),
@@ -453,7 +460,7 @@ export async function setAgencyUserPermissionAction(input: {
   expectedRevision?: string;
 }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const parsed = z.object({ userId: z.string().uuid(), permission: z.string().refine(isAgencyTeamPermission), effect: z.enum(["allow", "deny"]).nullable(), reason: z.string().trim().max(300).optional(), expectedRevision: z.string().regex(/^\d{1,20}$/).optional() }).parse(input);
     await updateAgencyUserPermission(admin, parsed);
     revalidatePath("/admin/team");
@@ -472,7 +479,7 @@ export async function updateAgencyUserPermissionsAction(input: {
   reason?: string;
 }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const parsed = z.object({
       userId: z.string().uuid(),
       permissions: z.record(z.string(), z.enum(["allow", "deny"]).nullable()),
@@ -497,7 +504,7 @@ export async function copyAgencyUserPermissionsAction(input: {
   expectedRevision: string;
 }) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     const parsed = z.object({
       sourceUserId: z.string().uuid(),
       targetUserId: z.string().uuid(),
@@ -578,7 +585,7 @@ export async function acknowledgeInternalHermesCapabilitiesAction(targets: Array
 
 export async function updateAccessRequestAction(id: string, status: "contacted" | "approved" | "declined") {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await withSystem((db) => db.query("update access_requests set status = $2, reviewed_by = $3 where id = $1", [id, status, admin.id]));
     revalidatePath("/admin/requests");
     return { ok: true as const };
@@ -589,7 +596,7 @@ export async function updateAccessRequestAction(id: string, status: "contacted" 
 
 export async function revokeInvitationAction(inviteId: string, orgId?: string) {
   try {
-    const admin = await requireAgencyOrThrow("super_admin");
+    const admin = await requireFreshSuperAdmin();
     await withSystem(async (db) => {
       await db.query("update invitations set revoked_at = now() where id = $1 and accepted_at is null", [inviteId]);
       await recordAudit({ orgId: orgId ?? null, actorUserId: admin.id, actorKind: "agency", action: "team.invitation_revoked", targetType: "invitation", targetId: inviteId, result: "success" }, db);

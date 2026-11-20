@@ -236,7 +236,10 @@ async function hashRowsByKey(db, table, cols, expr, keys = null) {
     from public."${table}" t${keys ? ` where ${expr} = any($2::text[])` : ""}`;
   return q(db, sql, keys ? [cols, keys] : [cols]);
 }
-const ROW_HASHED_TABLES = new Set(["aqi_tutorials", "aqi_tutorial_versions", "agent_roles"]);
+const ROW_HASHED_TABLES = new Set([
+  "aqi_tutorials", "aqi_tutorial_versions", "agent_roles", "service_catalog",
+  "aqi_knowledge_entries", "aqi_suggested_questions", "aqi_contextual_tips",
+]);
 async function snapshot(db) {
   const tables = await listTables(db);
   const counts = await countAll(db, tables);
@@ -254,8 +257,8 @@ async function snapshot(db) {
     const rowHashes = ROW_HASHED_TABLES.has(t)
       ? new Map((await hashRowsByKey(db, t, c, expr)).map((row) => [row.k, row.h]))
       : null;
-    const rowValues = t === "agent_roles"
-      ? new Map((await q(db, `select key::text as k, to_jsonb(t) as row from public.agent_roles t`)).map((row) => [row.k, row.row]))
+    const rowValues = ROW_HASHED_TABLES.has(t)
+      ? new Map((await q(db, `select ${expr} as k, to_jsonb(t) as row from public."${t}" t`)).map((row) => [row.k, row.row]))
       : null;
     snap.set(t, { n: r.n, cols: c, expr, keys: r.keys, h: r.h, rowHashes, rowValues });
   }
@@ -327,6 +330,73 @@ async function verifyKeys(db, snap, allowedChanged = new Map()) {
     }
     const r = await hashRows(db, t, s.cols, s.expr, keys);
     if (r.n !== expected || (ignored.size ? true : r.h !== s.h)) bad.push(`${t}: ${expected} earlier rows, ${r.n} found, ${r.h === s.h ? "same" : "different"} content`);
+  }
+  return bad;
+}
+
+// A rollback that restores stored catalog copy fires the existing touch trigger. Verify the
+// original row contents exactly while allowing only the catalog's updated_at to reflect rollback.
+async function verifyWholeIgnoringColumns(db, snap, ignoredColumnsByTable) {
+  const ignoredTables = new Set(ignoredColumnsByTable.keys());
+  const ordinary = new Map([...snap].filter(([table]) => !ignoredTables.has(table)));
+  const bad = await verifyWhole(db, ordinary);
+  for (const [table, ignoredColumns] of ignoredColumnsByTable) {
+    const before = snap.get(table);
+    if (!before?.rowValues) {
+      bad.push(`${table}: the pre-migration row values were not captured for a field-level rollback check`);
+      continue;
+    }
+    const rows = await q(db, `select ${before.expr} as k, (to_jsonb(t) - $1::text[]) as row from public."${table}" t`, [[...ignoredColumns]]);
+    const current = new Map(rows.map((row) => [row.k, row.row]));
+    if (current.size !== before.n) {
+      bad.push(`${table}: ${before.n} rows before, ${current.size} now`);
+      continue;
+    }
+    for (const [key, savedRow] of before.rowValues) {
+      const currentRow = current.get(key);
+      if (!currentRow) {
+        bad.push(`${table}: an original row is missing (${key})`);
+        break;
+      }
+      const expectedRow = { ...savedRow };
+      for (const column of ignoredColumns) delete expectedRow[column];
+      if (stableJson(currentRow) !== stableJson(expectedRow)) {
+        bad.push(`${table}: an original row differs outside ${[...ignoredColumns].join(", ")} (${savedRow.slug ?? key})`);
+        break;
+      }
+    }
+  }
+  return bad;
+}
+
+async function verifyKeysIgnoringColumns(db, snap, ignoredColumnsByTable, allowedChanged = new Map()) {
+  const ignoredTables = new Set(ignoredColumnsByTable.keys());
+  const ordinary = new Map([...snap].filter(([table]) => !ignoredTables.has(table)));
+  const bad = await verifyKeys(db, ordinary, allowedChanged);
+  for (const [table, ignoredColumns] of ignoredColumnsByTable) {
+    const before = snap.get(table);
+    if (!before?.rowValues) {
+      bad.push(`${table}: the baseline row values were not captured for a field-level comparison`);
+      continue;
+    }
+    const allowed = new Set([...(allowedChanged.get(table) ?? new Set())].filter((key) => before.keys.includes(key)));
+    const keys = before.keys.filter((key) => !allowed.has(key));
+    if (!keys.length) continue;
+    const rows = await q(db, `select ${before.expr} as k, (to_jsonb(t) - $1::text[]) as row
+      from public."${table}" t where ${before.expr} = any($2::text[])`, [[...ignoredColumns], keys]);
+    const current = new Map(rows.map((row) => [row.k, row.row]));
+    if (current.size !== keys.length) {
+      bad.push(`${table}: ${keys.length} original rows expected outside the migration allowance, ${current.size} found`);
+      continue;
+    }
+    for (const key of keys) {
+      const expectedRow = { ...before.rowValues.get(key) };
+      for (const column of ignoredColumns) delete expectedRow[column];
+      if (stableJson(current.get(key)) !== stableJson(expectedRow)) {
+        bad.push(`${table}: an original row differs outside ${[...ignoredColumns].join(", ")} (${before.rowValues.get(key).slug ?? key})`);
+        break;
+      }
+    }
   }
   return bad;
 }
@@ -433,6 +503,52 @@ const migrationRowAllowance = async (file, db, beforeSnap = null) => {
       changed: new Map([["agent_roles", changed]]),
       growth: new Map(),
       detail: changed.size ? "only crm.request_update was added to the existing Growth Partner default_tools" : "crm.request_update was already present; no role row changed",
+    };
+  }
+  if (prefix(file) === "0139") {
+    if (!beforeSnap) throw new Error("the pre-0139 stored-copy snapshot was not captured");
+    const ownedRows = new Map([
+      ["service_catalog", new Set([
+        "ai-follow-up-appointment-reminders", "crm-pipeline-automation", "reporting-notification-system",
+        "ai-inquiry-appointment-agent", "ai-voice-receptionist", "customer-support-ai-assistant", "managed-maintenance",
+      ])],
+      ["aqi_knowledge_entries", new Set([
+        "What iAcquireOS is", "AI employees", "Employee instructions and knowledge", "Chat with an AI employee",
+        "Knowledge Center", "Integrations", "AQi is not an administrator",
+      ])],
+      ["aqi_suggested_questions", new Set([
+        "How do I manage my AI employees?", "How do I change an employee's instructions?",
+      ])],
+      ["aqi_contextual_tips", new Set(["workforce-help"])],
+    ]);
+    const changed = new Map();
+    for (const [table, ownedValues] of ownedRows) {
+      const before = beforeSnap.get(table);
+      if (!before?.rowHashes || !before?.rowValues) throw new Error(`the pre-0139 ${table} rows were not captured`);
+      const afterHashes = new Map((await hashRowsByKey(db, table, before.cols, before.expr)).map((row) => [row.k, row.h]));
+      const changedKeys = [...before.rowHashes]
+        .filter(([key, hash]) => afterHashes.get(key) !== hash)
+        .map(([key]) => key);
+      const ownedKeys = new Set([...before.rowValues]
+        .filter(([, row]) => ownedValues.has(table === "service_catalog" ? row.slug : table === "aqi_contextual_tips" ? row.slug : table === "aqi_suggested_questions" ? row.question : row.title))
+        .map(([key]) => key));
+      const unexpected = changedKeys.filter((key) => !ownedKeys.has(key));
+      if (unexpected.length) throw new Error(`0139 changed an unowned row in ${table}`);
+      if (changedKeys.length) changed.set(table, new Set(changedKeys));
+    }
+    const growth = new Map();
+    for (const [table, expected] of [["aqi_knowledge_entries", 4], ["aqi_suggested_questions", 3]]) {
+      const beforeCount = beforeSnap.get(table)?.n;
+      if (typeof beforeCount !== "number") throw new Error(`the pre-0139 ${table} row count was not captured`);
+      const afterCount = await one(db, `select count(*)::int as n from public."${table}"`);
+      const actual = afterCount.n - beforeCount;
+      if (actual !== expected) throw new Error(`0139 added ${actual} ${table} rows; expected exactly ${expected}`);
+      growth.set(table, expected);
+    }
+    return {
+      changed,
+      growth,
+      detail: "0139 changed only its seven catalog rows, seven seeded AQi knowledge rows, two seeded AQi questions and workforce-help tip; exactly four AQi knowledge entries and three suggestions were added",
     };
   }
   if (prefix(file) === "0131") {
@@ -827,6 +943,36 @@ CLEAN["0083_unified_inbox"] = {
   },
   // The rollback does not refuse for the new columns of conversations and messages (their rows stay, the columns go): the seed rows are removed afterwards.
   rest: (db) => db.query("delete from contacts where display_name like 'Seed-0083 %'"),
+};
+// 0140 backfills older synthetic SMS and WhatsApp messages. Capture their exact
+// IDs before adding the new proof fixtures. The reverse rehearsal preserves those
+// older rows and clears only the column that is about to be dropped.
+SEEDS["0140_message_sender_verification"] = async (db, ctx) => {
+  const orgIds = Object.values(ctx.orgs).map((org) => org.id);
+  const backfilled = await q(db, "select id from conversation_messages where org_id = any($1::uuid[]) and sender_verified", [orgIds]);
+  const insertedIds = [];
+  await forOrgs(ctx, async (org) => {
+    const conversation = await one(db, "select id from conversations where org_id = $1 and ai_pause_reason = 'Rehearsal pause' and channel = 'sms' limit 1", [org]);
+    if (!conversation) throw new Error("0140 rehearsal requires the synthetic SMS conversation seeded by 0083");
+    const message = await one(db,
+      `insert into conversation_messages (org_id, conversation_id, direction, author_kind, body, status, sender_verified, dedupe_key)
+       values ($1, $2, 'inbound', 'contact', 'Rehearsal message sender proof', 'received', true, 'rehearsal-0140-sender-proof')
+       returning id`,
+      [org, conversation.id],
+    );
+    insertedIds.push(message.id);
+  });
+  ctx.senderProofFixture = { backfilledIds: backfilled.map((row) => row.id), insertedIds };
+};
+CLEAN["0140_message_sender_verification"] = {
+  guard: async (db, ctx) => {
+    const fixture = ctx.senderProofFixture;
+    if (!fixture) throw new Error("0140 sender proof rehearsal fixture was not recorded");
+    await db.transaction(async (tx) => {
+      await tx.query("delete from conversation_messages where id = any($1::uuid[])", [fixture.insertedIds]);
+      await tx.query("update conversation_messages set sender_verified = false where id = any($1::uuid[]) and sender_verified", [fixture.backfilledIds]);
+    });
+  },
 };
 SEEDS["0085_missed_call_recovery"] = async (db, ctx) => {
   await db.query("insert into missed_call_policies (org_id, enabled, mode, activated_at, activated_by) values ($1, true, 'assisted', now(), $2)", [ctx.orgs.a.id, ctx.users.ownerA]);
@@ -1893,12 +2039,16 @@ async function runBCD() {
   const top = cur;
   // 0081 only alters two policies and 0082 adds columns and an index: neither has a data guard. A newer migration without seed data here has nothing to refuse for.
   const REFUSES = new Map(HISTORY.map((f) => [name(f), !["0081", "0082"].includes(prefix(f)) && Boolean(SEEDS[name(f)])]));
-  // 0120 owns the partner tables; 0121 adds a foreign key from the canonical conversation. Its
-  // rollback must run first. Trying 0120 alone at the current head should fail for that dependency,
-  // while D2 below proves the supported reverse order returns to the exact prior schema.
+  // Later migrations add foreign keys to the Partner foundation and owner review plans.
+  // D1 checks their isolated rollback at the full head and D2 verifies the supported reverse order.
+  const hasMigrationPreparations = HISTORY.some((file) => prefix(file) === "0144");
   const OUT_OF_ORDER_DEPENDENCY = new Map([
-    ["0120", /cannot drop table ai_growth_partners because other objects depend on it/i],
+    ["0120", hasMigrationPreparations
+      ? /^cannot drop table ai_growth_partner_versions because other objects depend on it$/i
+      : /^cannot drop table ai_growth_partners because other objects depend on it$/i],
     ["0131", /Refusing to roll back 0131: tutorial .* changed after the migration/i],
+    ["0142", /cannot drop table ai_growth_partner_migration_plans because other objects depend on it/i],
+    ["0143", /cannot drop table workspace_oauth_connections because other objects depend on it/i],
   ]);
   const refusedNames = [];
   for (const file of HISTORY) {
@@ -1910,16 +2060,19 @@ async function runBCD() {
     const sql = rollbackSql(file);
     const res = await throwaway(db, (tx) => attempt(tx, sql));
     const refused = !res.ok && /Rollback refused/.test(res.message);
-    const dependency = OUT_OF_ORDER_DEPENDENCY.get(prefix(file));
+    const version = prefix(file);
+    const dependency = OUT_OF_ORDER_DEPENDENCY.get(version);
     const expectedOutOfOrder = !res.ok && Boolean(dependency?.test(res.message));
-    if (expectedOutOfOrder) finding("D", `${v}: correctly blocked as out of order while its 0121 dependent remains; the supported reverse-order rollback is verified below`);
+    if (hasMigrationPreparations && (version === "0120" || version === "0142") && !expectedOutOfOrder) {
+      fail("D", `${v}: expected a 0144 foreign key to block an isolated rollback at the full head (${res.ok ? "rollback succeeded" : clip(res.message, 300)})`);
+    } else if (expectedOutOfOrder) finding("D", `${v}: correctly blocked at the full schema head; the supported reverse-order rollback is verified below`);
     else if (!res.ok && !refused) fail("D", `${v}: the rollback failed for another reason on the full database: ${clip(res.message, 300)}`);
     else if (REFUSES.get(v) && !refused) fail("D", `${v}: the rollback ran on a database that holds the feature's data (it must refuse)`);
     else if (refused) {
       refusedNames.push(prefix(file));
       finding("D", `${v}: refused on the full database ("${clip(res.message.replace(/^.*Rollback refused:\s*/, ""), 120)}")`);
     } else {
-      finding("D", `${v}: no data guard, so it ran (in the throwaway transaction); it carries none by design`);
+      finding("D", `${v}: ran in the throwaway transaction on the synthetic data without triggering a refusal`);
     }
   }
   const afterRefusals = await fingerprint(db);
@@ -1932,6 +2085,8 @@ async function runBCD() {
   // ----- D2: newest first, the guarded data removed, the rollback run, the schema compared with the one recorded before the migration -----
   const noteRisk = [];
   const EVENTS_POLICY = "policy|public.ai_work_events:ai_work_events_select:";
+  const storedCopyRollbackColumns = new Map([["service_catalog", new Set(["updated_at"])]]);
+  let storedCopyRollbackApplied = false;
   let carried = null;
   const order = [...HISTORY].reverse();
   for (const file of order) {
@@ -1977,6 +2132,7 @@ async function runBCD() {
       await forget(db, file);
       if (restore) await restore();
       if (clean.rest) await clean.rest(db, ctx);
+      if (prefix(file) === "0139") storedCopyRollbackApplied = true;
       const nowFp = await fingerprint(db);
       let dd = diff(st.before.fp, nowFp);
       let tolerated = false;
@@ -1999,11 +2155,14 @@ async function runBCD() {
       if (JSON.stringify(nowKinds) !== JSON.stringify(st.before.kinds)) problems.push("the notification kinds differ from before the migration");
       if (nowBuckets.join(",") !== st.before.buckets.join(",")) problems.push(`the storage buckets differ from before the migration (${nowBuckets.join(",")} vs ${st.before.buckets.join(",")})`);
       if ([...st.before.perms].some((p) => !nowPerms.has(p)) || [...nowPerms].some((p) => !st.before.perms.has(p))) problems.push("the role permissions differ from before the migration");
-      const moved = await verifyWhole(db, st.before.snap);
+      const moved = storedCopyRollbackApplied
+        ? await verifyWholeIgnoringColumns(db, st.before.snap, storedCopyRollbackColumns)
+        : await verifyWhole(db, st.before.snap);
       for (const m of moved) problems.push(`data: ${m}`);
       if (SEEDS[v] && !CLEAN[v]) problems.push("(its data is seeded here but no cleaning rule is known for it)");
       for (const p of problems) fail("D", `${v}: ${p}`);
-      if (!problems.length) finding("D", `${v}: rolled back in ${Date.now() - t} ms to exactly the schema recorded before it${tolerated ? " except the one documented policy text (see the note)" : ""} (${nowFp.size} facts), and all ${rowsIn(st.before.snap)} earlier rows are unchanged${dropRows.length ? `; unused configuration dropped with its tables: ${dropRows.join(", ")}` : ""}`);
+      if (!problems.length) finding("D", `${v}: rolled back in ${Date.now() - t} ms to exactly the schema recorded before it${tolerated ? " except the one documented policy text (see the note)" : ""} (${nowFp.size} facts), and all ${rowsIn(st.before.snap)} earlier rows are unchanged${storedCopyRollbackApplied ? " apart from service_catalog.updated_at, refreshed by its existing touch trigger while 0139 restored the original copy" : ""}${dropRows.length ? `; unused configuration dropped with its tables: ${dropRows.join(", ")}` : ""}`);
+      if (prefix(file) === "0139" && !problems.length) note("D", "0139 stored-copy rollback restores every service_catalog value except updated_at, which the existing service_catalog_touch trigger refreshes; subsequent rollback checks continue to compare every other field and row exactly.");
       if (atRisk.length) {
         const byTable = new Map();
         for (const [tb, col, rows] of atRisk) byTable.set(tb, [...(byTable.get(tb) ?? []), `${col} (${rows})`]);
@@ -2014,7 +2173,9 @@ async function runBCD() {
   for (const n of noteRisk) note("D", n);
   const baseDiff = diff(baseline.fp, await fingerprint(db));
   if (!same(baseDiff)) fail("D", `after the last rollback the schema is not the baseline: ${showDiff(baseDiff)}`);
-  const baseMoved = await verifyKeys(db, baseline.snap);
+  const baseMoved = storedCopyRollbackApplied
+    ? await verifyKeysIgnoringColumns(db, baseline.snap, storedCopyRollbackColumns)
+    : await verifyKeys(db, baseline.snap);
   for (const m of baseMoved) fail("D", `after the last rollback an original row changed: ${m}`);
   const ledgerNow = (await q(db, "select version from schema_migrations order by version")).map((r) => r.version);
   if (JSON.stringify(ledgerNow) !== JSON.stringify(baseline.ledger)) fail("D", `the ledger after all rollbacks is ${ledgerNow.length} rows, expected the baseline's ${baseline.ledger.length}`);
@@ -2047,15 +2208,27 @@ async function runBCD() {
   }
   const finalAgain = diff(fresh.final, await fingerprint(db));
   if (!same(finalAgain)) fail("D", `after rolling everything back and forward the schema differs from C: ${showDiff(finalAgain)}`);
-  let forwardAllowance = { changed: new Map(), growth: new Map(), detail: "" };
-  try {
-    forwardAllowance = await migrationRowAllowance(files.find((f) => prefix(f) === "0131"), db);
-  } catch (e) {
-    fail("D", `after rolling forward again: ${clip(e.message, 300)}`);
+  const forwardAllowance = { changed: new Map(), growth: new Map(), detail: "" };
+  for (const [allowanceFile, beforeSnap] of [
+    [files.find((f) => prefix(f) === "0131"), null],
+    [files.find((f) => prefix(f) === "0139"), baseline.snap],
+  ]) {
+    try {
+      const allowance = await migrationRowAllowance(allowanceFile, db, beforeSnap);
+      for (const [table, keys] of allowance.changed) {
+        if (!forwardAllowance.changed.has(table)) forwardAllowance.changed.set(table, new Set());
+        for (const key of keys) forwardAllowance.changed.get(table).add(key);
+      }
+    } catch (e) {
+      fail("D", `after rolling forward again: ${clip(e.message, 300)}`);
+    }
   }
   const againMoved = await verifyKeys(db, baseline.snap, forwardAllowance.changed);
   for (const m of againMoved) fail("D", `after rolling back and forward again an original row changed: ${m}`);
-  if (forwardOk && same(finalAgain) && !againMoved.length) finding("D", `applied forward again one at a time: after every step the schema equals the fresh chain, the final schema equals C (${fresh.final.size} facts), original rows are unchanged except the three explicitly versioned AQi tutorials, and each feature accepted its data again (triggers, constraints and policies are alive)`);
+  const refAgain = await referenceData(db, fresh.seeded);
+  const refAgainBad = fresh.seeded.filter((table) => fresh.ref.get(table) !== refAgain.get(table));
+  for (const table of refAgainBad) fail("D", `after rolling back and forward again, reference data of ${table} differs from the fresh chain (${fresh.ref.get(table)} vs ${refAgain.get(table)})`);
+  if (forwardOk && same(finalAgain) && !againMoved.length && !refAgainBad.length) finding("D", `applied forward again one at a time: after every step the schema equals the fresh chain, the final schema equals C (${fresh.final.size} facts), original rows are unchanged except the three versioned AQi tutorials and the explicitly allowed 0139 stored copy, seeded reference data matches the fresh chain, and each feature accepted its data again (triggers, constraints and policies are alive)`);
   const missingRb = HISTORY.filter((f) => !fs.existsSync(rollbackPath(f))).map(name);
   finding("D", `rollbacks present for ${HISTORY.length - missingRb.length} of ${HISTORY.length} migrations from 0077${missingRb.length ? `; MISSING: ${missingRb.join(", ")}` : ""}`);
   result.sections.D.ms = Date.now() - tD;

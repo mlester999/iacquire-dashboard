@@ -7,7 +7,7 @@ import { buildOutcomeNotes } from "@/lib/onboarding/business-profile";
 import { getProfile, updateAiPreferences, updateProfile } from "@/server/settings/service";
 import { updateMessagingSettings } from "@/server/messaging/inbox";
 import { latestOnboardingNotes, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
-import { ctxFor } from "./support/fixtures";
+import { createUser, ctxFor } from "./support/fixtures";
 import { submitRealOnboarding } from "./support/billing";
 
 type Ctx = ReturnType<typeof ctxFor>;
@@ -34,9 +34,9 @@ describe("buildOutcomeNotes", () => {
 
   it("counts employee updates that are waiting for review, never as applied", () => {
     const one = buildOutcomeNotes({ ...base, employees: [{ configStatus: "pending_agency_review" }, { configStatus: "applied" }, { configStatus: "applied" }] });
-    expect(one).toEqual([{ key: "employees.held", message: "1 employee update is waiting for iAcquire's review. Until then, that employee keeps the setup already approved." }]);
+    expect(one).toEqual([{ key: "employees.held", message: "1 retained profile update is waiting for iAcquire's review. Until then, that profile keeps the setup already approved." }]);
     const two = buildOutcomeNotes({ ...base, employees: [{ configStatus: "pending_agency_review" }, { configStatus: "pending_agency_review" }] });
-    expect(two[0].message).toBe("2 employee updates are waiting for iAcquire's review. Until then, those employees keep the setup already approved.");
+    expect(two[0].message).toBe("2 retained profile updates are waiting for iAcquire's review. Until then, those profiles keep the setup already approved.");
   });
 
   it("names a held unified configuration as the AI Growth Partner", () => {
@@ -51,7 +51,7 @@ describe("buildOutcomeNotes", () => {
 
   it("says how many employees were already as the answers say, only when some changed and some did not", () => {
     const some = buildOutcomeNotes({ ...base, employees: [{ configStatus: "unchanged" }, { configStatus: "applied" }, { configStatus: "unchanged" }] });
-    expect(some).toEqual([{ key: "employees.unchanged", message: "2 employees were already set up as your answers say." }]);
+    expect(some).toEqual([{ key: "employees.unchanged", message: "2 retained profiles were already set up as your answers say." }]);
     expect(buildOutcomeNotes({ ...base, employees: [{ configStatus: "unchanged" }] })).toEqual([]);
     expect(keysOf(buildOutcomeNotes({ ...base, reSubmission: false, employees: [{ configStatus: "unchanged" }, { configStatus: "applied" }] }))).toEqual([]);
   });
@@ -76,7 +76,7 @@ describe("buildOutcomeNotes", () => {
     expect(notes).toEqual([
       { key: "profile.kept", message: "Left as edited in Settings: industry and website." },
       { key: "messaging.kept", message: "Left as set in Messaging settings: follow-up style." },
-      { key: "preferences.kept", message: "Left as set in AI preferences: when to ask a human, tone and company rules." },
+      { key: "preferences.kept", message: "Left as set in Growth Partner Settings: when to ask a human, tone and company rules." },
     ]);
   });
 
@@ -112,7 +112,7 @@ describe("what a real re-submission says", () => {
     const out = await resubmit(c.ctx);
     const held = out.employees.filter((e) => e.configStatus === "pending_agency_review");
     expect(held.length).toBeGreaterThan(0);
-    expect(out.notes.find((n) => n.key === "employees.held")?.message).toMatch(new RegExp(`^${held.length} employee updates? (is|are) waiting for iAcquire's review`));
+    expect(out.notes.find((n) => n.key === "employees.held")?.message).toMatch(new RegExp(`^${held.length} retained profile updates? (is|are) waiting for iAcquire's review`));
     expect(await latestOnboardingNotes(c.ctx)).toEqual(out.notes.map((n) => n.message));
   }, 120_000);
 
@@ -125,7 +125,7 @@ describe("what a real re-submission says", () => {
     const changed = out.employees.length - unchanged;
     expect(unchanged).toBeGreaterThan(0);
     expect(changed).toBeGreaterThan(0);
-    expect(out.notes.find((n) => n.key === "employees.unchanged")?.message).toBe(`${unchanged} employee${unchanged === 1 ? " was" : "s were"} already set up as your answers say.`);
+    expect(out.notes.find((n) => n.key === "employees.unchanged")?.message).toBe(`${unchanged} retained profile${unchanged === 1 ? " was" : "s were"} already set up as your answers say.`);
   }, 120_000);
 
   it("says what it left as it was edited in Settings, in Messaging settings and in AI preferences", async () => {
@@ -139,7 +139,7 @@ describe("what a real re-submission says", () => {
     const out = await resubmit(c.ctx);
     expect(out.notes.find((n) => n.key === "profile.kept")?.message).toBe("Left as edited in Settings: industry.");
     expect(out.notes.find((n) => n.key === "messaging.kept")?.message).toBe("Left as set in Messaging settings: follow-up style.");
-    expect(out.notes.find((n) => n.key === "preferences.kept")?.message).toBe("Left as set in AI preferences: when to ask a human.");
+    expect(out.notes.find((n) => n.key === "preferences.kept")?.message).toBe("Left as set in Growth Partner Settings: when to ask a human.");
     // What was kept is really what the workspace holds.
     expect((await rows<{ industry: string }>("select industry from organizations where id = $1", [c.org.id]))[0].industry).toBe("Roofing contractor");
     expect((await rows<{ followup_preset: string }>("select followup_preset from messaging_settings where org_id = $1", [c.org.id]))[0].followup_preset).toBe("custom");
@@ -167,5 +167,19 @@ describe("what a real re-submission says", () => {
     await submitOnboarding(a.ctx);
     expect(await latestOnboardingNotes(a.ctx)).toEqual(["Nothing changed since your last submission, so nothing was updated."]);
     expect(await latestOnboardingNotes(b.ctx)).toEqual(b.result.notes.map((n) => n.message));
+  }, 120_000);
+
+  it("describes the Business Brain outcome that onboarding actually produced", async () => {
+    const agencyAdmin = await createUser({ platformRole: "agency_super_admin" });
+    const c = await submitRealOnboarding({ name: "Brain Outcome Roofing", clearPayment: true, withGrowthPartner: true });
+    const notice = async () => (await rows<{ body: string }>(
+      "select body from notifications where user_id = $1 and org_id = $2 and kind = 'system' order by created_at desc limit 1",
+      [agencyAdmin.id, c.org.id],
+    ))[0]?.body;
+    expect(await notice()).toBe("AI Growth Partner onboarding saved. Its first Business Brain version is active.");
+
+    await save(c.ctx, { "a.description": "We repair residential roofs after storm damage and schedule inspections." });
+    await resubmit(c.ctx);
+    expect(await notice()).toBe("AI Growth Partner onboarding saved. A Business Brain draft is waiting for approval.");
   }, 120_000);
 });

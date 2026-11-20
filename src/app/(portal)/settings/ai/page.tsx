@@ -3,7 +3,7 @@ import { getProfile } from "@/server/settings/service";
 import { AiPrefsForm } from "@/components/settings/settings-forms";
 import { aiPreferencesSchema } from "@/lib/agent-settings";
 
-export const metadata = { title: "AI preferences" };
+export const metadata = { title: "Growth Partner Settings" };
 
 export default async function AiPreferencesPage() {
   const ctx = await requireOrgContext();

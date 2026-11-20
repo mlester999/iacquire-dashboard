@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { Dialog, Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from "@/components/ui/overlays";
-import { CLIENT_NAV } from "@/components/shell/sidebar";
+import { CLIENT_NAV, isNavItemVisible } from "@/components/shell/sidebar";
 import { titleFor } from "@/components/shell/titles";
 import { useLogoutConfirmation } from "@/components/auth/logout-confirmation";
 import { useTheme } from "@/components/providers";
@@ -68,8 +68,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const [search, setSearch] = React.useState("");
   const { resolved, setTheme } = useTheme();
   const title = titleFor(pathname);
-  const hasEnabledLegacyProfile = shell.agents.some((agent) => agent.enabled);
-  const destinations = CLIENT_NAV.filter((n) => (!n.permission || shell.permissions.includes(n.permission)) && (n.href !== "/setup" || shell.setup.visible) && !(n.clientOnly && shell.org.kind !== "client") && !(n.legacyOnly && !hasEnabledLegacyProfile) && !(n.feature && !(shell.features ?? []).includes(n.feature)) && n.label.toLowerCase().includes(search.toLowerCase()));
+  const destinations = CLIENT_NAV.filter((item) => isNavItemVisible(shell, item) && item.label.toLowerCase().includes(search.toLowerCase()));
   React.useEffect(() => {
     const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setNavigationOpen((s) => !s); } };
     document.addEventListener("keydown", key);
@@ -84,7 +83,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/80 backdrop-blur-xl supports-[backdrop-filter]:bg-bg/70">
-      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-1 px-3 sm:gap-2 sm:px-6 lg:px-8">
         <button
           type="button"
           onClick={onOpenMenu}
@@ -93,7 +92,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         >
           <MenuIcon className="size-5" />
         </button>
-        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 text-[12px]"><Link href="/overview" className="hidden max-w-36 truncate text-muted hover:text-ink md:block">{shell.org.name}</Link><ChevronRight className="hidden size-3 text-faint md:block" /><span className="truncate font-medium text-ink">{title}</span></nav>
+        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-2 text-[12px]"><Link href="/overview" className="hidden max-w-36 truncate text-muted hover:text-ink md:block">{shell.org.name}</Link><ChevronRight className="hidden size-3 text-faint md:block" /><span className="line-clamp-2 min-w-0 font-medium leading-tight text-ink [overflow-wrap:anywhere] md:block md:truncate">{title}</span></nav>
 
         <button type="button" onClick={() => { setSearch(""); setNavigationOpen(true); }} aria-label="Search workspace navigation" className="flex size-9 items-center justify-center rounded-xl border border-line bg-surface text-muted hover:text-ink"><Search className="size-4" /></button>
         <button type="button" onClick={() => setTheme(resolved === "light" ? "dark" : "light")} aria-label={`Switch to ${resolved === "light" ? "dark" : "light"} theme`} className="hidden size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 sm:flex">{resolved === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}</button>

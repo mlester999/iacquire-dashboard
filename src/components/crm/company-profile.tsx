@@ -22,20 +22,21 @@ import type { CrmScope } from "@/server/crm/page";
 import { RelativeTime } from "@/components/crm/relative-time";
 
 export function CompanyProfile({
-  scope, detail, timeline, notes, tasks, tags, members, pipelines,
+  scope, detail, timeline, notes, tasks, tags, members, pipelines, initialTab = "activity",
 }: {
   scope: CrmScope;
   detail: CompanyDetail;
   timeline: { items: TimelineItem[]; nextBefore: string | null };
   notes: NoteView[];
   tasks: TaskView[];
+  initialTab?: "activity" | "tasks";
   tags: Array<{ id: string; name: string; color: string }>;
   members: Array<{ id: string; name: string }>;
   pipelines: Array<{ id: string; name: string; isDefault: boolean; stages: Array<{ id: string; name: string }> }>;
 }) {
   const router = useRouter();
   const { run, busy } = useCrmAction();
-  const [tab, setTab] = React.useState("activity");
+  const [tab, setTab] = React.useState<string>(initialTab);
   const [editOpen, setEditOpen] = React.useState(false);
   const [dealOpen, setDealOpen] = React.useState(false);
   const [archiveOpen, setArchiveOpen] = React.useState(false);

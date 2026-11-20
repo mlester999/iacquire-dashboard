@@ -169,10 +169,10 @@ describe("/demo, where a prospect asks", () => {
       expect(markup).toMatch(/aria-label="How you get your demo"/);
       expect((markup.match(/aria-current="step"/g) ?? []).length).toBe(1);
       for (const step of ["Details", "Confirm email", "Demo opens"]) expect(t).toContain(step);
-      // The sample workflow is illustrative; customer-facing actions still require approval.
+      // The sample workflow is illustrative; customer-facing actions follow the visitor's approval rules.
       expect(t).toContain("Sample preview");
       expect(t).toContain("Illustrative only. No prospect is researched or saved here");
-      expect(t).toContain("a customer-facing action follows the required approval");
+      expect(t).toContain("customer-facing actions follow your approval rules");
       // One visitor-facing identity with six integrated capability areas.
       expect(t).toContain("Meet your AI Growth Partner");
       for (const area of DEMO_CAPABILITY_AREAS) expect(t).toContain(area.title);
@@ -468,7 +468,7 @@ describe("/demo/room, the prospect's own demo", () => {
       expect(text(markup), view).not.toMatch(BAD);
       for (const secret of [s.email, id, s.sessionToken, s.token, s.ip]) expect(markup, `${view} ${secret.slice(0, 8)}`).not.toContain(secret);
     }
-    expect(text(await roomPage({ view: "workforce" }))).toContain("One partner. Six connected capabilities.");
+    expect(text(await roomPage({ view: "workforce" }))).toContain("Your AI Growth Partner, from brief to follow-up.");
     expect(text(await roomPage({ view: "nonsense" }))).toMatch(/Meet the AI Growth Partner that could help grow Roomy Rentals ?\./);
     expect(text(await roomPage({ view: "<script>" }))).not.toContain("<script>");
   });

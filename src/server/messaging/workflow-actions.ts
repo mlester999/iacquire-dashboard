@@ -135,14 +135,14 @@ export async function applyConversationAction(db: Queryable, a: ConversationActi
     }
     case "pause_ai": {
       if (a.dryRun) {
-        if (conv.owner_kind !== "ai") return { result: "unchanged", detail: conv.owner_kind === "human" ? "A person is handling this conversation, so the AI isn't replying." : "No AI employee is on this conversation." };
+        if (conv.owner_kind !== "ai") return { result: "unchanged", detail: conv.owner_kind === "human" ? "A person is handling this conversation, so the AI isn't replying." : "This conversation has no AI assignment." };
         if (conv.ai_paused_at) return { result: "unchanged", detail: "AI replies were already paused." };
         return { result: "changed", did: "Paused AI replies.", would: "Would pause AI replies on the conversation." };
       }
       const r = await pauseAiInTx(db, { orgId: a.orgId, conversationId: a.conversationId, actor, userId: null, reason: "Paused by an automation", causedBy: a.causedBy });
       if (r.changed) return { result: "changed", did: "Paused AI replies.", would: "Would pause AI replies on the conversation." };
       if (r.why === "already_paused") return { result: "unchanged", detail: "AI replies were already paused." };
-      return { result: "unchanged", detail: r.why === "human_owner" ? "A person is handling this conversation, so the AI isn't replying." : "No AI employee is on this conversation." };
+      return { result: "unchanged", detail: r.why === "human_owner" ? "A person is handling this conversation, so the AI isn't replying." : "This conversation has no AI assignment." };
     }
   }
 }

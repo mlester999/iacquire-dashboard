@@ -364,11 +364,11 @@ export async function takeOverConversation(ctx: OrgContext, conversationId: stri
  */
 export async function aiResumeProblems(db: Queryable, orgId: string, conv: { ai_agent_id: string | null; channel: string }, conversationId: string): Promise<string[]> {
   const problems: string[] = [];
-  if (!conv.ai_agent_id) problems.push("No AI employee is assigned to this conversation.");
+  if (!conv.ai_agent_id) problems.push("This conversation has no assigned AI profile.");
   else {
     const { rows: agent } = await db.query<{ enabled: boolean; status: string; mode: string; display_name: string }>("select enabled, status, mode, display_name from agent_instances where id = $1 and org_id = $2", [conv.ai_agent_id, orgId]);
     const a = agent[0];
-    if (!a || !a.enabled) problems.push("The AI employee is not included in this workspace.");
+    if (!a || !a.enabled) problems.push("The assigned AI profile is disabled.");
     else {
       if (!isRuntimeOnline(a.status)) problems.push(`${a.display_name} has not passed its connection check.`);
       if (a.mode === "paused") problems.push(`${a.display_name} is paused.`);

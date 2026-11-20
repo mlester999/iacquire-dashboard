@@ -4,6 +4,8 @@ import { adjustCredits, getBalance } from "@/server/billing/ledger";
 import { publishUnitRate } from "@/server/billing/service";
 import { setAgencyPause, setClientPause } from "@/server/automation/controls";
 import { decideApproval } from "@/server/approvals/service";
+import { memberActor } from "@/server/crm/actor";
+import { setContactConsent } from "@/server/crm/contacts";
 import { mergeContacts, redactContact } from "@/server/messaging/contacts";
 import { applyDeliveryEvent, dispatchDue, dispatchMessage, evaluateSend, queueOutbound } from "@/server/messaging/send";
 import { ghlProvider } from "@/server/messaging/provider";
@@ -76,7 +78,7 @@ describe("inbound messages, identity and consent", () => {
     const a = await inbound(m.org.id, { channel: "sms", name: "Kept" });
     const emailAddress = `merge-${Date.now()}@example.test`;
     const b = await inbound(m.org.id, { channel: "email", address: emailAddress, name: "Merged" });
-    await inbound(m.org.id, { channel: "email", address: emailAddress, body: "STOP" });
+    await inbound(m.org.id, { channel: "email", address: emailAddress, body: "STOP", senderVerified: true });
     await expect(mergeContacts(m.ctx("support"), { keptId: a.contactId, mergedId: b.contactId, reason: "Same person per phone call" })).rejects.toThrow(/Only owners and managers/);
     await expect(mergeContacts(m.ctx("manager"), { keptId: a.contactId, mergedId: b.contactId, reason: "x" })).rejects.toThrow(/Record why/);
     await mergeContacts(m.ctx("manager"), { keptId: a.contactId, mergedId: b.contactId, reason: "Same person per phone call" });
@@ -111,14 +113,30 @@ describe("inbound messages, identity and consent", () => {
     const ai = await queueAi(c.conversationId);
     expect(ai).toMatchObject({ status: "blocked", reason: "suppressed" });
     await withSystem((db) => db.query("update conversations set owner_kind = 'human', owner_user_id = $2 where id = $1", [c.conversationId, m.people.sales.id]));
-    await expect(sendHumanReply(m.ctx("sales"), c.conversationId, "Just one more thing")).rejects.toThrow(/opted out/);
+    await expect(sendHumanReply(m.ctx("sales"), c.conversationId, "Just one more thing", { purpose: "service" })).rejects.toThrow(/opted out/);
     const start = await inbound(m.org.id, { channel: "sms", address: c.address, body: "start" });
     expect(start.optOut).toBe("start");
-    await expect(sendHumanReply(m.ctx("sales"), c.conversationId, "Welcome back")).resolves.toMatchObject({ status: "queued" });
+    await expect(sendHumanReply(m.ctx("sales"), c.conversationId, "Welcome back", { purpose: "service" })).resolves.toMatchObject({ status: "queued" });
   });
 });
 
 describe("the send rule chain", () => {
+  it("requires the inbox sender to choose service or marketing before recording a reply", async () => {
+    const c = await inbound(m.org.id);
+    await expect(sendHumanReply(m.ctx("manager"), c.conversationId, "A special offer for you.", { purpose: undefined as never })).rejects.toMatchObject({ code: "invalid_input" });
+    const messages = await withSystem((db) => db.query("select 1 from conversation_messages where conversation_id = $1 and direction = 'outbound'", [c.conversationId]));
+    expect(messages.rows).toHaveLength(0);
+  });
+
+  it("requires marketing consent when an inbox sender classifies a free-form reply as promotional", async () => {
+    const c = await inbound(m.org.id);
+    await expect(sendHumanReply(m.ctx("manager"), c.conversationId, "A special offer for you.", { purpose: "marketing" })).rejects.toThrow(/has not agreed to promotional messages/);
+
+    await setContactConsent(memberActor(m.ctx("owner")), c.contactId, { channel: "sms", purpose: "marketing", status: "granted", evidence: "Customer opted in to promotions." });
+    const queued = await sendHumanReply(m.ctx("manager"), c.conversationId, "A special offer for you.", { purpose: "marketing" });
+    expect(await messageRow(queued.messageId)).toMatchObject({ status: "queued", purpose: "marketing" });
+  });
+
   it("queues an allowed AI reply, bills wholesale plus the approved 30%, and never reports delivered on its own", async () => {
     const c = await inbound(m.org.id);
     const before = await balance();
@@ -163,6 +181,23 @@ describe("the send rule chain", () => {
     expect((await messageRow(q.messageId)).status).toBe("queued");
     expect(await dispatchMessage(q.messageId, { provider })).toEqual({ status: "sent" });
     expect(calls).toHaveLength(1);
+  });
+
+  it("rechecks a marketing draft against marketing consent when a person approves it", async () => {
+    const org = await messagingOrg({ name: "Marketing Draft Consent Co", autonomous: false });
+    const c = await inbound(org.org.id);
+    const owner = memberActor(org.ctx("owner"));
+    await setContactConsent(owner, c.contactId, { channel: "sms", purpose: "marketing", status: "granted", evidence: "Customer opted in on the website." });
+
+    const q = await queueAi(c.conversationId, "We have a seasonal offer for you.", { purpose: "marketing" }, org);
+    expect(q.status).toBe("draft");
+    const message = await messageRow(q.messageId);
+    expect(message.purpose).toBe("marketing");
+    await setContactConsent(owner, c.contactId, { channel: "sms", purpose: "marketing", status: "revoked", evidence: "Customer withdrew the offer opt-in." });
+
+    await decideApproval(org.ctx("owner"), message.approval_id as string, "approve");
+
+    expect(await messageRow(q.messageId)).toMatchObject({ status: "blocked", blocked_reason: "no_consent", purpose: "marketing" });
   });
 
   it("discards a draft when the approval is rejected, and a second approval cannot revive it", async () => {
@@ -218,7 +253,7 @@ describe("the send rule chain", () => {
     expect(await queueAi(c.conversationId)).toMatchObject({ status: "blocked", reason: "human_owner" });
     expect(calls).toHaveLength(0);
     // The person's own reply goes out.
-    const reply = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hi, it's Mia. Thursday works.");
+    const reply = await sendHumanReply(m.ctx("manager"), c.conversationId, "Hi, it's Mia. Thursday works.", { purpose: "service" });
     expect(await dispatchMessage(reply.messageId, { provider })).toEqual({ status: "sent" });
     expect(calls).toHaveLength(1);
   });
@@ -247,6 +282,16 @@ describe("the send rule chain", () => {
     expect(await messageRow(q.messageId)).toMatchObject({ blocked_reason: "automation_paused" });
     await setClientPause(m.ctx("manager"), { scope: "messaging", paused: false });
     expect(await queueAi(c.conversationId)).toMatchObject({ status: "queued" });
+  });
+
+  it("keeps a person's explicitly classified inbox reply available during a customer-messaging pause", async () => {
+    const c = await inbound(m.org.id);
+    await setClientPause(m.ctx("manager"), { scope: "messaging", paused: true, reason: "Reviewing automatic replies" });
+    try {
+      await expect(sendHumanReply(m.ctx("manager"), c.conversationId, "I can help with your question.", { purpose: "service" })).resolves.toMatchObject({ status: "queued" });
+    } finally {
+      await setClientPause(m.ctx("manager"), { scope: "messaging", paused: false });
+    }
   });
 
   it("applies an agency emergency pause at send time, and the pause survives a fresh read", async () => {
@@ -293,7 +338,7 @@ describe("the send rule chain", () => {
     // A person's own reply is refused with the reason when there is no credit.
     const poor = await messagingOrg({ name: "Zero Credit Co", credits: 0 });
     const pc = await inbound(poor.org.id);
-    await expect(sendHumanReply(poor.ctx("manager"), pc.conversationId, "Hi")).rejects.toThrow(/service credits/);
+    await expect(sendHumanReply(poor.ctx("manager"), pc.conversationId, "Hi", { purpose: "service" })).rejects.toThrow(/service credits/);
   });
 
   it("refuses a channel that has no published usage rate, because it could not be billed", async () => {

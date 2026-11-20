@@ -10,6 +10,7 @@ import { applyRolePlanChange, PLAN_REMOVED_DETAIL } from "@/server/onboarding/em
 import { setAgentEnabled, setTenantStatus } from "@/server/admin/tenants";
 import { allocateClientCredentialId, registerClientBusinessCredential, verifyClientCredential, formatClientCredential, hashClientSecret, generateClientCredentialSecret } from "@/server/workforce/hermes-client-business-credential";
 import { createConfigVersion } from "@/server/workforce/service";
+import { ensureGrowthPartnerIdentity } from "@/server/ai-growth-partner/service";
 import { agencyUser, agentId, createOrg, createUser, addMember } from "./support/fixtures";
 import { clearSetupPayment, submitRealOnboarding } from "./support/billing";
 
@@ -177,6 +178,18 @@ describe("removing an employee from the plan", () => {
   }, 120_000);
 });
 
+describe("plan changes in Growth Partner workspaces", () => {
+  it("skips retained-role plan notices when the workspace has an AI Growth Partner", async () => {
+    const c = await clientWithoutSales("Partner Plan Notice Co");
+    await ensureGrowthPartnerIdentity(c.ctx);
+
+    await setAgentEnabled(admin, c.org.id, c.sales, false, "Removed from the partner workspace plan");
+    await setAgentEnabled(admin, c.org.id, c.sales, true, "Restored to the partner workspace plan");
+
+    expect(await notices(c.owner.id, "%Sales Assistant%")).toHaveLength(0);
+  }, 120_000);
+});
+
 describe("adding an employee back", () => {
   it("can open a new setup request after the plan's own cancellation, but never reopens one an agency person cancelled", async () => {
     const c = await clientWithoutSales("Again Roofing Co");
@@ -321,7 +334,10 @@ describe("what a plan change refuses, and writes nothing for", () => {
       await db.query("alter table agent_instances enable trigger agent_instances_guard");
     });
     const before = await snapshot(c.org.id);
-    await expect(setAgentEnabled(admin, c.org.id, c.sales, true, REASON)).rejects.toThrow(/iAcquire's own profiles/);
+    await expect(setAgentEnabled(admin, c.org.id, c.sales, true, REASON)).rejects.toMatchObject({
+      code: "conflict",
+      message: "iAcquire manages this profile separately from the workspace plan.",
+    });
     expect(await snapshot(c.org.id)).toEqual(before);
     await withSystem((db) => db.query("update agent_instances set hermes_profile = null, hermes_base_url = null where id = $1", [c.sales]));
   }, 120_000);

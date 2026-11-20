@@ -21,6 +21,7 @@ import type { ProfileKey, ProfileValues } from "@/lib/onboarding/business-profil
 import { isRuntimeOnline } from "@/lib/employee-runtime";
 import { AGENT_ROLE_KEYS, workforceIdentityLabel, type AgentRoleKey, type AgentStatus } from "@/lib/agents";
 import { scanInstructionText } from "@/lib/instruction-risk";
+import { env } from "@/server/env";
 
 const personaSettingsSchema = z.record(z.string().min(1).max(120), z.unknown());
 const draftInputSchema = z.object({
@@ -694,52 +695,63 @@ export async function activateGrowthPartnerBusinessBrainVersion(ctx: OrgContext,
   if (!ctx.can("agents.configure")) throw new AppError("forbidden", "Only workspace owners and admins can activate a Business Brain version.");
   const input = activateVersionInputSchema.parse(rawInput);
 
-  return withSystem(async (db) => {
-    const partner = (await db.query<{ id: string; current_version: number | null }>(
-      "select id, current_version from ai_growth_partners where org_id = $1 for update",
-      [ctx.org.orgId],
-    )).rows[0];
-    if (!partner) throw new AppError("not_found", "The AI Growth Partner is not set up for this workspace.");
+  return withSystem((db) => activateGrowthPartnerBusinessBrainVersionInTransaction(db, ctx.org.orgId, ctx.user.id, input));
+}
 
-    const currentVersion = partner.current_version === null ? null : Number(partner.current_version);
-    if (currentVersion === input.version) {
-      return { version: input.version, previousVersion: currentVersion, activated: false, alreadyActive: true };
-    }
-    if (currentVersion !== input.expectedCurrentVersion) {
-      throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
-    }
+/** Internal transaction step. The caller must verify the authority that approved the version. */
+export async function activateGrowthPartnerBusinessBrainVersionInTransaction(
+  db: Queryable, orgId: string, actorUserId: string,
+  input: z.infer<typeof activateVersionInputSchema> & { expectedVersionId?: string },
+) {
+  const partner = (await db.query<{ id: string; current_version: number | null }>(
+    "select id, current_version from ai_growth_partners where org_id = $1 for update",
+    [orgId],
+  )).rows[0];
+  if (!partner) throw new AppError("not_found", "The AI Growth Partner is not set up for this workspace.");
 
-    const latest = (await db.query<{ id: string; version: number; business_brain: unknown; persona_settings: unknown }>(
-      `select id, version, business_brain, persona_settings from ai_growth_partner_versions
-       where org_id = $1 and partner_id = $2 order by version desc limit 1`,
-      [ctx.org.orgId, partner.id],
-    )).rows[0];
-    if (!latest || Number(latest.version) !== input.version || (currentVersion !== null && input.version <= currentVersion)) {
-      throw new AppError("conflict", "Only the latest saved Business Brain draft can be activated. Refresh and review the current draft.");
-    }
-    BusinessBrainSchema.parse(latest.business_brain);
-    personaSettingsSchema.parse(latest.persona_settings ?? {});
+  const currentVersion = partner.current_version === null ? null : Number(partner.current_version);
+  if (currentVersion === input.version && !input.expectedVersionId) {
+    return { version: input.version, previousVersion: currentVersion, activated: false, alreadyActive: true };
+  }
+  if (currentVersion !== input.expectedCurrentVersion) {
+    throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
+  }
 
-    const updated = await db.query(
-      `update ai_growth_partners set current_version = $3, updated_at = now()
-       where id = $1 and org_id = $2 and current_version is not distinct from $4
-       returning id`,
-      [partner.id, ctx.org.orgId, input.version, currentVersion],
-    );
-    if (!updated.rowCount) throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
+  const latest = (await db.query<{ id: string; version: number; business_brain: unknown; persona_settings: unknown }>(
+    `select id, version, business_brain, persona_settings from ai_growth_partner_versions
+     where org_id = $1 and partner_id = $2 order by version desc limit 1`,
+    [orgId, partner.id],
+  )).rows[0];
+  if (!latest || Number(latest.version) !== input.version
+    || (input.expectedVersionId && latest.id !== input.expectedVersionId)
+    || (currentVersion !== null && input.version < currentVersion)) {
+    throw new AppError("conflict", "Only the latest saved Business Brain draft can be activated. Refresh and review the current draft.");
+  }
+  BusinessBrainSchema.parse(latest.business_brain);
+  personaSettingsSchema.parse(latest.persona_settings ?? {});
+  if (currentVersion === input.version) {
+    return { version: input.version, previousVersion: currentVersion, activated: false, alreadyActive: true };
+  }
 
-    await recordAudit({
-      orgId: ctx.org.orgId,
-      actorUserId: ctx.user.id,
-      actorKind: "user",
-      action: "ai_growth_partner.business_brain_activated",
-      targetType: "ai_growth_partner_version",
-      targetId: latest.id,
-      result: "success",
-      metadata: { version: input.version, previousVersion: currentVersion, activeVersionChanged: true },
-    }, db);
-    return { version: input.version, previousVersion: currentVersion, activated: true, alreadyActive: false };
-  });
+  const updated = await db.query(
+    `update ai_growth_partners set current_version = $3, updated_at = now()
+     where id = $1 and org_id = $2 and current_version is not distinct from $4
+     returning id`,
+    [partner.id, orgId, input.version, currentVersion],
+  );
+  if (!updated.rowCount) throw new AppError("conflict", "The active Business Brain changed in another session. Refresh and review the latest version.");
+
+  await recordAudit({
+    orgId,
+    actorUserId,
+    actorKind: "user",
+    action: "ai_growth_partner.business_brain_activated",
+    targetType: "ai_growth_partner_version",
+    targetId: latest.id,
+    result: "success",
+    metadata: { version: input.version, previousVersion: currentVersion, activeVersionChanged: true },
+  }, db);
+  return { version: input.version, previousVersion: currentVersion, activated: true, alreadyActive: false };
 }
 
 /**
@@ -1250,7 +1262,13 @@ export interface GrowthPartnerConversationMessage {
   workJobId: string | null;
   errorCode: string | null;
   evidence: EvidenceMarker | null;
+  workJobRunning: boolean;
   createdAt: Date;
+}
+
+export interface GrowthPartnerConversationCursor {
+  createdAt: Date | string;
+  id: string;
 }
 
 export interface GrowthPartnerConversationPage {
@@ -1262,14 +1280,17 @@ export interface GrowthPartnerConversationPage {
   };
   messages: GrowthPartnerConversationMessage[];
   hasMore: boolean;
+  nextCursor: GrowthPartnerConversationCursor | null;
 }
 
 /** Loads history only from the single verified Growth Partner thread; role chats are never considered. */
-export async function getGrowthPartnerConversationPage(ctx: OrgContext, before?: Date): Promise<GrowthPartnerConversationPage | null> {
+export async function getGrowthPartnerConversationPage(
+  ctx: OrgContext,
+  before?: Date | GrowthPartnerConversationCursor,
+): Promise<GrowthPartnerConversationPage | null> {
   if (!ctx.can("agents.use")) throw new AppError("forbidden", "You don't have access to the AI Growth Partner conversation.");
 
-  return withUser(ctx.user.id, async (db) => {
-    const conversation = (await db.query<{
+  const conversation = await withUser(ctx.user.id, async (db) => (await db.query<{
       id: string;
       title: string;
       last_message_at: Date | null;
@@ -1282,11 +1303,32 @@ export async function getGrowthPartnerConversationPage(ctx: OrgContext, before?:
        where p.org_id = $1 and c.agent_instance_id = p.runtime_agent_instance_id
          and a.role_key = 'growth_partner' and c.deleted_at is null
        limit 1`,
-      [ctx.org.orgId],
-    )).rows[0];
-    if (!conversation) return null;
+    [ctx.org.orgId],
+  )).rows[0]);
+  if (!conversation) return null;
 
-    const result = await db.query<{
+  const timeoutSeconds = Math.ceil(env().HERMES_RUN_TIMEOUT_MS / 1000) + 60;
+  await withSystem((systemDb) => systemDb.query(
+    `update chat_messages m set status = 'failed', error_code = 'interrupted'
+     from agent_runs r
+     where m.org_id = $1 and m.conversation_id = $2 and m.status = 'streaming'
+       and r.id = m.run_id and r.org_id = m.org_id
+       and (r.status in ('failed', 'timeout', 'interrupted', 'cancelled', 'completed')
+         or r.started_at < now() - make_interval(secs => $3))`,
+    [ctx.org.orgId, conversation.id, timeoutSeconds],
+  ));
+
+  let cursorPredicate = "";
+  let cursorParams: string[] = [];
+  if (before instanceof Date) {
+    cursorPredicate = "and m.created_at < $3::timestamptz";
+    cursorParams = [before.toISOString()];
+  } else if (before) {
+    cursorPredicate = "and (m.created_at, m.id) < ($3::timestamptz, $4::uuid)";
+    cursorParams = [typeof before.createdAt === "string" ? before.createdAt : before.createdAt.toISOString(), before.id];
+  }
+
+  const result = await withUser(ctx.user.id, (db) => db.query<{
       id: string;
       role: GrowthPartnerConversationMessage["role"];
       author_user_id: string | null;
@@ -1297,47 +1339,51 @@ export async function getGrowthPartnerConversationPage(ctx: OrgContext, before?:
       work_job_id: string | null;
       error_code: string | null;
       evidence: unknown;
+      work_job_running: boolean;
       created_at: Date;
     }>(
       `select page.id, page.role, page.author_user_id,
               coalesce(nullif(u.full_name, ''), case when page.author_user_id is null then null else 'Workspace member' end) as author_label,
-              page.content, page.status, page.run_id, page.work_job_id, page.error_code, page.evidence, page.created_at
+              page.content, page.status, page.run_id, page.work_job_id, page.error_code, page.evidence, page.work_job_running, page.created_at
        from (
-         select m.id, m.role, m.author_user_id, m.content, m.status, m.run_id, m.work_job_id, m.error_code, m.evidence, m.created_at
+         select m.id, m.role, m.author_user_id, m.content, m.status, m.run_id, m.work_job_id, m.error_code, m.evidence,
+                exists (select 1 from ai_work_jobs j where j.id = m.work_job_id and j.org_id = m.org_id and j.status = 'running') as work_job_running,
+                m.created_at
          from chat_messages m
          where m.org_id = $1 and m.conversation_id = $2 and m.status <> 'superseded'
-           and ($3::timestamptz is null or m.created_at < $3::timestamptz)
-         order by m.created_at desc limit 61
+           ${cursorPredicate}
+         order by m.created_at desc, m.id desc limit 61
        ) page
        left join users u on u.id = page.author_user_id
-       order by page.created_at asc`,
-      [ctx.org.orgId, conversation.id, before ?? null],
-    );
-    const hasMore = result.rows.length > 60;
-    const pageRows = hasMore ? result.rows.slice(1) : result.rows;
-    return {
-      conversation: {
-        id: conversation.id,
-        title: conversation.title,
-        lastMessageAt: conversation.last_message_at,
-        createdAt: conversation.created_at,
-      },
-      messages: pageRows.map((row) => ({
-        id: row.id,
-        role: row.role,
-        authorUserId: row.author_user_id,
-        authorLabel: row.author_label,
-        content: row.content,
-        status: row.status,
-        runId: row.run_id,
-        workJobId: row.work_job_id,
-        errorCode: row.error_code,
-        evidence: parseEvidenceMarker(row.evidence),
-        createdAt: row.created_at,
-      })),
-      hasMore,
-    };
-  });
+       order by page.created_at asc, page.id asc`,
+    [ctx.org.orgId, conversation.id, ...cursorParams],
+  ));
+  const hasMore = result.rows.length > 60;
+  const pageRows = hasMore ? result.rows.slice(1) : result.rows;
+  return {
+    conversation: {
+      id: conversation.id,
+      title: conversation.title,
+      lastMessageAt: conversation.last_message_at,
+      createdAt: conversation.created_at,
+    },
+    messages: pageRows.map((row) => ({
+      id: row.id,
+      role: row.role,
+      authorUserId: row.author_user_id,
+      authorLabel: row.author_label,
+      content: row.content,
+      status: row.status,
+      runId: row.run_id,
+      workJobId: row.work_job_id,
+      errorCode: row.error_code,
+      evidence: parseEvidenceMarker(row.evidence),
+      workJobRunning: row.work_job_running,
+      createdAt: row.created_at,
+    })),
+    hasMore,
+    nextCursor: pageRows.length ? { createdAt: pageRows[0].created_at, id: pageRows[0].id } : null,
+  };
 }
 
 export interface GrowthPartnerConversationSearchResult {

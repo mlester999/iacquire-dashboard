@@ -6,11 +6,34 @@ import { activateGrowthPartnerBusinessBrainVersion, draftGrowthPartnerBusinessBr
 import { deleteGrowthPartnerMemory, saveGrowthPartnerMemory, updateGrowthPartnerMemory } from "@/server/ai-growth-partner/memory";
 import { importGrowthPartnerLegacyKnowledge, previewGrowthPartnerLegacyKnowledge, reviewGrowthPartnerLegacyKnowledge } from "@/server/ai-growth-partner/legacy-knowledge";
 import { saveGrowthPartnerGoal, setGrowthPartnerGoalEnabled } from "@/server/ai-growth-partner/goals";
+import { requestGrowthPartnerAbilityRestoration, restrictGrowthPartnerAbilities } from "@/server/ai-growth-partner/ability-controls";
 import type { GrowthPartnerMemoryKind } from "@/lib/ai-growth-partner-memory";
 import { withSystem } from "@/server/db";
 import { actionError, AppError } from "@/server/errors";
 import { getSubmittedBrainSource } from "@/server/onboarding/submitted-brain-source";
-import { requireOrgContext } from "@/server/tenancy/context";
+import { requireOrgContext, requireOrgContextOrThrow } from "@/server/tenancy/context";
+
+export async function restrictGrowthPartnerAbilitiesAction(input: unknown) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const result = await restrictGrowthPartnerAbilities(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
+
+export async function requestGrowthPartnerAbilityRestorationAction(input: unknown) {
+  try {
+    const ctx = await requireOrgContextOrThrow("agents.configure");
+    const result = await requestGrowthPartnerAbilityRestoration(ctx, input);
+    revalidatePath("/growth-partner");
+    return { ok: true as const, data: result };
+  } catch (err) {
+    return actionError(err);
+  }
+}
 
 export async function prepareGrowthPartnerFromSubmittedOnboardingAction() {
   const ctx = await requireOrgContext();

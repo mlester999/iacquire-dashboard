@@ -456,7 +456,8 @@ describe("submission", () => {
       },
     });
 
-    const outcome = await submitOnboarding(ctx);
+    const review = await getOnboardingReview(ctx);
+    const outcome = await submitOnboarding(ctx, { confirmation: review.businessBrain?.confirmation });
     expect(outcome.employees).toHaveLength(1);
     expect(outcome.employees[0].role).toBe("growth_partner");
     const rows = await withSystem(async (db) => (await db.query<{ role_key: string; n: number }>(

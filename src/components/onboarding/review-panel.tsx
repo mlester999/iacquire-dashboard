@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Pencil, PlugZap, ShieldCheck, Sparkles, UserRound, Wrench } from "lucide-react";
+import { AlertTriangle, Brain, CheckCircle2, ChevronDown, Pencil, PlugZap, ShieldCheck, Sparkles, UserRound, Wrench } from "lucide-react";
 import { AgentAvatar } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/primitives";
@@ -113,6 +113,41 @@ export function ReviewPanel({
             ))}
           </ul>
         </div>
+      )}
+
+      {review.businessBrain && (
+        <section aria-labelledby="rv-brain" className="space-y-3">
+          <div>
+            <h2 id="rv-brain" className="flex items-center gap-2 text-[15px] font-semibold">
+              <Brain className="size-4 text-primary" aria-hidden /> Review your first Business Brain
+            </h2>
+            <p className="mt-1 text-[14px] leading-relaxed text-muted">
+              These questionnaire details become part of the knowledge your AI Growth Partner uses. Unanswered details stay unknown. The workspace’s separately approved knowledge also carries forward.
+            </p>
+          </div>
+          {review.businessBrain.groups.map(({ title, facts }, index) => (
+            <details key={title} open={index === 0} className="group overflow-hidden rounded-xl border border-line bg-surface">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-[14px] font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
+                {title} <ChevronDown className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <ul className="divide-y divide-line border-t border-line">
+                {facts.map((fact) => (
+                  <li key={fact.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-4 py-3">
+                    <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-muted">
+                      {fact.label}
+                      {fact.state === "historical" && <StatusPill tone="neutral" size="sm">Previously saved</StatusPill>}
+                      {fact.state === "draft_suggestion" && <StatusPill tone="warning" size="sm">Needs confirmation</StatusPill>}
+                    </p>
+                    <p className="col-start-1 row-start-2 min-w-0 whitespace-pre-line break-words text-[14px] leading-relaxed text-ink"><AnswerValue value={fact.value} /></p>
+                    <Button type="button" variant="ghost" size="sm" className="col-start-2 row-span-2 row-start-1 self-start" onClick={() => onEdit(fact.questionId)} aria-label={`Edit ${fact.label}`}>
+                      <Pencil className="size-3.5" aria-hidden /> Edit
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))}
+        </section>
       )}
 
       <section aria-labelledby="rv-answers" className="space-y-3">
@@ -363,7 +398,9 @@ export function ReviewPanel({
           <input type="checkbox" className="mt-1 size-4 shrink-0 accent-[var(--primary)]" checked={confirmed} onChange={(e) => onConfirmChange(e.target.checked)} />
           <span>
             {review.workforceModel === "growth_partner"
-              ? "I’ve reviewed these answers. I understand this prepares one AI Growth Partner and website draft, and that nothing contacts customers, books appointments or goes live until each connection is verified and I turn it on."
+              ? review.businessBrain
+                ? "I’ve reviewed my first Business Brain and approve this setup. Customer contact, booking and publishing require verified connections and my approval."
+                : "I’ve reviewed these answers. I understand this prepares one AI Growth Partner and website draft, and that nothing contacts customers, books appointments or goes live until each connection is verified and I turn it on."
               : "I’ve reviewed these answers and understand this can update my existing profile settings and prepare a website draft. It does not migrate or delete profiles. Nothing contacts my customers, books appointments or goes live until each connection is verified and I turn it on."}
           </span>
         </label>

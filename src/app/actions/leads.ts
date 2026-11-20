@@ -2,9 +2,43 @@
 
 import { revalidatePath } from "next/cache";
 import { requireOrgContextOrThrow } from "@/server/tenancy/context";
-import { createResearchRequest, requestCrmImport, retryResearchRequest, reviewLeads, saveTargeting } from "@/server/leads/service";
+import { addLeadCompanyEvidence, createResearchRequest, requestCrmImport, retryResearchRequest, reviewLeads, saveTargeting } from "@/server/leads/service";
 import { actionError, AppError } from "@/server/errors";
 import { saveResearchSourcePolicy, type ResearchSourceKey } from "@/server/leads/research-source-policy";
+import { LEAD_LIST_MAX_BYTES } from "@/lib/lead-list-upload";
+import { saveLeadListUpload } from "@/server/leads/lead-list-upload";
+import { isResearchSourceKey } from "@/lib/lead-research-sources";
+
+export type LeadListUploadActionState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "success"; added: number; duplicates: number; disqualified: number; repeated: boolean };
+
+export async function uploadLeadListAction(
+  _previousState: LeadListUploadActionState,
+  formData: FormData,
+): Promise<LeadListUploadActionState> {
+  try {
+    const ctx = await requireOrgContextOrThrow("leads.research");
+    const file = formData.get("leadList");
+    if (!(file instanceof File) || !file.size || file.size > LEAD_LIST_MAX_BYTES) {
+      throw new AppError("invalid_input", "Choose a CSV of up to 256 KB.");
+    }
+    let csv: string;
+    try {
+      csv = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+    } catch {
+      throw new AppError("invalid_input", "Save the file as UTF-8 CSV, then try again.");
+    }
+    const result = await saveLeadListUpload(ctx, csv, formData.get("authorized") === "yes");
+    revalidatePath("/leads");
+    revalidatePath("/work");
+    revalidatePath("/analytics");
+    return { status: "success", added: result.added, duplicates: result.duplicates, disqualified: result.disqualified, repeated: result.repeated };
+  } catch (err) {
+    return { status: "error", message: actionError(err).error };
+  }
+}
 
 export type ResearchSourcePolicyActionState = {
   status: "idle" | "success" | "error";
@@ -74,6 +108,31 @@ export async function reviewLeadsAction(ids: string[], decision: "approve" | "re
   }
 }
 
+export type LeadCompanyEvidenceActionState =
+  | { status: "idle" }
+  | { status: "success"; message: string }
+  | { status: "error"; message: string };
+
+export async function addLeadCompanyEvidenceAction(
+  leadId: string,
+  _previousState: LeadCompanyEvidenceActionState,
+  formData: FormData,
+): Promise<LeadCompanyEvidenceActionState> {
+  try {
+    const ctx = await requireOrgContextOrThrow("leads.review");
+    const { qualificationState } = await addLeadCompanyEvidence(ctx, {
+      leadId, url: formText(formData, "companyPage"), summary: formText(formData, "companyEvidence"),
+      confirmed: formData.get("firstPartyConfirmed") === "yes",
+    });
+    revalidatePath("/leads");
+    return { status: "success", message: qualificationState === "evidence_backed"
+      ? "Company evidence saved. Review and approve the lead when ready."
+      : "Company evidence saved. Review the possible duplicate before importing." };
+  } catch (err) {
+    return { status: "error", message: actionError(err).error };
+  }
+}
+
 export async function requestCrmImportAction(ids: string[]) {
   try {
     const ctx = await requireOrgContextOrThrow("leads.review");
@@ -94,13 +153,16 @@ export async function saveResearchSourcePolicyAction(
   try {
     const ctx = await requireOrgContextOrThrow("leads.research");
     const sourceValue = formText(formData, "source");
-    if (sourceValue !== "openstreetmap" && sourceValue !== "company_website") {
+    if (!isResearchSourceKey(sourceValue)) {
       throw new AppError("invalid_input", "Choose a supported research source.");
     }
     const source: ResearchSourceKey = sourceValue;
+    if (source === "fsa_directory" && formText(formData, "workspaceId") !== ctx.org.orgId) {
+      throw new AppError("conflict", "Your active workspace changed. Reload the page before saving this approval.");
+    }
     const settings = {
       enabled: formData.get("enabled") === "true",
-      providerFeeUsdPerRequest: source === "company_website" ? 0 : formNumber(formData, "providerFeeUsdPerRequest"),
+      providerFeeUsdPerRequest: source === "openstreetmap" ? formNumber(formData, "providerFeeUsdPerRequest") : 0,
       perJobRequestCap: formNumber(formData, "perJobRequestCap"),
       perDayRequestCap: formNumber(formData, "perDayRequestCap"),
       perJobSpendCapUsd: formNumber(formData, "perJobSpendCapUsd"),
@@ -121,7 +183,15 @@ export async function saveResearchSourcePolicyAction(
           maxResults: formNumber(formData, "maxResults"),
           timeoutSeconds: formNumber(formData, "timeoutSeconds"),
         }
-      : {
+      : source === "fsa_directory" ? {
+          authorityId: formNumber(formData, "authorityId"),
+          authorityCode: formText(formData, "authorityCode"),
+          authorityName: formText(formData, "authorityName"),
+          nameKeyword: formText(formData, "nameKeyword"),
+          maxResults: formNumber(formData, "maxResults"),
+          approvalExpiresOn: formText(formData, "approvalExpiresOn"),
+          rightsAcknowledged: formData.get("rightsAcknowledged") === "true",
+        } : {
           approvedDomains: formList(formData, "approvedDomains"),
           maxRequests: formNumber(formData, "maxRequests"),
         };

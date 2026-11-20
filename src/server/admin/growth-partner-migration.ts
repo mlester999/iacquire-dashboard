@@ -9,6 +9,11 @@ const OPEN_WORK_STATUSES = ["queued", "running", "waiting_for_approval", "blocke
 
 export interface GrowthPartnerScheduleMigrationPreview {
   generatedAt: string;
+  /** Aggregate inventory checks sampled with the schedule preview. */
+  migrationChecks?: {
+    unboundPartnerRuntimes: number;
+    pendingRetainedKnowledgeReviews: number;
+  };
   summary: {
     total: number;
     enabled: number;
@@ -52,8 +57,18 @@ export async function previewGrowthPartnerScheduleMigration(
   orgId: string,
 ): Promise<GrowthPartnerScheduleMigrationPreview> {
   return withSystem(async (db) => {
-    const org = (await db.query<{ kind: string; status: string }>(
-      "select kind, status from organizations where id = $1",
+    const org = (await db.query<{ kind: string; status: string; unbound_partner_runtimes: number; pending_retained_knowledge_reviews: number }>(
+      `select o.kind, o.status,
+              (select count(*)::int from agent_instances a
+                where a.org_id = o.id and a.role_key = 'growth_partner'
+                  and not exists (
+                    select 1 from ai_growth_partners p
+                     where p.org_id = o.id and p.runtime_agent_instance_id = a.id
+                  )) as unbound_partner_runtimes,
+              (select count(*)::int from ai_growth_partner_legacy_knowledge k
+                 join ai_growth_partners p on p.id = k.partner_id and p.org_id = k.org_id
+                where k.org_id = o.id and k.status = 'pending_review') as pending_retained_knowledge_reviews
+         from organizations o where o.id = $1`,
       [orgId],
     )).rows[0];
     if (!org) throw new AppError("not_found", "Client workspace not found.");
@@ -155,6 +170,10 @@ export async function previewGrowthPartnerScheduleMigration(
 
     return {
       generatedAt: new Date().toISOString(),
+      migrationChecks: {
+        unboundPartnerRuntimes: org.unbound_partner_runtimes,
+        pendingRetainedKnowledgeReviews: org.pending_retained_knowledge_reviews,
+      },
       summary: {
         total: schedules.length,
         enabled: schedules.filter((schedule) => schedule.enabled).length,

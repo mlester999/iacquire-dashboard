@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ArrowRight, Check, Sparkles, X } from "lucide-react";
 import { DEMO_CAPABILITY_AREAS, IMPLEMENTATION_SETS, NEXT_STEPS } from "@/lib/demo/showroom/content";
-import { SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
+import { OVERSIGHT_FOOTER, SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { useShowroom } from "@/components/demo/showroom/context";
 import { StepNav } from "@/components/demo/showroom/journey";
 import { ConversionPanel } from "@/components/demo/showroom/cta";
@@ -13,7 +13,7 @@ import { PlanTag, SectionHead, dollars } from "@/components/demo/showroom/ui";
 // measured result; one AI Growth Partner is shown coordinating six capabilities; and the page ends with what the iAcquire team sets up, what is optional, and the next steps.
 
 const BEFORE = ["Enquiries arrive in several places and wait for whoever sees them first", "Replies and bookings depend on who is free", "Follow-ups are remembered, or they are not", "Records are spread across inboxes, notes and spreadsheets", "Understanding the numbers means building a report by hand"];
-const AFTER = ["Every channel lands in one inbox, connected to one CRM", "The Growth Partner prepares a reply and times for you to review", "Quiet deals get a prepared next step, so the work stays visible", "The Growth Partner keeps authorized contact and pipeline records up to date", "A weekly note explains what stood out and where it came from"];
+const AFTER = ["The channels you connect land in one inbox, connected to one CRM", "The Growth Partner prepares a reply and times for you to review", "Quiet deals get a prepared next step, so the work stays visible", "The Growth Partner keeps authorized contact and pipeline records up to date", "A weekly note explains what stood out and where it came from"];
 
 export function SummaryView() {
   const { business, go, setupFeeUsd, monthlyPlanUsd } = useShowroom();
@@ -150,6 +150,9 @@ export function SummaryView() {
       </section>
 
       <ConversionPanel title="Let's talk about your business" />
+      <footer className="border-t border-line pt-4 text-[13px] leading-relaxed text-muted">
+        <p>{OVERSIGHT_FOOTER}</p>
+      </footer>
       <StepNav />
     </div>
   );

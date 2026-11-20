@@ -14,7 +14,7 @@ import { agentId as roleAgent } from "./support/fixtures";
 import { crmOrg, type CrmOrg } from "./support/crm";
 
 const ALL = [...AGENT_TOOL_SCOPES];
-const OTHER_TENANTS_CONVERSATION_MESSAGE = "Conversation not found, or it isn't one this AI employee handles.";
+const OTHER_TENANTS_CONVERSATION_MESSAGE = "Conversation not found, or it isn't one this AI profile handles.";
 
 let a: CrmOrg;
 let b: CrmOrg;

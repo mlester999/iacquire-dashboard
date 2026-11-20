@@ -426,7 +426,7 @@ describe("add to calendar", () => {
 
 describe("reminders", () => {
   /** A workspace whose reminders are switched on, with one flexible type (customers may change bookings) and one fixed type. */
-  async function reminderClinic(name: string) {
+  async function reminderClinic(name: string, reminderOffsetMinutes = 120) {
     const m = await messagingOrg({ name });
     const owner = memberActor(m.ctx("owner"));
     await setHostAvailability(owner, m.people.owner.id, { timezone: "Asia/Manila", rules: WEEKDAYS_9_TO_5 });
@@ -435,7 +435,7 @@ describe("reminders", () => {
     const fixed = await createAppointmentType(owner, cal.id, { name: "Inspection", durationMinutes: 60, minNoticeMinutes: 60, locationKind: "phone" });
     await setType(fixed.id, "allow_customer_changes = false");
     await withSystem((db) => db.query("update agent_instances set status = 'online', last_health_ok = true, enabled = true, mode = 'autonomous' where org_id = $1 and role_key = 'appointment_setter'", [m.org.id]));
-    await savePolicy(m.ctx("owner"), { remindersEnabled: true, reminderOffsetsMinutes: [120] });
+    await savePolicy(m.ctx("owner"), { remindersEnabled: true, reminderOffsetsMinutes: [reminderOffsetMinutes] });
     return { m, owner, flexible, fixed };
   }
   const reminderMessage = async (appointmentId: string) =>
@@ -549,14 +549,13 @@ describe("reminders", () => {
   });
 
   it("re-checks each claimed reminder before queuing it: one rescheduled, cancelled or moved after the claim is never queued for the old time", async () => {
-    const { m, owner, flexible } = await reminderClinic("Race Clinic");
+    const { m, owner, flexible } = await reminderClinic("Race Clinic", 240);
     const people = await Promise.all(["Rory Race", "Cara Cancel", "Moe Moved", "Nina Normal"].map((name) => inbound(m.org.id, { name })));
     const appts: Array<Awaited<ReturnType<typeof bookNativeAppointment>>> = [];
     for (const [i, p] of people.entries()) appts.push(await bookNativeAppointment(owner, { typeId: flexible.id, startAt: at(`1${3 + i}:00`), contact: { id: p.contactId }, via: "staff", now: NOW }));
     const [rescheduled, cancelled, moved, normal] = appts;
-    // 13:00 to 16:00 Manila (05:00 to 08:00 UTC). All four reminders are made due at 04:00 UTC, before any of them starts.
+    // The four-hour policy makes reminders due at 01:00–04:00 UTC. Claim them before the first appointment starts at 05:00.
     const due = new Date("2026-10-20T04:01:00Z");
-    await withSystem((db) => db.query("update appointment_reminders set due_at = $2 where appointment_id = any($1::uuid[])", [appts.map((a) => a.appointmentId), new Date("2026-10-20T04:00:00Z")]));
     const claimed = await claimDueReminders(due);
     const mine = (id: string) => claimed.find((c) => c.appointment_id === id)!;
     expect(appts.every((a) => mine(a.appointmentId))).toBe(true);

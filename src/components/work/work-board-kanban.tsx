@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 import { EvidenceChip } from "@/components/chat/evidence-chip";
 import { WorkJobPanel } from "@/components/work/job-progress";
-import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceActivityMatchesFilter, workforceIdentityLabel, type AgentRoleKey, type WorkforceActivityFilter } from "@/lib/agents";
+import { AGENT_BY_KEY, AI_GROWTH_PARTNER_ROLE_KEY, isAgentRoleKey, isWorkforceRoleKey, workforceActivityMatchesFilter, workforceIdentityLabel, type AgentRoleKey, type WorkforceActivityFilter, type WorkforceRoleKey } from "@/lib/agents";
 import {
   addCalendarDays,
   calendarDateKeyAt,
@@ -18,6 +18,7 @@ import {
 } from "@/lib/workforce-calendar-view";
 import { projectWorkforceScheduleOccurrences } from "@/lib/workforce-schedule-recurrence";
 import { cn, relativeTime } from "@/lib/utils";
+import { isPreparedOnlyWork } from "@/lib/work-board-status";
 import type { ScheduleView } from "@/server/workforce/schedules";
 import type { WorkBoardJob, WorkBoardFilter } from "@/server/workforce/work-board";
 
@@ -62,16 +63,11 @@ const JOB_TONE: Record<WorkBoardJob["status"], "primary" | "success" | "warning"
   completed: "success",
 };
 
-/** A finished job that only prepared something (drafts nobody has decided on, or approved ones not yet sent) has not completed its effect, so it never sits in the green Completed lane. */
-function onlyPrepared(job: WorkBoardJob): boolean {
-  return job.status === "completed" && (job.evidence?.class === "proposed_change" || job.evidence?.class === "approved_write");
-}
-
 function jobLane(job: WorkBoardJob): Exclude<LaneKey, "planned"> {
   if (job.recoveryPending) return "recovery";
   if (job.status === "running") return "working";
   if (job.status === "waiting_for_approval") return "waiting";
-  if (onlyPrepared(job)) return "prepared";
+  if (isPreparedOnlyWork(job.status, job.evidence, job.capability)) return "prepared";
   return job.status;
 }
 
@@ -83,14 +79,13 @@ function identityLabel(role: string, name: string): string {
   return isWorkforceRoleKey(role) ? workforceIdentityLabel(role, name) : name || "AI identity";
 }
 
-function jobHref(job: WorkBoardJob): string | null {
-  if (job.capability === "lead_research") return "/leads?tab=review";
+function jobHref(job: WorkBoardJob, employeeNames?: Partial<Record<WorkforceRoleKey, string>>): string | null {
+  if (job.capability === "lead_research" || job.capability === "lead_list_upload") return "/leads?tab=review";
   if (job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY) return job.conversationId ? "/growth-partner/conversation" : "/growth-partner";
   const key = roleKey(job.employeeRole);
   if (!key) return null;
   const meta = AGENT_BY_KEY[key];
-  if (job.conversationId) return `/chat/${meta.slug}?c=${job.conversationId}`;
-  return `/employees/${meta.slug}`;
+  return employeeNames?.[key] ? `/employees/${meta.slug}` : "/growth-partner";
 }
 
 function buildPlannedWork(schedules: ScheduleView[], referenceTime: string): PlannedWork[] {
@@ -139,17 +134,21 @@ function matchesDateScope(
 function JobCard({
   job,
   timeZone,
+  employeeNames,
   expanded,
   onToggle,
 }: {
   job: WorkBoardJob;
   timeZone: string;
+  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const meta = roleKey(job.employeeRole) ? AGENT_BY_KEY[job.employeeRole as keyof typeof AGENT_BY_KEY] : null;
-  const href = jobHref(job);
-  const tone = job.recoveryPending ? "warning" : onlyPrepared(job) ? "neutral" : JOB_TONE[job.status];
+  const key = roleKey(job.employeeRole);
+  const retainedProfileEnabled = key !== null && Boolean(employeeNames?.[key]);
+  const meta = key && retainedProfileEnabled ? AGENT_BY_KEY[key] : null;
+  const href = jobHref(job, employeeNames);
+  const tone = job.recoveryPending ? "warning" : isPreparedOnlyWork(job.status, job.evidence, job.capability) ? "neutral" : JOB_TONE[job.status];
   const detail = job.recoveryPending
     ? "No active worker lease is recorded. Recovery is pending."
     : job.status === "running"
@@ -177,19 +176,24 @@ function JobCard({
         {job.resultCount > 0 && <span className="inline-flex items-center gap-1"><CheckCircle2 className="size-3 text-success" aria-hidden />{job.resultCount} result{job.resultCount === 1 ? "" : "s"}</span>}
       </div>
       {job.latestEvent && <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-faint">Latest: {job.latestEvent.message} <span suppressHydrationWarning>· {relativeTime(job.latestEvent.createdAt)}</span></p>}
-      <div className="mt-2.5 flex items-center justify-between gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-[12px] font-semibold text-ink-2 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Activity className="size-3.5" aria-hidden />{expanded ? "Hide activity" : "Activity"}
         </button>
-        {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{job.capability === "lead_research" ? "Review" : job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? job.conversationId ? "Open Partner conversation" : "Partner Control Center" : job.conversationId ? "Open related conversation" : "Previous profile settings"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
+        <span className="flex flex-wrap items-center justify-end gap-1">
+          {job.failureCode === "awaiting_connection" && job.failureHref && <Link href={job.failureHref} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-warning-ink hover:bg-warning-soft/60">Fix connection<ArrowRight className="size-3.5" aria-hidden /></Link>}
+          {href && <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary hover:bg-primary-soft/60">{href === "/leads?tab=review" ? "Review" : job.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? job.conversationId ? "Open Partner conversation" : "Partner Control Center" : retainedProfileEnabled ? "Open previous role profile" : "Open AI Growth Partner"}<ArrowRight className="size-3.5" aria-hidden /></Link>}
+        </span>
       </div>
       {expanded && <WorkJobPanel jobId={job.id} className="mt-3" />}
     </article>
   );
 }
 
-function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; operatorEnabled: boolean; timeZone: string }) {
+function PlannedCard({ item, operatorEnabled, timeZone, employeeNames }: { item: PlannedWork; operatorEnabled: boolean; timeZone: string; employeeNames?: Partial<Record<WorkforceRoleKey, string>> }) {
   const { schedule } = item;
+  const scheduleRole = roleKey(schedule.employeeRole);
+  const retainedProfileEnabled = scheduleRole !== null && Boolean(employeeNames?.[scheduleRole]);
   const mayCreateJob = schedule.enabled && operatorEnabled;
   const scheduleState = !schedule.enabled ? "Schedule paused" : operatorEnabled ? "Enabled" : "Operator off";
   return (
@@ -197,14 +201,14 @@ function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; o
       <div className="flex items-start gap-2.5">
         {schedule.employeeRole === AI_GROWTH_PARTNER_ROLE_KEY ? (
           <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/15 bg-primary-soft text-[12px] font-bold text-primary-ink">GP</span>
-        ) : <AgentAvatar role={AGENT_BY_KEY[schedule.employeeRole]} size="sm" />}
+        ) : scheduleRole && retainedProfileEnabled ? <AgentAvatar role={AGENT_BY_KEY[scheduleRole]} size="sm" /> : <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted"><Activity className="size-4" aria-hidden /></div>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="inline-flex h-5 items-center gap-1 rounded-full border border-primary/15 bg-primary-soft px-2 text-[12px] font-semibold uppercase tracking-wide text-primary-ink"><CalendarClock className="size-3" aria-hidden />Scheduled · not a job</span>
             <span className={cn("rounded-full px-2 py-0.5 text-[12px] font-semibold", mayCreateJob ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{scheduleState}</span>
           </div>
           <h3 className="mt-2 text-[14px] font-semibold leading-snug text-ink">{schedule.capabilityLabel}</h3>
-          <p className="mt-1 text-[12px] text-muted">{workforceIdentityLabel(schedule.employeeRole, schedule.employeeName)} · <time dateTime={item.startsAt}>{calendarTimestampLabel(item.startsAt, timeZone)}</time></p>
+          <p className="mt-1 text-[12px] text-muted">{identityLabel(schedule.employeeRole, schedule.employeeName)} · <time dateTime={item.startsAt}>{calendarTimestampLabel(item.startsAt, timeZone)}</time></p>
         </div>
       </div>
       <p className="mt-2 text-[12px] leading-relaxed text-muted">
@@ -221,6 +225,7 @@ function PlannedCard({ item, operatorEnabled, timeZone }: { item: PlannedWork; o
 
 export function WorkBoardKanban({
   jobs,
+  employeeNames,
   schedules,
   filter,
   scheduleOperatorEnabled,
@@ -229,6 +234,7 @@ export function WorkBoardKanban({
   referenceTime,
 }: {
   jobs: WorkBoardJob[];
+  employeeNames?: Partial<Record<WorkforceRoleKey, string>>;
   schedules: ScheduleView[];
   filter: WorkBoardFilter;
   scheduleOperatorEnabled: boolean;
@@ -351,8 +357,8 @@ export function WorkBoardKanban({
                     <span className="inline-flex min-w-6 justify-center rounded-md bg-surface px-1.5 py-0.5 text-[12px] font-semibold tabular-nums text-ink-2">{count}</span>
                   </header>
                   <div className="space-y-2">
-                    {lanePlanned.map((item) => <PlannedCard key={item.key} item={item} operatorEnabled={scheduleOperatorEnabled} timeZone={timeZone} />)}
-                    {laneJobs.map((job) => <JobCard key={job.id} job={job} timeZone={timeZone} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} />)}
+                    {lanePlanned.map((item) => <PlannedCard key={item.key} item={item} operatorEnabled={scheduleOperatorEnabled} timeZone={timeZone} employeeNames={employeeNames} />)}
+                    {laneJobs.map((job) => <JobCard key={job.id} job={job} timeZone={timeZone} employeeNames={employeeNames} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} />)}
                     {count === 0 && <p className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-[12px] text-faint">No items in this status.</p>}
                   </div>
                 </section>
@@ -363,8 +369,8 @@ export function WorkBoardKanban({
       ) : (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
           <ul className="divide-y divide-line">
-            {filteredPlanned.map((item) => <li key={item.key} className="p-3 sm:p-4"><PlannedCard item={item} operatorEnabled={scheduleOperatorEnabled} timeZone={timeZone} /></li>)}
-            {filteredJobs.map((job) => <li key={job.id} className="p-3 sm:p-4"><JobCard job={job} timeZone={timeZone} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} /></li>)}
+            {filteredPlanned.map((item) => <li key={item.key} className="p-3 sm:p-4"><PlannedCard item={item} operatorEnabled={scheduleOperatorEnabled} timeZone={timeZone} employeeNames={employeeNames} /></li>)}
+            {filteredJobs.map((job) => <li key={job.id} className="p-3 sm:p-4"><JobCard job={job} timeZone={timeZone} employeeNames={employeeNames} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} /></li>)}
           </ul>
         </div>
       )}

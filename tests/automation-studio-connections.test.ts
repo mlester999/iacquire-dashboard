@@ -12,14 +12,14 @@ import { getRun, startManualRun, startTestRun } from "@/server/crm/workflows/run
 import { processWorkflowRuns } from "@/server/crm/workflows/runner";
 import { hostResolver } from "@/server/calendars/adapters/http";
 import { pinnedHttps, PinnedRequestError, type PinnedResponse } from "@/server/security/pinned-https";
-import { createConnection, listConnectionCalls, listConnections, revokeConnection, rotateConnectionSecret, testConnection } from "@/server/automation-studio/connections";
+import { createConnection, getSlackWebhookSummary, listConnectionCalls, listConnections, revokeConnection, rotateConnectionSecret, testConnection } from "@/server/automation-studio/connections";
 import { performOutbound, slackText } from "@/server/automation-studio/outbound";
 import { studioUsageSnapshot } from "@/server/automation-studio/usage";
 import { captureFromClient, previewCapture } from "@/server/crm/blueprints/capture";
 import type { WorkflowDefinition, WorkflowStep } from "@/lib/crm/workflow/spec";
 import { ctxFor, uid } from "./support/fixtures";
-import { agencyPeople } from "./support/crm";
-import { studioWorkspace, type StudioWorkspace } from "./support/studio-workspace";
+import { agencyPeople, crmOrg } from "./support/crm";
+import { grantStudioPlan, studioWorkspace, type StudioWorkspace } from "./support/studio-workspace";
 
 const SECRET = "sk_live_Zr7Qw1XyAbCdEf90";
 const SLACK_HOOK = ["https://hooks.slack.com/services", "T0ABCDEFG", "B0HIJKLMN", "AbCdEfGhIjKlMnOpQrStUvWx"].join("/");
@@ -107,6 +107,32 @@ const auditOf = async (orgId: string, action: string) => (await withSystem((db) 
 // ---------------------------------------------------------------------------
 // Setting up
 // ---------------------------------------------------------------------------
+
+describe("Slack integration hub read", () => {
+  it("returns only authorized tenant Slack status and respects a lapsed plan", async () => {
+    const first = await crmOrg();
+    const second = await crmOrg();
+    await grantStudioPlan(first);
+    await grantStudioPlan(second);
+    const owner = first.actor("owner");
+    const verified = await createConnection(owner, slackInput());
+    const revoked = await createConnection(owner, slackInput());
+    await revokeConnection(owner, revoked.id);
+    await createConnection(owner, httpInput());
+    const checkedAt = new Date("2026-01-15T12:00:00.000Z");
+    await withSystem((db) => db.query("update automation_connections set status = 'active', verified_at = $1 where org_id = $2 and id = $3", [checkedAt, first.org.id, verified.id]));
+
+    await expect(getSlackWebhookSummary({ ...owner, can: () => false })).rejects.toMatchObject({ code: "forbidden" });
+    expect(await getSlackWebhookSummary(first.actor("manager"))).toEqual({
+      entitled: true, connections: [{ kind: "slack_webhook", status: "active", verifiedAt: checkedAt.toISOString() }],
+    });
+    expect(await getSlackWebhookSummary(second.actor("owner"))).toEqual({ entitled: true, connections: [] });
+
+    await withSystem((db) => db.query("update maintenance_subscriptions set status = 'expired' where org_id = $1", [first.org.id]));
+    expect(await getSlackWebhookSummary(owner)).toEqual({ entitled: false, connections: [] });
+    expect(request).not.toHaveBeenCalled();
+  });
+});
 
 describe("setting up a connection", () => {
   it("stores the secret encrypted, shows only its last characters, and writes it to no log", async () => {

@@ -3,6 +3,9 @@
 import crypto from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem } from "@/server/db";
+import { emptyBusinessBrain } from "@/lib/ai-growth-partner";
+import { ensureGrowthPartnerIdentity, saveGrowthPartnerBusinessBrainDraft, saveGrowthPartnerBusinessBrainFactDraft, activateGrowthPartnerBusinessBrainVersion } from "@/server/ai-growth-partner/service";
+import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
 import { createWebChatGenerator, ungroundedAmounts, widgetKnowledge } from "@/server/webchat/generator";
 import { saveKnowledgeSection } from "@/server/knowledge/service";
 import type { LlmConfig } from "@/server/llm/client";
@@ -71,6 +74,63 @@ describe("what the assistant is shown", () => {
     const m = model("I'm not sure. A team member will follow up.");
     await embedCall(bare, { action: "send", token: await start(bare), body: { text: "Do you do roofs?", clientMessageId: clientId() }, generate: m.generator });
     expect(m.calls[0].system).toMatch(/has not shared any knowledge for this chat yet/);
+  });
+
+  it("uses only exposed customer-safe Business Brain facts and checks claims against the same facts", async () => {
+    const brainChat = await chatOrg({ knowledgeSections: ["business_description"] });
+    const runtimeId = await withSystem((db) => ensureGrowthPartnerRuntime(brainChat.m.org.id, db));
+    const owner = brainChat.m.ctx("owner");
+    await ensureGrowthPartnerIdentity(owner);
+    const initial = await saveGrowthPartnerBusinessBrainDraft(owner, { businessBrain: emptyBusinessBrain() });
+    await activateGrowthPartnerBusinessBrainVersion(owner, { expectedCurrentVersion: null, version: initial.version });
+    const name = await saveGrowthPartnerBusinessBrainFactDraft(owner, {
+      baseVersion: initial.version,
+      section: "businessIdentity",
+      key: "companyName",
+      valueText: "Public Brain Roofing",
+    });
+    const price = await saveGrowthPartnerBusinessBrainFactDraft(owner, {
+      baseVersion: name.version,
+      section: "productsServicesOffers",
+      key: "pricing",
+      valueText: "Roof inspections: $150.",
+    });
+    const budget = await saveGrowthPartnerBusinessBrainFactDraft(owner, {
+      baseVersion: price.version,
+      section: "idealCustomers",
+      key: "minimumBudget",
+      valueText: "PRIVATE_BRAIN_BUDGET_MARKER: $9,000 monthly.",
+    });
+    await activateGrowthPartnerBusinessBrainVersion(owner, { expectedCurrentVersion: initial.version, version: budget.version });
+    expect(runtimeId).toBeTruthy();
+    await reconfigure(brainChat, { aiRoleKey: "growth_partner" });
+
+    const context = (inboundMessageId: string) => ({
+      orgId: brainChat.m.org.id,
+      agentId: runtimeId,
+      conversationId: `webchat-brain-${inboundMessageId}`,
+      contactId: `webchat-contact-${inboundMessageId}`,
+      inboundMessageId,
+      channel: "web_chat" as const,
+      businessName: brainChat.m.org.name,
+      customerMessage: "How much is an inspection?",
+      history: [],
+      confirmedFacts: [],
+    });
+
+    const held = model("A roof inspection costs $150.");
+    const heldResponse = await held.generator(context("unexposed-price"));
+    expect(held.calls[0].system).toContain("businessIdentity.companyName: Public Brain Roofing");
+    expect(held.calls[0].system).not.toContain("$150");
+    expect(held.calls[0].system).not.toContain("PRIVATE_BRAIN_BUDGET_MARKER");
+    expect(heldResponse).toMatchObject({ kind: "unavailable", reason: expect.stringContaining("quoted an amount") });
+
+    await reconfigure(brainChat, { knowledgeSections: ["business_description", "approved_pricing"] });
+    const approved = model("A roof inspection costs $150.");
+    const approvedResponse = await approved.generator(context("exposed-price"));
+    expect(approved.calls[0].system).toContain("productsServicesOffers.pricing: Roof inspections: $150.");
+    expect(approved.calls[0].system).not.toContain("PRIVATE_BRAIN_BUDGET_MARKER");
+    expect(approvedResponse).toEqual({ kind: "reply", text: "A roof inspection costs $150." });
   });
 });
 

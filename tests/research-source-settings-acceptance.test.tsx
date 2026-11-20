@@ -11,6 +11,7 @@ import {
   getResearchSourcePolicy,
   reserveResearchSourceRequest,
   saveResearchSourcePolicy,
+  type ResearchSourceHealth,
 } from "@/server/leads/research-source-policy";
 import { createWorkJob } from "@/server/workforce/jobs";
 import { addMember, agentId, createOrg, createUser, ctxFor } from "./support/fixtures";
@@ -139,6 +140,41 @@ describe("source-settings UI and backend acceptance", () => {
     expect(acknowledgements.every((tag) => !/\schecked(?:=|\s|>)/.test(tag))).toBe(true);
     expect(html).toContain("Owner and admin settings");
     expect(html).toContain("Saving stores limits; it does not start discovery.");
+  });
+
+  it("reports source observations without treating an enabled policy as a successful provider connection", () => {
+    const policy = {
+      enabled: true, providerFeeUsdPerRequest: 0, perJobRequestCap: 3, perDayRequestCap: 10,
+      perJobSpendCapUsd: 0, perDaySpendCapUsd: 0, sourceConfig: OSM,
+    };
+    const renderHealth = (health: ResearchSourceHealth) =>
+      renderToStaticMarkup(createElement(ResearchSourceSettings, { policies: { openstreetmap: { ...policy, health }, company_website: null } }));
+    expect(renderHealth({ lastCompletedRunAt: null, lastResponseAt: null, lastError: null }))
+      .toContain("Waiting for the first recorded result under this approval.");
+    const html = renderHealth({
+      lastCompletedRunAt: "2026-11-18T00:00:00.000Z", lastResponseAt: "2026-11-17T00:00:00.000Z",
+      lastError: { at: "2026-11-19T00:00:00.000Z", httpStatus: 429 },
+    });
+    expect(html).toContain("Last completed run with a successful response");
+    expect(html).toContain("Last request error");
+    expect(html).toContain("HTTP 429");
+    expect(html).toContain('dateTime="2026-11-19T00:00:00.000Z"');
+    expect(html).not.toContain("Connected");
+  });
+
+  it("shows the current workspace's directory scope and an unchecked rights acknowledgement", () => {
+    const html = renderToStaticMarkup(createElement(ResearchSourceSettings, {
+      workspaceId: org.id, policies: { openstreetmap: null, company_website: null, fsa_directory: null },
+    }));
+    expect(html).toContain("UK Food Standards Agency directory");
+    expect(html).toContain("FSA local authority code");
+    expect(html).toContain("Approval expires at midnight UTC");
+    expect(html).toContain("Open Government Licence");
+    expect(html).toContain(`name="workspaceId" value="${org.id}"`);
+    const rights = html.match(/<input[^>]*name="rightsAcknowledged"[^>]*>/)?.[0];
+    expect(rights).toBeDefined();
+    expect(rights).not.toMatch(/\schecked(?:=|\s|>)/);
+    expect(html).not.toContain("Connected");
   });
 
   it("saves through the rendered form and reloads the persisted source policy", async () => {

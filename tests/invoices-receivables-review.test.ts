@@ -56,7 +56,7 @@ describe("the capability", () => {
   it("is refused to another employee's role and to a person who cannot see invoices", async () => {
     const io = await invoiceOrg();
     await readyAnalyst(io);
-    await expect(dispatchCapabilityJob(io.ctx("owner"), { agentRole: "sales_assistant", capability: "receivables_review", title: "x" })).rejects.toThrow(/role does not include/i);
+    await expect(dispatchCapabilityJob(io.ctx("owner"), { agentRole: "sales_assistant", capability: "receivables_review", title: "x" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
     await expect(dispatchCapabilityJob(io.ctx("support"), { agentRole: "performance_analyst", capability: "receivables_review", title: "x" })).rejects.toThrow(/can't start this work|can't start AI work/);
     await expect(dispatchCapabilityJob(io.ctx("viewer"), { agentRole: "performance_analyst", capability: "receivables_review", title: "x" })).rejects.toThrow();
   });

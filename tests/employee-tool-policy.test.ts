@@ -28,7 +28,7 @@ const FROZEN: Record<AgentRoleKey, string[]> = {
 
 const PARTNER_ONLY_ACTIONS = [
   "chat:messaging_hours_update", "chat:partner_preferences_update", "chat:partner_goal_update", "chat:outbound_control",
-  "chat:crm_contact_create", "chat:crm_opportunity_create", "chat:crm_opportunity_move", "chat:appointment_policy_update", "chat:calendar_create",
+  "chat:crm_contact_create", "chat:crm_opportunity_create", "chat:crm_opportunity_move", "chat:crm_lead_import", "chat:task_create", "chat:appointment_policy_update", "chat:calendar_create",
 ];
 const PARTNER_ONLY_ABILITIES = ["calendar.booking_rules.update", "calendar.create", "crm.request_update", "crm.contacts.create", "drafts.create"];
 
@@ -115,7 +115,8 @@ describe("the policy table, role by role", () => {
     expect(ids).toContain("chat:calendar_create");
     expect(ids).toContain("chat:outbound_control");
     expect(ids).not.toContain("runtime:terminal");
-    expect(ids.some((id) => /send|publish|delete|export|import|campaign/.test(id))).toBe(false);
+    expect(ids.some((id) => /send|publish|delete|export|import|campaign/.test(id) && id !== "chat:crm_lead_import")).toBe(false);
+    expect(authorizeEmployeeAction("growth_partner", "chat:crm_lead_import")).toMatchObject({ allowed: true, action: { effect: "proposal", approval: "person_decides" } });
     expect(runtimeToolExposure("growth_partner", ["memory", "session_search", "todo_list", "vision_analyze", "web_search", "web_extract"]))
       .toEqual({ ok: true, excess: [], missing: [] });
   });

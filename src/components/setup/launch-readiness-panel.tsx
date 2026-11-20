@@ -10,7 +10,8 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { ITEM_STATE_LABEL, actionKind, type ItemOwner, type ItemState, type LaunchAction, type LaunchControl, type LaunchIntent, type LaunchIntentParams, type LaunchItem, type LaunchReadiness, type LaunchStage, type LaunchState, type LaunchStep, type StageState, type StepState } from "@/lib/launch-readiness";
 import { cn } from "@/lib/utils";
 
-const ANCHOR_BUTTON = "inline-flex h-11 select-none items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-line-strong bg-transparent px-3 text-[14px] font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:h-8";
+const ACTION_BUTTON = "h-auto min-h-11 max-w-full justify-self-start whitespace-normal py-1.5 text-left sm:h-auto sm:min-h-8";
+const ANCHOR_BUTTON = cn("inline-flex select-none items-center justify-center gap-2 rounded-xl border border-line-strong bg-transparent px-3 text-[14px] font-medium text-ink transition hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", ACTION_BUTTON);
 // A button that is busy stays focusable (aria-disabled, not disabled), so keyboard focus is not thrown to the page; the class says it is off.
 const BUSY = "aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
 const OWNER_LABEL: Record<ItemOwner, string> = { you: "You", iacquire: "iAcquire", system: "Automatic, nothing needed from you" };
@@ -110,16 +111,18 @@ export function LaunchReadinessPanel({ readiness, preview = false, calendarNotic
   const done = current.state === "ready_to_launch";
   return (
     <section aria-labelledby="launch-readiness-title" data-state={current.state} data-audience={audience} className="mx-auto mb-6 max-w-6xl overflow-hidden rounded-[26px] border border-line bg-surface p-5 shadow-sm sm:p-7">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+        <div className="min-w-0">
           <p className="text-[12px] font-semibold uppercase tracking-[.16em] text-primary">Launch readiness</p>
           <h2 id="launch-readiness-title" className="mt-1 text-[23px] font-semibold tracking-tight text-ink">{current.headline}</h2>
           <p className="mt-1 max-w-2xl text-[14px] leading-relaxed text-muted">{current.detail}</p>
         </div>
-        <div className="text-right">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:block sm:text-right">
           <Badge tone={tone}>{current.label}</Badge>
-          <p className="mt-2 text-[28px] font-semibold leading-none tracking-tight text-ink">{current.percent}%</p>
-          <p className="mt-1 text-[12px] text-muted">{current.passed} of {current.total} checks passed</p>
+          <div className="sm:mt-2">
+            <p className="text-[28px] font-semibold leading-none tracking-tight text-ink">{current.percent}%</p>
+            <p className="mt-1 text-[12px] text-muted">{current.passed} of {current.total} checks passed</p>
+          </div>
         </div>
       </div>
       <LaunchProgress readiness={current} tone={done ? "success" : current.state === "action_required" ? "warning" : "primary"} />
@@ -245,7 +248,7 @@ function HostPicker({ choices, busy, running, onRun }: { choices: Array<{ id: st
   const [pick, setPick] = React.useState("");
   const id = React.useId();
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+    <div className="col-span-full grid min-w-0 gap-2 pt-1 sm:flex sm:flex-wrap sm:items-center">
       <label htmlFor={id} className="sr-only">Choose who takes appointments</label>
       <div className="min-w-0 flex-1 sm:max-w-xs">
         <Select id={id} value={pick} onChange={(e) => setPick(e.target.value)}>
@@ -253,7 +256,7 @@ function HostPicker({ choices, busy, running, onRun }: { choices: Array<{ id: st
           {choices.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </div>
-      <Button size="sm" variant="secondary" className={BUSY} disabled={!pick} aria-disabled={busy || undefined} onClick={() => { if (!busy) onRun("assign_host", { userId: pick }); }}>
+      <Button size="sm" variant="secondary" className={cn(BUSY, ACTION_BUTTON)} disabled={!pick} aria-disabled={busy || undefined} onClick={() => { if (!busy) onRun("assign_host", { userId: pick }); }}>
         {busy && running === "assign_host" && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}Make them the host
       </Button>
     </div>
@@ -264,7 +267,7 @@ function HostPicker({ choices, busy, running, onRun }: { choices: Array<{ id: st
 function ActionLink({ href, label, name, describedBy }: { href: string; label: string; name: string; describedBy?: string }) {
   return href.startsWith("/api/")
     ? <a href={href} aria-label={name} aria-describedby={describedBy} className={ANCHOR_BUTTON}>{label}</a>
-    : <ButtonLink href={href} size="sm" variant="outline" aria-label={name} aria-describedby={describedBy}>{label}</ButtonLink>;
+    : <ButtonLink href={href} size="sm" variant="outline" className={ACTION_BUTTON} aria-label={name} aria-describedby={describedBy}>{label}</ButtonLink>;
 }
 
 /** What a provider sign-in link does, said before it is pressed: it leaves for Google or Microsoft and comes back to this page. */
@@ -283,7 +286,7 @@ function ActionControl({ item, action, audience, busy, running, onRun }: { item:
     if (audience === "agency") return null;
     const intent = action.intent;
     return (
-      <Button size="sm" variant="secondary" className={BUSY} aria-label={name} aria-disabled={busy || undefined} aria-busy={(busy && running === intent) || undefined} onClick={() => { if (!busy) onRun(intent, action.params); }}>
+      <Button size="sm" variant="secondary" className={cn(BUSY, ACTION_BUTTON)} aria-label={name} aria-disabled={busy || undefined} aria-busy={(busy && running === intent) || undefined} onClick={() => { if (!busy) onRun(intent, action.params); }}>
         {busy && running === intent && <Loader2 aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />}{action.label}
       </Button>
     );
@@ -321,7 +324,7 @@ function ItemRow({ item, audience, busy, running, onRun }: { item: LaunchItem; a
   // A line that is not required and is waiting on a choice is information, not work: it never reads as "Action required" and never counts as such.
   const optionalOpen = !item.required && item.state === "action_required";
   return (
-    <li data-item={item.key} data-state={item.state} className="flex flex-wrap items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
+    <li data-item={item.key} data-state={item.state} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2 rounded-xl border border-line bg-surface px-3 py-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <span className="mt-0.5"><ItemIcon state={item.state} quiet={optionalOpen} /></span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -339,7 +342,11 @@ function ItemRow({ item, audience, busy, running, onRun }: { item: LaunchItem; a
         )}
         {item.state !== "done" && item.state !== "not_applicable" && !(item.state === "in_progress" && item.owner === "you") && <p className="mt-0.5 text-[12px] text-muted">Next move: {OWNER_LABEL[item.owner]}</p>}
       </div>
-      {action && <ActionControl item={item} action={action} audience={audience} busy={busy} running={running} onRun={onRun} />}
+      {action && (
+        <div className="col-start-2 flex min-w-0 flex-wrap gap-2 empty:hidden sm:col-start-auto">
+          <ActionControl item={item} action={action} audience={audience} busy={busy} running={running} onRun={onRun} />
+        </div>
+      )}
       {audience === "client" && item.hostChoices && item.hostChoices.length > 0 && <HostPicker choices={item.hostChoices} busy={busy} running={running} onRun={onRun} />}
     </li>
   );
@@ -358,7 +365,7 @@ function ControlsCard({ controls, ready, audience }: { controls: LaunchControl[]
       </p>
       <ul className="mt-3 grid gap-2">
         {controls.map((c) => (
-          <li key={c.key} data-control={c.key} data-on={c.on} className="flex flex-wrap items-start gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">
+          <li key={c.key} data-control={c.key} data-on={c.on} className="grid min-w-0 gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 sm:flex sm:items-start sm:gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[14px] font-medium text-ink">{c.label}</span>

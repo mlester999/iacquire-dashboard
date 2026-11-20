@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWorkforceContextOrThrow } from "@/server/workforce/workspace-access";
+import { withSystem } from "@/server/db";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "@/lib/agents";
 import { actionError, AppError } from "@/server/errors";
 import { dispatchCapabilityJob } from "@/server/workforce/capability-dispatch";
+import { boundPartnerRuntime } from "@/server/workforce/partner-runtime";
 import { deleteSchedule, saveSchedule, setScheduleEnabled } from "@/server/workforce/schedules";
 import { deleteTrigger, saveTrigger, setTriggerEnabled } from "@/server/workforce/triggers";
 import { createFindingTask } from "@/server/workforce/finding-actions";
@@ -21,7 +24,10 @@ export async function startReviewAction(capability: string) {
     const ctx = await requireWorkforceContextOrThrow("agents.use");
     const definition = capabilityDefinition(capability);
     if (!definition || !definition.workBoardAction) throw new AppError("invalid_input", "That review is not available from the work board.");
-    const role = definition.allowedRoles[0];
+    const partner = definition.allowedRoles.includes(AI_GROWTH_PARTNER_ROLE_KEY)
+      ? await withSystem((db) => boundPartnerRuntime(db, ctx.org.orgId))
+      : null;
+    const role = partner ? AI_GROWTH_PARTNER_ROLE_KEY : definition.allowedRoles[0];
     if (!role) throw new AppError("invalid_input", "That review has no eligible employee role.");
     const result = await dispatchCapabilityJob(ctx, {
       agentRole: role,

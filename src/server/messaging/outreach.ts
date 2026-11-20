@@ -13,7 +13,8 @@ export interface OutreachRequest {
   agentId: string | null;
   /** followup: an automated message the customer didn't just ask for (a workflow step), with the follow-up limits and consent rules. */
   scope: "reminder" | "retention" | "followup";
-  purpose?: SendPurpose;
+  /** Explicit service/marketing classification; program sends never inherit a permissive default. */
+  purpose: SendPurpose;
   /** Only this channel (a template written for one channel); otherwise the best channel the customer can be reached on. */
   channel?: Channel;
   /** A provider-approved WhatsApp template the message is sent with (whatsapp_templates.template_id). */
@@ -60,6 +61,9 @@ async function conversationsFor(db: Queryable, req: OutreachRequest): Promise<Ar
  * credits, frequency limits); a message that is only waiting for a better time is queued for it, and one that cannot go is reported with the reason.
  */
 export async function queueOutreach(db: Queryable, req: OutreachRequest): Promise<OutreachResult> {
+  if (req.purpose !== "service" && req.purpose !== "marketing") {
+    return { status: "blocked", reason: "purpose_required", detail: "Choose whether this message is service or marketing before it can be sent." };
+  }
   const conversations = await conversationsFor(db, req);
   const org = await db.query<{ name: string; disclosure: string | null }>(
     "select o.name, s.ai_disclosure as disclosure from organizations o left join messaging_settings s on s.org_id = o.id where o.id = $1",
@@ -75,12 +79,12 @@ export async function queueOutreach(db: Queryable, req: OutreachRequest): Promis
       const prior = await db.query("select 1 from conversation_messages where conversation_id = $1 and author_kind = 'ai' and direction = 'outbound' and status in ('sent', 'delivered', 'read', 'queued') limit 1", [c.id]);
       body = withDisclosure(body, disclosure, business, prior.rows.length === 0);
     }
-    const send = { orgId: req.orgId, conversationId: c.id, scope: req.scope, purpose: req.purpose, actor: { kind: "ai" as const, agentId: req.agentId, approvalId: req.approvalId }, body, now: req.now, businessHoursOnly: req.businessHoursOnly, templateId: c.channel === "whatsapp" ? (req.templateId ?? null) : null };
+    const send = { orgId: req.orgId, conversationId: c.id, scope: req.scope, purpose: req.purpose, actor: { kind: "ai" as const, agentId: req.agentId, approvalId: req.approvalId }, body, now: req.now, dedupeKey: req.dedupeKey, businessHoursOnly: req.businessHoursOnly, templateId: c.channel === "whatsapp" ? (req.templateId ?? null) : null };
     const decision = await evaluateSend(db, send);
     // "Not yet" (quiet hours, spacing) and "needs a person's approval" are both acceptable: the message is queued for later or held as a draft.
     const waiting = !decision.allow && decision.retryAt && !decision.permanent;
     if (decision.allow || waiting || (!decision.allow && decision.needsApproval)) {
-      const res = await queueOutbound(db, { ...send, dedupeKey: req.dedupeKey });
+      const res = await queueOutbound(db, send);
       return { status: res.status, messageId: res.messageId, reason: res.reason, detail: res.detail };
     }
     first ??= { reason: decision.reason, detail: decision.detail };

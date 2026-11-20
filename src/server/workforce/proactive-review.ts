@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem, type Queryable } from "@/server/db";
+import { readSystem, withSystem, type Queryable } from "@/server/db";
 import {
   appendWorkEvent,
   finishWorkJob,
@@ -132,7 +132,19 @@ async function leadsAwaitingReview(db: Queryable, orgId: string): Promise<Proact
   });
 }
 
-async function workforceAttention(db: Queryable, orgId: string): Promise<ProactiveFinding | null> {
+export function workforceAttentionTitle(count: number, growthPartnerReview: boolean): string {
+  return growthPartnerReview
+    ? "Your AI Growth Partner needs attention"
+    : `${count} previous AI profile${count === 1 ? " needs" : "s need"} attention`;
+}
+
+export function crossEmployeeBlockersTitle(count: number, growthPartnerReview: boolean): string {
+  return growthPartnerReview
+    ? `Your AI Growth Partner found blocked work across ${count} runtime profiles`
+    : `Blocked work spans ${count} employees`;
+}
+
+async function workforceAttention(db: Queryable, orgId: string, growthPartnerReview: boolean): Promise<ProactiveFinding | null> {
   const { rows } = await db.query<{ count: number; samples: string[] }>(
     `select count(*)::int as count, coalesce(array_agg(display_name || ' · ' || replace(status, '_', ' ')), '{}') as samples
        from agent_instances
@@ -144,8 +156,10 @@ async function workforceAttention(db: Queryable, orgId: string): Promise<Proacti
   return finding({
     key: "workforce_attention",
     severity: "warning",
-    title: `${count} AI employee${count === 1 ? " needs" : "s need"} attention`,
-    detail: "An unavailable or unconfigured employee cannot perform authorized work. This is an availability state, not a job failure.",
+    title: workforceAttentionTitle(count, growthPartnerReview),
+    detail: growthPartnerReview
+      ? "An unavailable or unconfigured runtime cannot perform authorized work. This is an availability state, not a job failure."
+      : "An unavailable or unconfigured employee cannot perform authorized work. This is an availability state, not a job failure.",
     count,
     samples: rows[0]?.samples ?? [],
     evidenceHref: "/employees",
@@ -199,7 +213,7 @@ async function stalledJobs(db: Queryable, orgId: string, sinceDays: number): Pro
   });
 }
 
-async function crossEmployeeBlockers(db: Queryable, orgId: string, sinceDays: number): Promise<ProactiveFinding | null> {
+async function crossEmployeeBlockers(db: Queryable, orgId: string, sinceDays: number, growthPartnerReview: boolean): Promise<ProactiveFinding | null> {
   const { rows } = await db.query<{ employees: number; count: number; samples: string[] }>(
     `select count(distinct j.agent_instance_id)::int as employees,
             count(*)::int as count,
@@ -216,8 +230,10 @@ async function crossEmployeeBlockers(db: Queryable, orgId: string, sinceDays: nu
   return finding({
     key: "cross_employee_blockers",
     severity: "warning",
-    title: `Blocked work spans ${num(row.employees)} employees`,
-    detail: "More than one employee has recorded a failure or blocker. A person should decide who owns the next step rather than retrying everything independently.",
+    title: crossEmployeeBlockersTitle(num(row.employees), growthPartnerReview),
+    detail: growthPartnerReview
+      ? "More than one runtime profile has recorded a failure or blocker. A person should decide who owns the next step rather than retrying everything independently."
+      : "More than one employee has recorded a failure or blocker. A person should decide who owns the next step rather than retrying everything independently.",
     count: num(row.count),
     samples: (row.samples ?? []).slice(0, 3),
     evidenceHref: "/work?status=attention",
@@ -249,8 +265,16 @@ async function contactDataQuality(db: Queryable, orgId: string): Promise<Proacti
   });
 }
 
-export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runProactiveReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   const workerId = job.lease_owner ?? "";
+  const assertContinuing = async (db: Queryable) => {
+    if (context.controller.signal.aborted) throw new Error("work_cancelled");
+    const { rows } = await db.query<{ status: string; cancel_requested_at: Date | null }>(
+      "select status, cancel_requested_at from ai_work_jobs where id = $1 and org_id = $2",
+      [job.id, job.org_id],
+    );
+    if (context.controller.signal.aborted || rows[0]?.status !== "running" || rows[0].cancel_requested_at) throw new Error("work_cancelled");
+  };
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       `select a.role_key, a.display_name from agent_instances a where a.id = $1 and a.org_id = $2`,
@@ -279,46 +303,54 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
   }
 
   const sinceDays = Math.max(1, Math.min(30, Number(job.input.sinceDays) || 7));
-  await withSystem(async (db) => {
-    await recordWorkStage(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      workerId,
-      stage: "scanning",
-      message: "Reading persisted workspace records across work, approvals, CRM, integrations and the AI workforce…",
-    });
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "scanning",
+    message: "Reading persisted workspace records across work, approvals, CRM, integrations and AI activity…",
+  }));
 
-    // Sequential on one trusted transaction: PGlite serialises a single connection, and this also
-    // keeps a slow check from interleaving with the job's own stage writes.
+  // Keep record reads outside a write transaction so the Stop action can persist its request
+  // while a workspace-wide check is running.
+  const findings = await readSystem(async (db) => {
+    await assertContinuing(db);
     const findings: ProactiveFinding[] = [];
     for (const check of [
       () => failedRuns(db, job.org_id, sinceDays),
       () => pendingApprovals(db, job.org_id),
       () => overdueTasks(db, job.org_id),
       () => leadsAwaitingReview(db, job.org_id),
-      () => workforceAttention(db, job.org_id),
+      () => workforceAttention(db, job.org_id, agent.role_key === "growth_partner"),
       () => integrationAttention(db, job.org_id),
       () => stalledJobs(db, job.org_id, sinceDays),
-      () => crossEmployeeBlockers(db, job.org_id, sinceDays),
+      () => crossEmployeeBlockers(db, job.org_id, sinceDays, agent.role_key === "growth_partner"),
       () => contactDataQuality(db, job.org_id),
     ]) {
       const result = await check();
       if (result) findings.push(result);
+      await assertContinuing(db);
     }
+    return findings;
+  });
 
-    await recordWorkStage(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      workerId,
-      stage: "analyzing",
-      message: "Assessing each signal, separating observed evidence from recommendations and preparing the review…",
-      progress: {
-        checksRun: 9,
-        findings: findings.length,
-        affectedItems: findings.reduce((total, item) => total + item.count, 0),
-      },
-    });
+  const critical = findings.filter((item) => item.severity === "critical").length;
+  const warning = findings.filter((item) => item.severity === "warning").length;
+  const affected = findings.reduce((total, item) => total + item.count, 0);
+  const summary = findings.length
+    ? `Operations review found ${findings.length} signal${findings.length === 1 ? "" : "s"} across ${affected} affected item${affected === 1 ? "" : "s"} (${critical} critical, ${warning} warning).`
+    : "Operations review found no actionable signals in the persisted records checked.";
 
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "analyzing",
+    message: "Assessing each signal, separating observed evidence from recommendations and preparing the review…",
+    progress: { checksRun: 9, findings: findings.length, affectedItems: affected },
+  }));
+
+  await withSystem(async (db) => {
     for (const item of findings.slice(0, 8)) {
       await appendWorkEvent(db, {
         jobId: job.id,
@@ -330,21 +362,19 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
         data: { key: item.key, severity: item.severity, count: item.count, href: item.evidenceHref },
       });
     }
+  });
 
-    const critical = findings.filter((item) => item.severity === "critical").length;
-    const warning = findings.filter((item) => item.severity === "warning").length;
-    const summary = findings.length
-      ? `Operations review found ${findings.length} signal${findings.length === 1 ? "" : "s"} across ${findings.reduce((total, item) => total + item.count, 0)} affected item${findings.reduce((total, item) => total + item.count, 0) === 1 ? "" : "s"} (${critical} critical, ${warning} warning).`
-      : "Operations review found no actionable signals in the persisted records checked.";
+  await withSystem((db) => recordWorkStage(db, {
+    jobId: job.id,
+    orgId: job.org_id,
+    workerId,
+    stage: "preparing_results",
+    message: "Review complete. Findings and recommended actions are ready.",
+  }));
 
-    await recordWorkStage(db, {
-      jobId: job.id,
-      orgId: job.org_id,
-      workerId,
-      stage: "preparing_results",
-      message: "Review complete. Findings and recommended actions are ready.",
-    });
-    const finished = await finishWorkJob(db, {
+  await readSystem((db) => assertContinuing(db));
+  const finished = await withSystem(async (db) => {
+    const didFinish = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
@@ -366,7 +396,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
         data: { critical, warning, findings: findings.length },
       },
     });
-    if (!finished) throw new Error("work_finished_elsewhere");
+    if (!didFinish) return false;
     await publishReviewReport(db, {
       job,
       agent,
@@ -376,5 +406,7 @@ export async function runProactiveReviewJob(job: WorkJobRow, _context: { workerI
       limitations: "Only records this workspace already stores were read. No external provider was contacted and no business record was changed.",
       checksRun: 9,
     });
+    return true;
   });
+  if (!finished) throw new Error("work_finished_elsewhere");
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Queryable } from "@/server/db";
 import type { WorkJobStage } from "@/server/workforce/jobs";
 import type { Targeting } from "@/lib/leads-targeting";
+import type { ResearchSourceKey } from "@/lib/lead-research-sources";
 import { INTERNAL_PROSPECTING } from "@/lib/internal-business-profile";
 
 // ---------------------------------------------------------------------------
@@ -64,7 +65,8 @@ export interface LeadSourceEvidence {
   url: string;
   observed_at?: string | null;
   summary?: string | null;
-  source?: "openstreetmap" | "company_website" | null;
+  source?: ResearchSourceKey | "tenant_upload" | "reviewer_company_website" | null;
+  reviewed_at?: string | null;
 }
 export interface LeadSignalRecord {
   signal: string;
@@ -132,10 +134,10 @@ export function parseResearchOutput(output: string) {
   try {
     parsed = JSON.parse(candidate);
   } catch {
-    return { leads: [] as ResearchLead[], rejected: 0, error: "The Lead Hunter's answer wasn't in the expected format." };
+    return { leads: [] as ResearchLead[], rejected: 0, error: "The research answer wasn't in the expected format." };
   }
   const top = researchOutputSchema.safeParse(parsed);
-  if (!top.success) return { leads: [] as ResearchLead[], rejected: 0, error: "The Lead Hunter's answer wasn't in the expected format." };
+  if (!top.success) return { leads: [] as ResearchLead[], rejected: 0, error: "The research answer wasn't in the expected format." };
   const leads: ResearchLead[] = [];
   let rejected = 0;
   for (const item of top.data.leads.slice(0, 20)) {
@@ -264,6 +266,11 @@ export interface DuplicateResult {
   matches: DuplicateMatch[];
 }
 
+/** Serializes lead intake for a workspace when matching existing candidates and saving new rows. */
+export async function lockLeadIntake(db: Queryable, orgId: string): Promise<void> {
+  await db.query("select pg_advisory_xact_lock(hashtextextended('lead-intake:' || $1::text, 0))", [orgId]);
+}
+
 /**
  * Compares a candidate with the tenant's existing lead records and native CRM companies. A domain
  * match is a duplicate; an exact normalised-name match is a possible duplicate that a person must
@@ -273,6 +280,7 @@ export async function findLeadDuplicates(
   db: Queryable,
   orgId: string,
   candidate: { business_name: string; website?: string | null },
+  exceptLeadId?: string,
 ): Promise<DuplicateResult> {
   const domain = normalizeDomain(candidate.website);
   const name = candidate.business_name.trim();
@@ -282,6 +290,7 @@ export async function findLeadDuplicates(
        select 'lead'::text as kind, id::text as id, business_name as label, domain
          from leads
         where org_id = $1
+          and ($4::uuid is null or id <> $4::uuid)
           and (($2 <> '' and domain = $2) or ($3 <> '' and lower(business_name) = lower($3)))
        union all
        select 'crm_company'::text as kind, id::text as id, name as label, domain::text as domain
@@ -290,7 +299,7 @@ export async function findLeadDuplicates(
           and (($2 <> '' and domain::text = $2) or ($3 <> '' and lower(name) = lower($3)))
      ) matches
      limit 10`,
-    [orgId, domain ?? "", name],
+    [orgId, domain ?? "", name, exceptLeadId ?? null],
   );
   if (!rows.length) return { status: "no_match", matches: [] };
   const domainMatch = domain !== null && rows.some((row) => row.domain?.toLowerCase() === domain);

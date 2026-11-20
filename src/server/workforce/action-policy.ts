@@ -49,9 +49,9 @@ export type AgentActionDecision =
  */
 export async function decideAgentAction(db: Queryable, input: { orgId: string; agentId: string; actionId: string }): Promise<AgentActionDecision> {
   const { rows } = await db.query<{ role_key: string }>("select role_key from agent_instances where id = $1 and org_id = $2", [input.agentId, input.orgId]);
-  if (!rows[0]) return { allowed: false, code: "not_found", message: "AI employee not found.", role: null, reason: "The employee does not belong to this workspace." };
+  if (!rows[0]) return { allowed: false, code: "not_found", message: "AI runtime not found.", role: null, reason: "The employee does not belong to this workspace." };
   const rawRole = rows[0].role_key;
-  if (!isWorkforceRoleKey(rawRole)) return { allowed: false, code: "forbidden", message: "This AI employee role is not supported.", role: null, reason: "The employee has an unsupported role." };
+  if (!isWorkforceRoleKey(rawRole)) return { allowed: false, code: "forbidden", message: "This AI runtime does not support the requested role.", role: null, reason: "The employee has an unsupported role." };
   const role = rawRole;
   const decision = authorizeEmployeeAction(role, input.actionId);
   if (decision.allowed) return { allowed: true, role, action: decision.action };

@@ -109,7 +109,7 @@ export async function requestNativeBooking(req: BookingRequest): Promise<Booking
       orgId: req.orgId, agentId: req.actor.agentId, kind: "appointment_booking", title: `Book ${held.contactName || "a customer"} for ${label}`,
       action: { bookingId: held.bookingId }, targetType: "appointment_booking", targetId: held.bookingId, targetLabel: held.contactName || undefined,
       reason: req.requestSource === "staff_chat"
-        ? `A team member selected and explicitly confirmed this contact and time in AI Employee Chat for the ${held.typeName} calendar. The booking still needs your approval.`
+        ? `A team member selected and explicitly confirmed this contact and time in the AI conversation for the ${held.typeName} calendar. The booking still needs your approval.`
         : `AI Growth Partner found this time free on your ${held.typeName} calendar and the customer asked to book it.`,
       expectedEffect: req.requestSource === "staff_chat"
         ? "The appointment is added to the selected calendar. Any customer invitation follows the calendar provider's settings."
@@ -155,7 +155,7 @@ export async function executeNativeBooking(orgId: string, bookingId: string, opt
   if (loaded.skip) return b.status === "booked" ? bookedResult(orgId, bookingId, "") : { status: "unavailable", reason: "slot_taken", detail: "This booking is no longer pending.", bookingId };
   if (loaded.gated) return { status: "unavailable", reason: "blocked", detail: loaded.gated, bookingId };
 
-  const base = systemActor(loaded.org!, b.requested_by_kind === "ai" ? "Appointment Setter" : "Team");
+  const base = systemActor(loaded.org!, b.requested_by_kind === "ai" ? "AI booking approval" : "Team");
   const actor: CrmActor = b.requested_by_kind === "ai" ? { ...base, kind: "agent", agentId: b.agent_id } : { ...base, kind: "system", userId: b.requested_by_user };
   try {
     const res = await bookNativeAppointment(actor, {

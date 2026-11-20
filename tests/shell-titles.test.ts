@@ -23,6 +23,12 @@ describe("the top bar title", () => {
     expect(titleFor("/crm/reports/sources")).toBe("CRM");
     expect(titleFor("/crm/reviews/anything")).toBe("Reviews");
     expect(titleFor("/inbox")).toBe("Inbox");
+    expect(titleFor("/growth-partner/conversation")).toBe("Permanent Conversation");
+    expect(titleFor("/work")).toBe("AI Work Board");
+    expect(titleFor("/work/calendar")).toBe("Schedules & Calendar");
+    expect(titleFor("/settings/ai")).toBe("Growth Partner Settings");
+    expect(titleFor("/analytics")).toBe("Performance Reporting");
+    expect(titleFor("/approvals")).toBe("Approvals");
   });
 
   it("falls back to the product name only for a path that is not a portal screen", () => {

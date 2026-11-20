@@ -17,6 +17,23 @@ describe("Growth Partner chat CRM intent", () => {
     expect(parseWorkforceChatCrmIntent("growth_partner", "Add Jamie Lee to CRM")).toEqual({ kind: "none" });
   });
 
+  it("routes approved lead references to the approval-gated import flow", () => {
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Create a CRM contact for this approved prospect with email lead@example.com")).toEqual({
+      kind: "import_approved_lead",
+    });
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Add this qualified lead to the CRM")).toEqual({
+      kind: "import_approved_lead",
+    });
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Create a contact for this prospect with email lead@example.com")).toMatchObject({ kind: "clarification" });
+  });
+
+  it("does not treat a modified pronoun as a contact name", () => {
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Create a CRM contact for this new prospect with email lead@example.com")).toEqual({
+      kind: "import_approved_lead",
+    });
+    expect(parseWorkforceChatCrmIntent("growth_partner", "Create a CRM contact for this existing customer with email lead@example.com")).toMatchObject({ kind: "clarification" });
+  });
+
   it("recognizes a single opportunity only when its name and existing contact are explicit", () => {
     expect(parseWorkforceChatCrmIntent("growth_partner", 'Create an opportunity called "Roof Replacement" for Jamie Lee worth USD 12,500.50.')).toEqual({
       kind: "create_opportunity", name: "Roof Replacement", contactName: "Jamie Lee", value: 12500.5,

@@ -3,9 +3,11 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { ClientWorkforcesManager } from "@/components/admin/client-workforces-manager";
+import { GrowthPartnerManager } from "@/components/admin/growth-partner-manager";
 import { ConnectionChips } from "@/components/admin/client-card";
 import { TooltipProvider } from "@/components/ui/overlays";
 import type { listClientWorkforceSummaries } from "@/server/workforce/agency-registry";
+import type { listGrowthPartners } from "@/server/admin/queries";
 import type { ClientSetupRow } from "@/server/setup/snapshots";
 
 vi.mock("next/link", async () => {
@@ -19,8 +21,41 @@ vi.mock("next/link", async () => {
 afterEach(cleanup);
 
 type ClientWorkforce = Awaited<ReturnType<typeof listClientWorkforceSummaries>>[number];
+type Partner = Awaited<ReturnType<typeof listGrowthPartners>>[number];
 
 describe("Super Admin Growth Partner readiness", () => {
+  it("uses the shared readiness state and reports work job and approval failures in the fleet card", () => {
+    const partner: Partner = {
+      id: "partner-1",
+      org_id: "client-1",
+      org_name: "Synthetic Roofing Co",
+      status: "needs_attention",
+      runtime_agent_instance_id: "runtime-1",
+      enabled: true,
+      runtime_status: "error",
+      hermes_profile: "synthetic-client-profile",
+      last_health_check_at: new Date("2026-11-05T12:00:00.000Z"),
+      last_health_detail: "Hidden until you open a support session on this client.",
+      current_version: 1,
+      latest_version: 1,
+      last_message_at: null,
+      active_run: false,
+      runs_30d: 4,
+      failed_30d: 1,
+      failed_work_jobs_30d: 2,
+      failed_approval_executions_30d: 1,
+    };
+
+    render(<GrowthPartnerManager partners={[partner]} />);
+
+    expect(screen.getByText("needs attention")).toBeTruthy();
+    expect(screen.getByText("Work job failures · 30 days")).toBeTruthy();
+    expect(screen.getByText("Approval execution failures · 30 days")).toBeTruthy();
+    expect(screen.getByText("2", { selector: "dd" })).toBeTruthy();
+    expect(screen.getByText("1", { selector: "dd" })).toBeTruthy();
+    expect(document.body.textContent).toContain("Hidden until you open a support session on this client.");
+  });
+
   it("shows one current Partner runtime and keeps role-profile health separate", () => {
     const client: ClientWorkforce = {
       id: "client-1",

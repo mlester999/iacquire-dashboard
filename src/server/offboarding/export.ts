@@ -208,7 +208,7 @@ const NOT_EXPORTED = [
   "Connection settings for the services iAcquire uses to run your system",
   "Anything belonging to another iAcquire client",
   "iAcquire's own internal notes, tooling and agency-side records",
-  "The iAcquire software, website templates and AI employee setup that run your workspace (licensed to you for use while you are a customer)",
+  "The iAcquire software, website templates and AI runtime setup that run your workspace (licensed to you for use while you are a customer)",
 ];
 
 const strip = (row: Record<string, unknown>, spec: TableSpec) => {
@@ -338,7 +338,7 @@ Exported ${now.toISOString()}.
 - **proposals/**: your proposals, every saved version of each, the answers customers gave and how each was recorded, each proposal's history, your price book, tax rates and templates, and your signing requests with their history (never your signing service's keys). The PDF of each version, and each signed copy, is in files/proposal-documents.
 - **invoices/**: the invoices you sent your customers with their lines and history, every payment and refund and how it was recorded, the checkouts your customers started, what your payment provider told us about each payment, your reminders, the messages you sent from the product to give a customer the link to an invoice (who sent each, the channel and the address shortened, never the link or the text), your invoice settings, and your payment account by name and status (never its keys or your customers' payment links).
 - **website/**: your website's content, every published version, your domains and enquiries, and the images, as files.
-- **ai-team/**: how your AI employees were set up (names, modes, configuration versions) and every approval request and decision.
+- **ai-team/**: saved AI configuration and previous profile history (names, modes, configuration versions) and every approval request and decision.
 - **billing/**: payments, your credit ledger, usage and fees.
 - **support/**, **projects/**, **records/**: support conversations and the satisfaction answers you gave, custom projects with their quotes, milestones, change requests (and what you answered to each), what had to be confirmed before work started, the project's progress feed and conversation, and the activity history.
 - **social/**: your Facebook and Instagram accounts (never their sign-in tokens), posts and their history, campaigns, media library records, the numbers the platforms returned for your posts, and your social media settings.

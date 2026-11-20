@@ -35,6 +35,8 @@ const CHAT_PROPOSALS: Record<string, { label: string; roles: readonly WorkforceR
   "chat:crm_contact_create": { label: "Create one CRM contact after checking for duplicates", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_opportunity_create": { label: "Create one CRM opportunity linked to an existing contact", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:crm_opportunity_move": { label: "Move one CRM opportunity within its existing pipeline", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:crm_lead_import": { label: "Request approval to import one approved research lead into the CRM", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
+  "chat:task_create": { label: "Prepare one internal CRM task for confirmation", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:appointment_policy_update": { label: "Update appointment booking rules", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
   "chat:calendar_create": { label: "Create a private calendar and hidden appointment type", roles: [AI_GROWTH_PARTNER_ROLE_KEY], effect: "proposal" },
 };
@@ -116,6 +118,8 @@ export const CHAT_ACTION_ABILITIES: Record<string, readonly string[]> = {
   "chat:crm_contact_create": ["crm.contacts.create"],
   "chat:crm_opportunity_create": ["crm.request_update"],
   "chat:crm_opportunity_move": ["crm.request_update"],
+  "chat:crm_lead_import": ["leads.stage_for_review"],
+  "chat:task_create": ["crm.request_update"],
   "chat:appointment_policy_update": ["calendar.booking_rules.update"],
   "chat:calendar_create": ["calendar.create"],
 };

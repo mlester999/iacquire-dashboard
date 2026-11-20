@@ -220,7 +220,7 @@ function writeSection(section: ReportSection, data: SectionPayloads[ReportSectio
       add("CRM tool calls", d.toolCalls);
       rows("Outcome", d.byOutcome, "CRM tool calls");
       rows("Tool", d.byTool, "CRM tool calls");
-      rows("AI employee", d.byEmployee, "CRM tool calls");
+      rows("AI profile", d.byEmployee, "CRM tool calls");
       const a = d.approvals;
       add("Approvals requested", a.requested);
       add("Approved", a.approved);

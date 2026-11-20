@@ -30,6 +30,8 @@ export type GateDecision =
   | { decision: "needs_approval"; mode: AgentMode; detail: string }
   | { decision: "blocked"; reason: BlockReason; detail: string };
 
+export const AI_RUNTIME_PAUSED_DETAIL = "The AI runtime is paused.";
+
 const READY_STATUSES: ReadonlySet<string> = new Set(RUNTIME_ONLINE_STATUSES);
 // Which pause scopes stop which kind of action.
 const STOPPED_BY: Record<AutomationScope, Array<"messaging" | "outbound" | "agency">> = {
@@ -37,6 +39,12 @@ const STOPPED_BY: Record<AutomationScope, Array<"messaging" | "outbound" | "agen
   followup: ["messaging", "outbound", "agency"],
   outbound: ["messaging", "outbound", "agency"],
   job: ["agency"],
+};
+const APPROVAL_KINDS_BY_SCOPE: Readonly<Record<AutomationScope, readonly string[]>> = {
+  reply: ["follow_up_message", "appointment_booking"],
+  followup: ["follow_up_message"],
+  outbound: ["outreach"],
+  job: ["crm_update"],
 };
 
 interface GateRow {
@@ -54,8 +62,8 @@ interface GateRow {
  * "allowed" answer. Call it immediately before executing, in the same transaction as the side effect
  * wherever possible.
  *
- * With `approvalId`, an approval that is currently approved, unexpired and for this tenant satisfies
- * an approval-required employee. It never overrides a pause.
+ * With `approvalId`, a current approval for this tenant, this employee, and the requested action scope
+ * satisfies an approval-required employee. It never overrides a pause.
  */
 export async function automationGate(
   db: Queryable,
@@ -80,24 +88,24 @@ export async function automationGate(
   if (stopped === "messaging") return { decision: "blocked", reason: "messaging_paused", detail: "Customer-facing AI messaging is paused for this workspace." };
   if (stopped === "outbound") return { decision: "blocked", reason: "outbound_paused", detail: "Outbound AI actions are paused for this workspace." };
 
-  if (!input.agentId || !row.agent_found) return { decision: "blocked", reason: "agent_missing", detail: "No AI employee is assigned to this action." };
-  if (!row.enabled) return { decision: "blocked", reason: "agent_disabled", detail: "This AI employee is not included in the workspace." };
+  if (!input.agentId || !row.agent_found) return { decision: "blocked", reason: "agent_missing", detail: "This action has no assigned AI runtime." };
+  if (!row.enabled) return { decision: "blocked", reason: "agent_disabled", detail: "The AI runtime is disabled in this workspace." };
   const mode = row.mode ?? "approval_required";
-  if (mode === "paused") return { decision: "blocked", reason: "agent_paused", detail: "This AI employee is paused." };
+  if (mode === "paused") return { decision: "blocked", reason: "agent_paused", detail: AI_RUNTIME_PAUSED_DETAIL };
   if (!READY_STATUSES.has(row.status ?? "")) {
-    return { decision: "blocked", reason: "agent_not_ready", detail: "This AI employee has not passed its connection check." };
+    return { decision: "blocked", reason: "agent_not_ready", detail: "The AI runtime needs a successful connection check." };
   }
   if (mode === "autonomous") return { decision: "allow", mode };
 
-  if (input.approvalId && (await approvalCoversAction(db, input.orgId, input.agentId, input.approvalId))) return { decision: "allow", mode };
-  return { decision: "needs_approval", mode, detail: "This employee needs a person's approval before it can do this." };
+  if (input.approvalId && (await approvalCoversAction(db, input.orgId, input.agentId, input.scope, input.approvalId))) return { decision: "allow", mode };
+  return { decision: "needs_approval", mode, detail: "This AI action requires a person's approval." };
 }
 
-async function approvalCoversAction(db: Queryable, orgId: string, agentId: string, approvalId: string): Promise<boolean> {
+async function approvalCoversAction(db: Queryable, orgId: string, agentId: string, scope: AutomationScope, approvalId: string): Promise<boolean> {
   const { rows } = await db.query(
     `select 1 from approval_requests where id = $1 and org_id = $2 and status = 'approved'
-       and (expires_at is null or expires_at > now()) and (agent_instance_id is null or agent_instance_id = $3)`,
-    [approvalId, orgId, agentId],
+       and (expires_at is null or expires_at > now()) and agent_instance_id = $3 and kind = any($4::text[])`,
+    [approvalId, orgId, agentId, APPROVAL_KINDS_BY_SCOPE[scope]],
   );
   return rows.length > 0;
 }

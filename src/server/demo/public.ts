@@ -552,7 +552,7 @@ export type CtaKind = "consultation" | "buy";
 
 /**
  * "Book a free consultation" and "Buy now": recorded once each on the prospect (a second press changes nothing), the latest one is the status, and the team is told. Works while the
- * window is over too: asking to talk to a person is what a prospect with no messages left is offered. Buying online is not built yet; pressing Buy only records that they asked.
+ * window is over too: asking to talk to a person is what a prospect with no messages left is offered. The buyer purchase page and invitation flow exist; pressing Buy still only records that they asked.
  */
 export async function recordCta(kind: CtaKind, ctx: DemoContext): Promise<{ ok: true; consultationUrl: string | null; alreadyRecorded: boolean } | Refused> {
   const now = ctx.now ?? new Date();

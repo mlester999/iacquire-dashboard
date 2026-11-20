@@ -46,10 +46,10 @@ export async function getOnboardingReviewAction() {
   });
 }
 
-export async function submitOnboardingAction() {
+export async function submitOnboardingAction(confirmation?: string) {
   return guard(async () => {
     const ctx = await requireOrgContextOrThrow("workspace.manage_profile");
-    const result = await submitOnboarding(ctx);
+    const result = await submitOnboarding(ctx, { confirmation });
     // After the submission has committed, never inside it. Off by default; when on, the industry CRM is applied once the setup fee is also cleared (whichever comes second starts it).
     scheduleClientCrmSetup(ctx.org.orgId, "questionnaire submitted");
     revalidatePath("/", "layout");

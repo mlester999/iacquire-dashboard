@@ -171,7 +171,7 @@ const duplicateQuality: ReviewCheck = async (db, job) => {
   });
 };
 
-export async function runLeadGenerationReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runLeadGenerationReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "lead_generation_review",
     allowedRoles: ["lead_hunter", "growth_partner"],
@@ -180,5 +180,5 @@ export async function runLeadGenerationReviewJob(job: WorkJobRow, _context: { wo
     checks: [stalledResearch, reviewBacklog, crmHandoff, coverageGap, duplicateQuality],
     limitations: "Only persisted research requests, leads and the saved Lead Hunter configuration were read. No provider was contacted, no research was started, no lead was imported and no prospect was contacted.",
     subject: "Lead generation",
-  });
+  }, context.controller.signal);
 }

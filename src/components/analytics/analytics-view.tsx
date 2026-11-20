@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, EmptyState, 
 import { Segmented, Tooltip } from "@/components/ui/overlays";
 import { PageHero, CoverageBar } from "@/components/ui/workspace";
 import { growthPartnerWorkRows } from "@/lib/analytics-view";
+import { leadSourceLabel } from "@/lib/lead-list-upload";
 import { formatCurrency, formatNumber, formatPercent, timeZoneLabel } from "@/lib/utils";
 
 interface Data {
@@ -105,7 +106,7 @@ export function AnalyticsView({
 
   return (
     <div className="module-stack space-y-6">
-      <PageHero eyebrow="Performance intelligence" title="Turn recorded results into your next decision." description={`Lead research, AI work and customer relationships over ${range.days} days. Days are grouped in ${timeZoneLabel(timeZone)}; missing provider data stays unavailable.`} icon={<BarChart3 />} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface-2 p-5"><p className="text-xs font-semibold text-ink">AI work</p><p className="mt-2 text-3xl font-semibold tracking-tight">{runsTotal}<span className="ml-2 text-xs font-normal text-muted">recorded runs</span></p><div className="mt-3"><CoverageBar label="Recorded run outcomes" parts={[{label:"Completed",count:completed,color:"var(--success)"},{label:"Failed",count:failed,color:"var(--danger)"},{label:"Other",count:Math.max(0,runsTotal-completed-failed),color:"var(--primary)"}]} /></div></div>} />
+      <PageHero eyebrow="Performance Reporting" title="Turn recorded results into your next decision." description={`Lead research, AI work and customer relationships over ${range.days} days. Days are grouped in ${timeZoneLabel(timeZone)}; missing provider data stays unavailable.`} icon={<BarChart3 />} tone="neutral" aside={<div className="rounded-2xl border border-line bg-surface-2 p-5"><p className="text-xs font-semibold text-ink">AI work</p><p className="mt-2 text-3xl font-semibold tracking-tight">{runsTotal}<span className="ml-2 text-xs font-normal text-muted">recorded runs</span></p><div className="mt-3"><CoverageBar label="Recorded run outcomes" parts={[{label:"Completed",count:completed,color:"var(--success)"},{label:"Failed",count:failed,color:"var(--danger)"},{label:"Other",count:Math.max(0,runsTotal-completed-failed),color:"var(--primary)"}]} /></div></div>} />
       <div data-aqi-target="analytics.range" className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <h2 className="text-[17px] font-semibold tracking-tight">Reporting window</h2>
@@ -158,22 +159,22 @@ export function AnalyticsView({
       <Card data-aqi-target="analytics.report">
         <CardHeader>
           <div>
-            <CardTitle>Lead generation &amp; research quality</CardTitle>
-            <CardDescription>Leads researched into your review queue over {range.days} days.</CardDescription>
+            <CardTitle>Lead generation &amp; qualification</CardTitle>
+            <CardDescription>Leads added to your review queue over {range.days} days.</CardDescription>
           </div>
-          <AskAnalyst canChat={canChat} prompt={`Review my lead generation results for the last ${range.days} days: ${lt.total} researched, ${lt.approved} approved, ${lt.rejected} rejected. What should I change in my targeting?`} />
+          <AskAnalyst canChat={canChat} prompt={`Review my lead generation results for the last ${range.days} days. We added ${lt.total} leads, approved ${lt.approved} and rejected ${lt.rejected}. What should I change in my targeting?`} />
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Metric label="Leads researched" value={formatNumber(lt.total)} definition="Businesses added to your review queue by research in this period." />
+            <Metric label="Leads added" value={formatNumber(lt.total)} definition="Businesses added to your review queue through discovery or a workspace upload in this period." />
             <Metric label="Qualification rate" value={formatPercent(qualRate)} definition="Approved ÷ reviewed (approved + rejected). Pending leads are excluded." />
             <Metric label="Average score" value={lt.avg_score ?? "—"} definition="Mean research-priority score (0–100) from cited evidence." />
             <Metric label="Well-sourced" value={formatPercent(sourcedRate)} definition="Share of leads with two or more cited sources." />
           </div>
           {lt.total > 0 ? (
-            <Columns data={leadsByDay.map((d) => ({ x: fmt(d.day), y: d.n }))} unit="leads" label="Leads researched per day" />
+            <Columns data={leadsByDay.map((d) => ({ x: fmt(d.day), y: d.n }))} unit="leads" label="Leads added per day" />
           ) : (
-            <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No leads were researched in this period.</p>
+            <p className="rounded-xl border border-dashed border-line p-6 text-center text-[14px] text-muted">No leads were added in this period.</p>
           )}
           {data.leads.bySource.length > 0 && (
             <div className="scrollbar-thin overflow-x-auto" tabIndex={0}>
@@ -190,7 +191,7 @@ export function AnalyticsView({
                 <tbody>
                   {data.leads.bySource.map((s) => (
                     <tr key={s.source} className="border-b border-line">
-                      <td className="py-2">{s.source === "lead_hunter" ? "AI Growth Partner" : s.source.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}</td>
+                      <td className="py-2">{leadSourceLabel(s.source) ?? (s.source === "lead_hunter" ? "AI Growth Partner" : s.source.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()))}</td>
                       <td className="py-2 text-right tabular-nums">{s.total}</td>
                       <td className="py-2 text-right tabular-nums">{s.approved}</td>
                       <td className="py-2 text-right tabular-nums">{s.avg_score ?? "—"}</td>
@@ -255,13 +256,13 @@ export function AnalyticsView({
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+        <Card className="xl:col-span-2" role="region" aria-labelledby="analytics-work-activity">
           <CardHeader>
             <div>
-              <CardTitle>AI work activity</CardTitle>
+              <CardTitle id="analytics-work-activity">AI work activity</CardTitle>
               <CardDescription>Current Partner work and retained previous-profile activity in this period.</CardDescription>
             </div>
-            <AskAnalyst canChat={canChat} prompt={`The AI work completed ${completed} of ${runsTotal} runs in the last ${range.days} days with ${failed} failures. What does that tell you?`} />
+            <AskAnalyst canChat={canChat && runsTotal > 0} prompt={`The AI work completed ${completed} of ${runsTotal} runs in the last ${range.days} days with ${failed} failures. What does that tell you?`} />
           </CardHeader>
           <CardContent className="space-y-5">
             <HBarList
@@ -272,8 +273,8 @@ export function AnalyticsView({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Metric label="Runs" value={formatNumber(runsTotal)} definition="AI work runs started in this period." />
               <Metric label="Success rate" value={formatPercent(runsTotal ? completed / runsTotal : null)} definition="Completed ÷ all runs. Stopped runs count as not completed." />
-              <Metric label="Tool steps" value={formatNumber(data.workforce.toolSteps)} definition="Tool calls reported by Hermes during runs." />
-              <Metric label="Tokens" value={formatNumber(data.usage.tokens, { compact: true })} definition="Tokens reported by Hermes for completed runs." />
+              <Metric label="Tool steps" value={formatNumber(data.workforce.toolSteps)} definition="Tool calls reported by the AI runtime during runs." />
+              <Metric label="Tokens" value={formatNumber(data.usage.tokens, { compact: true })} definition="Tokens reported by the AI runtime for completed runs." />
             </div>
           </CardContent>
         </Card>
@@ -350,7 +351,7 @@ export function AnalyticsView({
           </CardContent>
         </Card>
       </div>
-      <p className="text-center text-[12px] text-faint">“Ask AI Growth Partner” pre-fills a question with the numbers from that section — only what you send is shared.</p>
+      <p className="text-center text-[12px] text-faint">Ask AI Growth Partner about a section to prefill a question with its numbers — only what you send is shared.</p>
     </div>
   );
 }

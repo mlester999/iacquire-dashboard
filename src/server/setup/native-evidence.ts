@@ -572,14 +572,16 @@ export async function aiEvidence(db: Queryable, orgId: string, now: Date = new D
       : rows.some((r) => r.role_key === "growth_partner")
         ? "mixed"
         : "legacy";
-  const runtimeLabel = rows.length > 0 && rows.every((r) => r.role_key === "growth_partner") ? "AI Growth Partner" : "AI employees";
-  const isSinglePartner = runtimeLabel === "AI Growth Partner" && rows.length === 1;
+  const isSinglePartner = rows.length === 1 && rows[0].role_key === "growth_partner";
+  const runtimeLabel = isSinglePartner ? "AI Growth Partner" : "previous role profiles";
   const fresh = (d: Date | null) => Boolean(d) && now.getTime() - new Date(d!).getTime() < DAY_MS;
   const failing = rows.filter((r) => r.status === "error" || r.status === "offline").length;
   const ready = rows.filter((r) => (r.status === "online" || r.status === "busy") && fresh(r.last_health_check_at) && r.last_health_ok !== false).length;
   const facts = { enabled: rows.length, ready, failing, notReady: rows.length - ready - failing };
   if (!rows.length) return { ...facts, model, status: "unverified", detail: "No AI runtime is enabled.", summary: "No AI runtime is included yet." };
-  if (failing) return { ...facts, model, status: "failed", detail: `${failing} of ${rows.length} ${runtimeLabel} ${isSinglePartner ? "is" : "are"} failing the connection check.`, summary: `${runtimeLabel} failed its connection check. iAcquire is on it.` };
-  if (ready < rows.length) return { ...facts, model, status: "unverified", detail: `${ready} of ${rows.length} ${runtimeLabel} passed a live health check in the last day.`, summary: isSinglePartner ? "Your AI Growth Partner is still being set up and tested." : `${ready} of ${rows.length} AI employees are ready. iAcquire is setting up and testing the rest.` };
-  return { ...facts, model, status: "verified", detail: isSinglePartner ? "The AI Growth Partner passed a live health check in the last day." : `All ${rows.length} AI employees passed a live health check in the last day.`, summary: isSinglePartner ? "Your AI Growth Partner passed its live connection check." : "Every AI employee passed its live connection check." };
+  if (failing) return { ...facts, model, status: "failed", detail: isSinglePartner
+    ? "The AI Growth Partner is failing its connection check."
+    : `${failing} of ${rows.length} previous role profiles are failing the connection check.`, summary: isSinglePartner ? "Your AI Growth Partner failed its connection check. iAcquire is on it." : "A previous role profile failed its connection check. iAcquire is on it." };
+  if (ready < rows.length) return { ...facts, model, status: "unverified", detail: `${ready} of ${rows.length} ${runtimeLabel} passed a live health check in the last day.`, summary: isSinglePartner ? "Your AI Growth Partner is still being set up and tested." : `${ready} of ${rows.length} previous role profiles are ready. iAcquire is setting up and testing the rest.` };
+  return { ...facts, model, status: "verified", detail: isSinglePartner ? "The AI Growth Partner passed a live health check in the last day." : `All ${rows.length} previous role profiles passed a live health check in the last day.`, summary: isSinglePartner ? "Your AI Growth Partner passed its live connection check." : "Every previous role profile passed its live connection check." };
 }

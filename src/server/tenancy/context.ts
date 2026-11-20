@@ -285,7 +285,7 @@ export async function requireAgencyOrThrow(level: "staff" | "super_admin" = "sta
 }
 
 /** Agency-level permission check for global actions. Overrides can never grant owner/security permissions. */
-export async function requireAgencyPermissionOrThrow(permission: AgencyPermission): Promise<SessionUser> {
+export async function requireAgencyPermissionOrThrow(permission: AgencyPermission | Permission): Promise<SessionUser> {
   const user = await requireAgencyOrThrow();
   const { rows } = await withSystem((db) => db.query<{ allowed: boolean }>(
     "select coalesce(app.user_has_agency_permission($1, $2), false) as allowed",

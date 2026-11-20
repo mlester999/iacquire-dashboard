@@ -440,6 +440,37 @@ describe("turning a prospect into a client", () => {
     expect(await count("organizations")).toBe(orgs + 1);
   });
 
+  it("refuses to create a second workspace after the first workspace could not be recorded on the prospect", async () => {
+    const s = await startDemo({ business: "Recorded Retry Roofing" }, T0);
+    const organizations = await count("organizations");
+    const constraint = "demo_conversion_retry_guard_test";
+    await withSystem((db) => db.query(
+      `alter table demo_prospects add constraint ${constraint} check (id::text <> '${s.prospectId}' or status <> 'converted') not valid`,
+    ));
+    let firstError: unknown;
+    try {
+      await convertProspect(people.superAdmin, s.prospectId, {}, hours(1));
+    } catch (error) {
+      firstError = error;
+    } finally {
+      await withSystem((db) => db.query(`alter table demo_prospects drop constraint if exists ${constraint}`));
+    }
+    expect(firstError).toBeInstanceOf(Error);
+    expect(String((firstError as Error).message)).toMatch(/workspace was created \(/i);
+    const earlier = (await rows<{ org_id: string; metadata: Record<string, unknown> }>(
+      "select org_id, metadata from audit_logs where action = 'demo.convert_unrecorded' and target_id = $1 order by created_at desc limit 1",
+      [s.prospectId],
+    ))[0];
+    expect(earlier).toBeDefined();
+    const orgId = String(earlier.metadata.orgId);
+    expect(earlier.org_id).toBe(orgId);
+    await refused(
+      convertProspect(people.superAdmin, s.prospectId, {}, new Date(hours(1).getTime() + 16 * 60_000)),
+      new RegExp(`workspace was already created.*\\(${orgId}\\).*link that workspace`, "i"),
+    );
+    expect(await count("organizations")).toBe(organizations + 1);
+  });
+
   it("refuses a prospect who has not confirmed their address, is blocked, was erased, or is already a client", async () => {
     const { registerProspect } = await import("@/server/demo/public");
     const { formInput, ipFor } = await import("./support/demo");

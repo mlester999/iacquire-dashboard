@@ -1,4 +1,4 @@
-import { requireAgency } from "@/server/tenancy/context";
+import { requireAgencyPermissionOrThrow } from "@/server/tenancy/context";
 import { listUsageByTenant } from "@/server/admin/queries";
 import { UsageWorkspace } from "@/components/admin/operations-workspaces";
 import { FairUseAdmin } from "@/components/admin/fair-use-admin";
@@ -8,7 +8,7 @@ import { listReviews } from "@/server/inactivity/service";
 export const metadata = { title: "Usage & costs" };
 
 export default async function AdminUsagePage() {
-  const user = await requireAgency();
+  const user = await requireAgencyPermissionOrThrow("usage.view");
   const [rows, fleet, policies, reviews] = await Promise.all([listUsageByTenant(user), fleetFairUse(user), listPolicies(user), listReviews(user)]);
   return (
     <div className="space-y-10">

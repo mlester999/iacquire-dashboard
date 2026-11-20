@@ -490,6 +490,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
   const router = useRouter();
   const [text, setText] = React.useState("");
   const [mode, setMode] = React.useState<"reply" | "note">("reply");
+  const [purpose, setPurpose] = React.useState<"service" | "marketing" | "">("");
   const [templateId, setTemplateId] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
   // Gaps a canned reply left where the contact's details were missing ("[First name]"). Sending waits until the person fills them in.
@@ -639,6 +640,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
     const end = el?.selectionEnd ?? text.length;
     const next = text.trim() ? `${text.slice(0, start)}${out.text}${text.slice(end)}` : out.text;
     setText(next);
+    setPurpose("service");
     setMarkers((m) => [...new Set([...m, ...gaps, ...emptyValues])]);
     requestAnimationFrame(() => {
       el?.focus();
@@ -664,6 +666,11 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
 
   async function submit() {
     if (!text.trim()) return;
+    const replyPurpose = c.channel === "web_chat" ? "service" : purpose || null;
+    if (mode === "reply" && !replyPurpose) {
+      toast.error("Choose whether this is a service or marketing message.");
+      return;
+    }
     if (mode === "reply" && openGaps.length) {
       toast.error(`Replace ${openGaps.join(", ")} with the real details before sending.`);
       composerRef.current?.focus();
@@ -682,7 +689,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
             return r;
           }, "Note added.")
         : await run("send", async () => {
-            const r = await sendReplyAction(c.id, text, windowClosed ? templateId : null);
+            const r = await sendReplyAction(c.id, text, replyPurpose as "service" | "marketing", windowClosed ? templateId : null);
             if (r.ok) followRef.current = true;
             if (r.ok && r.data.status === "blocked") toast.warning("It couldn't be sent yet. The message shows why.");
             else if (r.ok && r.data.status === "sent") toast.success("Sent to the provider. Delivery shows once it confirms.");
@@ -690,6 +697,7 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
           });
     if (sent) {
       setText("");
+      setPurpose("");
       setMarkers([]);
       setHoles([]);
       setTemplateId("");
@@ -832,9 +840,13 @@ function Thread(props: Props & { detail: InboxDetail; onBack: () => void }) {
         {mode === "reply" && openGaps.length > 0 && (
           <p role="status" className="mt-2 flex items-start gap-1.5 text-[12px] text-warning-ink"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />Replace {openGaps.join(", ")} before sending. These details aren&apos;t on the contact&apos;s record.</p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-[12px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender` : "Visible to your team only"}</span>
-          <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {mode === "reply" && c.channel !== "web_chat" && <Select aria-label="Message purpose" value={purpose} onChange={(e) => setPurpose(e.target.value as "service" | "marketing" | "")}><option value="">Choose purpose…</option><option value="service">Service</option><option value="marketing">Marketing</option></Select>}
+            {mode === "reply" && c.channel !== "web_chat" && <span className="text-[12px] text-muted">Marketing requires opt-in.</span>}
+            <span className="text-[12px] text-muted">{mode === "reply" && c.channel === "sms" && text ? `${segments} SMS segment${segments === 1 ? "" : "s"}` : mode === "reply" ? (c.channel === "web_chat" ? "Appears in the visitor's chat window" : `Sends from your verified ${CONVERSATION_CHANNEL_LABELS[c.channel]} sender`) : "Visible to your team only"}</span>
+          </div>
+          <Button variant={mode === "note" ? "soft" : "brand"} size="sm" loading={busy === "send"} disabled={!text.trim() || (mode === "reply" && (!canReply || needsTemplate || (c.channel !== "web_chat" && !purpose)))} onClick={submit}>{mode === "note" ? "Add note" : "Send"}</Button>
         </div>
       </footer>
     </article>

@@ -25,7 +25,7 @@ export interface SectionContext {
 
 const PROVIDER_LABELS: Record<string, string> = {
   ghl: "GoHighLevel", resend: "Resend", twilio: "Twilio", meta_whatsapp: "WhatsApp Cloud API", google: "Google Calendar", microsoft: "Microsoft Outlook", vapi: "Vapi", retell: "Retell",
-  hermes: "Hermes", ghl_calendar: "GoHighLevel calendar", n8n: "n8n", slack: "Slack", email: "Email", llm: "AI model", database: "Database", unknown: "Not recorded",
+  hermes: "AI runtime", ghl_calendar: "GoHighLevel calendar", n8n: "n8n", slack: "Slack", email: "Email", llm: "AI model", database: "Database", unknown: "Not recorded",
 };
 const providerLabel = (p: string) => PROVIDER_LABELS[p] ?? p.replace(/_/g, " ");
 const channelLabel = (c: string) => CHANNEL_LABELS[c as ReportChannel] ?? c;

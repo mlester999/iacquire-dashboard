@@ -185,7 +185,9 @@ describe("the inbox's server actions while switched off", () => {
   const SETTINGS = ["updateMessagingSettingsAction", "setChannelEnabledAction", "setAvailabilityAction", "setNotificationPreferencesAction", "setOwnerPriorityModeAction", "setEscalationAuthorizationAction"];
   type Out = { ok: boolean; code?: string; error?: string };
   const actions = inboxActions as unknown as Record<string, (...a: unknown[]) => Promise<Out>>;
-  const call = (name: string) => actions[name]("x", "x", "x", "x", "x");
+  const call = (name: string) => name === "sendReplyAction"
+    ? inboxActions.sendReplyAction(ID, "Thanks for your message.", "service", null)
+    : actions[name]("x", "x", "x", "x", "x");
   const source = fs.readFileSync(path.join(process.cwd(), "src/app/actions/inbox.ts"), "utf8");
   const bodyOf = (name: string) => {
     const start = source.indexOf(`export async function ${name}(`);
@@ -214,16 +216,28 @@ describe("the inbox's server actions while switched off", () => {
     expect(await actions.setConversationStateAction("x", { archived: true }), "setConversationStateAction (archive)").toEqual({ ok: false, error: INBOX_UNAVAILABLE_MESSAGE, code: "unavailable" });
     expect((await withSystem((db) => db.query<{ n: string }>("select count(*)::text as n from conversation_messages"))).rows[0].n).toBe(before);
     state.ctx = null;
-    for (const name of NEW_ONLY) expect((await call(name)).code, name).toBe("unauthenticated");
+    for (const name of NEW_ONLY) expect(await call(name), name).toMatchObject({ ok: false, code: "unauthenticated" });
   });
 
   it("leaves the shared actions and the settings alone: they go on to their own checks as usual", async () => {
     setSwitch("true");
     for (const name of [...SHARED, ...SETTINGS]) {
       const out = await call(name);
-      expect(out.code, name).toBe("unauthenticated");
+      expect(out, name).toMatchObject({ ok: false, code: "unauthenticated" });
     }
     expect(state.authCalls).toBeGreaterThan(0);
+  });
+
+  it("keeps reply purpose and permission checks active in the previous inbox", async () => {
+    setSwitch("true");
+    state.ctx = m.ctx("viewer");
+    for (const purpose of ["service", "marketing"] as const) {
+      expect(await inboxActions.sendReplyAction(ID, "Thanks for your message.", purpose, null)).toMatchObject({ ok: false, code: "forbidden" });
+    }
+    expect(state.authCalls).toBe(2);
+
+    state.ctx = m.ctx("owner");
+    expect(await actions.sendReplyAction(ID, "Thanks for your message.", "", null)).toMatchObject({ ok: false, code: "invalid_input" });
   });
 
   it("keeps a shared action working for a signed-in person, and works as before when it is on", async () => {

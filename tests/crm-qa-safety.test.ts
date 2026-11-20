@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CRM_QA_ENV, SIM_PAYMONGO, assertIsolated } from "../scripts/crm-qa-env.mjs";
 import { clearDevRestartNoise, exitCodeFor, isDevRestartInterruption, isLocalUrl, isRedirectTargetCurrent, parseNextRedirectMeta } from "../scripts/crm-browser-qa.mjs";
+import { SITES_QA_ENV } from "../scripts/sites-qa-env.mjs";
 
 const roots: string[] = [];
 
@@ -15,6 +16,18 @@ function tempRoot() {
 
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+it("blanks inherited workspace OAuth settings in the independent Sites QA environment", () => {
+  const keys = [
+    "NOTION_WORKSPACE_OAUTH_CLIENT_ID",
+    "NOTION_WORKSPACE_OAUTH_CLIENT_SECRET",
+    "AIRTABLE_WORKSPACE_OAUTH_CLIENT_ID",
+    "AIRTABLE_WORKSPACE_OAUTH_CLIENT_SECRET",
+  ];
+  const inherited = Object.fromEntries(keys.map((key) => [key, "synthetic-inherited-value"]));
+  const launched = { ...inherited, ...SITES_QA_ENV };
+  for (const key of keys) expect(launched[key], key).toBe("");
 });
 
 describe("CRM browser QA stays isolated", () => {
@@ -49,6 +62,10 @@ describe("CRM browser QA stays isolated", () => {
       { OUTBOUND_MESSAGING_ENABLED: "true" },
       { GHL_WRITES_ENABLED: "true" },
       { RESEND_API_KEY: "not-a-real-key" },
+      { NOTION_WORKSPACE_OAUTH_CLIENT_ID: "synthetic-should-be-refused" },
+      { NOTION_WORKSPACE_OAUTH_CLIENT_SECRET: "synthetic-should-be-refused" },
+      { AIRTABLE_WORKSPACE_OAUTH_CLIENT_ID: "synthetic-should-be-refused" },
+      { AIRTABLE_WORKSPACE_OAUTH_CLIENT_SECRET: "synthetic-should-be-refused" },
     ]) {
       expect(() => assertIsolated({ root, files: [".env"], env: { ...CRM_QA_ENV, ...unsafe } })).toThrow();
     }

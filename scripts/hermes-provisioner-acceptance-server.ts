@@ -230,7 +230,8 @@ async function onboardSyntheticClient(stagePrefix: "tenant_one" | "tenant_two", 
     currentQuestionId: "f.review",
   }));
   if (Object.keys(saved.rejected).length) throw new Error("acceptance_onboarding_answers_rejected");
-  const outcome = await inTenantStage("onboarding_submit", () => onboardingModule.submitOnboarding(ctx));
+  const review = await inTenantStage("onboarding_review", () => onboardingModule.getOnboardingReview(ctx));
+  const outcome = await inTenantStage("onboarding_submit", () => onboardingModule.submitOnboarding(ctx, { confirmation: review.businessBrain?.confirmation }));
   if (outcome.employees.length !== 1 || outcome.employees[0]?.role !== "growth_partner") {
     throw new Error("acceptance_growth_partner_identity_mismatch");
   }

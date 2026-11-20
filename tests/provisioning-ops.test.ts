@@ -304,7 +304,8 @@ describe("the numbers on the health page", () => {
     expect(health.oldestOpenMinutes).toBeGreaterThanOrEqual(89);
     expect(health.oldestOpenMinutes).toBeLessThanOrEqual(91);
     expect(health.workerLastClaimAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    const system = await getSystemHealth();
+    const admin = await createUser({ platformRole: "agency_super_admin" });
+    const system = await getSystemHealth({ id: admin.id, platformRole: "agency_super_admin" });
     expect(system.provisioning).toMatchObject({ open: 2, failed: 1 });
     expect(system.pendingProvisioning).toBe(2);
   });

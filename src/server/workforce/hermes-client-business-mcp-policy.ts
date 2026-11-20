@@ -47,7 +47,7 @@ export function clientBusinessProposalToolNamesForRole(role: WorkforceRoleKey): 
 }
 
 const GROWTH_PARTNER_CRM_PROPOSALS: readonly AgentToolName[] = [
-  "update_contact", "apply_tag", "remove_tag", "create_opportunity", "move_opportunity_stage",
+  "update_contact", "apply_tag", "remove_tag", "create_opportunity", "move_opportunity_stage", "create_task",
 ];
 
 /** A Growth Partner CRM proposal is available only while the corresponding Allowed actions switch is on. */

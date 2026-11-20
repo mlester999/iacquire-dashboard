@@ -32,7 +32,7 @@ function field(form: FormData, key: string, value: string) {
   form.set(key, value);
 }
 
-function baseForm(source: "openstreetmap" | "company_website") {
+function baseForm(source: "openstreetmap" | "company_website" | "fsa_directory") {
   const form = new FormData();
   field(form, "source", source);
   field(form, "perJobRequestCap", "3");
@@ -118,5 +118,29 @@ describe("Growth Partner research-source settings action", () => {
 
     expect(result.status).toBe("error");
     expect(mocks.saveResearchSourcePolicy).not.toHaveBeenCalled();
+  });
+
+  it("binds directory approval to the rendered workspace and accepts only declared source filters", async () => {
+    const form = baseForm("fsa_directory");
+    for (const [key, value] of Object.entries({
+      workspaceId: "wrong-tenant", enabled: "true", activationAcknowledged: "true", rightsAcknowledged: "true",
+      authorityId: "123", authorityCode: "T23", authorityName: "Synthetic Borough", nameKeyword: "Bistro",
+      maxResults: "10", approvalExpiresOn: "2026-11-05", perJobRequestCap: "1",
+      providerFeeUsdPerRequest: "999", endpoint: "https://wrong.example.test",
+    })) field(form, key, value);
+    await expect(saveResearchSourcePolicyAction({ status: "idle", message: "" }, form)).resolves.toMatchObject({
+      status: "error", message: expect.stringMatching(/workspace changed/),
+    });
+    expect(mocks.saveResearchSourcePolicy).not.toHaveBeenCalled();
+    field(form, "workspaceId", mocks.context.org.orgId);
+    await expect(saveResearchSourcePolicyAction({ status: "idle", message: "" }, form)).resolves.toMatchObject({ status: "success" });
+    expect(mocks.saveResearchSourcePolicy).toHaveBeenCalledWith(mocks.context, "fsa_directory", expect.objectContaining({
+      providerFeeUsdPerRequest: 0, enabled: true, activationAcknowledged: true, perJobRequestCap: 1,
+      sourceConfig: {
+        authorityId: 123, authorityCode: "T23", authorityName: "Synthetic Borough", nameKeyword: "Bistro",
+        maxResults: 10, approvalExpiresOn: "2026-11-05", rightsAcknowledged: true,
+      },
+    }));
+    expect(mocks.createResearchRequest).not.toHaveBeenCalled();
   });
 });

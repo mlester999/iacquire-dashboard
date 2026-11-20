@@ -73,7 +73,7 @@ export function agentLiveRunsVerified(agent: {
 }
 
 export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Promise<AgentTaskResult> {
-  if (!isAgentRole(req.roleKey)) return { status: "blocked", detail: "That AI employee role doesn't exist, so nothing was asked." };
+  if (!isAgentRole(req.roleKey)) return { status: "blocked", detail: "The requested AI profile type is unavailable." };
   const roleName = workforceRoleShortName(req.roleKey);
   const instruction = req.instruction.trim();
   if (!instruction || instruction.length > MAX_INSTRUCTION) return { status: "blocked", detail: `The instruction must be between 1 and ${MAX_INSTRUCTION} characters, so nothing was asked.` };
@@ -119,7 +119,7 @@ export async function requestAgentTask(db: Queryable, req: AgentTaskRequest): Pr
   if (!agentLiveRunsVerified(agent)) {
     const reason = agent.last_health_detail?.trim() || "its complete runtime tool inventory hasn't been verified";
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    return blocked(`Not sent to ${name}: ${sentence} live AI employee runs stay switched off until the inventory check passes. Nothing was asked and nothing changed.`);
+    return blocked(`Not sent to ${name}: ${sentence} live AI runs stay paused until the inventory check passes. Nothing was asked and nothing changed.`);
   }
 
   const key = `crm-task:${req.runId}:${req.stepKey}`.slice(0, 200);

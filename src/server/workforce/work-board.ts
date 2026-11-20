@@ -2,6 +2,7 @@ import "server-only";
 import { withUser } from "@/server/db";
 import { DRAFT_MESSAGE_IDS_SQL, loadDraftCountsForJobs, workJobEvidence, workJobStageLabel, workJobStatusLabel, type WorkJobStatus } from "@/server/workforce/jobs";
 import type { EvidenceMarker } from "@/lib/evidence-class";
+import { isCompletedWork, isPreparedOnlyWork } from "@/lib/work-board-status";
 import type { OrgContext } from "@/server/tenancy/context";
 
 export type WorkBoardFilter = "all" | "active" | "attention" | "completed";
@@ -21,6 +22,8 @@ export interface WorkBoardJob {
   resultSummary: string | null;
   resultCount: number;
   failureMessage: string | null;
+  failureCode?: string | null;
+  failureHref?: string | null;
   employeeName: string;
   employeeRole: string;
   conversationId: string | null;
@@ -43,8 +46,8 @@ function iso(value: Date | null | undefined): string | null {
 
 /**
  * Tenant-scoped work board read. Row-level security limits a regular member to work they
- * requested; an owner or admin with `activity.view` sees the workspace's queue. No event payload
- * beyond the persisted human-readable message is returned.
+ * requested; an owner or admin with `activity.view` sees the workspace's queue. Event payloads stay
+ * private; only the persisted message and a safe internal fix route are returned.
  */
 export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter = "all"): Promise<WorkBoardJob[]> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) return [];
@@ -55,14 +58,15 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       result_summary: string | null; result_count: number; failure_message: string | null;
       conversation_id: string | null; created_at: Date; started_at: Date | null; finished_at: Date | null;
       employee_name: string; employee_role: string;
-      event_message: string | null; event_kind: string | null; event_at: Date | null;
+      event_message: string | null; event_kind: string | null; event_href: string | null; event_at: Date | null;
+      failure_code: string | null;
       recovery_pending: boolean;
       draft_message_ids: unknown;
     }>(
-      `select j.id, j.capability, j.title, j.status, j.stage, j.result_summary, j.result_count, j.failure_message,
+      `select j.id, j.capability, j.title, j.status, j.stage, j.result_summary, j.result_count, j.failure_code, j.failure_message,
               j.conversation_id, j.created_at, j.started_at, j.finished_at,
               a.display_name as employee_name, a.role_key as employee_role,
-              e.message as event_message, e.kind as event_kind, e.created_at as event_at,
+              e.message as event_message, e.kind as event_kind, e.href as event_href, e.created_at as event_at,
               (j.status = 'running' and not (j.lease_owner is not null and j.lease_expires_at is not null and j.lease_expires_at > now())) as recovery_pending,
               -- A finished follow-up draft job lists its drafts as they were when it finished; the ids are looked up below, because a viewer may not be allowed to open every
               -- conversation a draft sits in and the board must count them the way the job panel does.
@@ -70,7 +74,7 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
          from ai_work_jobs j
          join agent_instances a on a.id = j.agent_instance_id and a.org_id = j.org_id
          left join lateral (
-           select kind, message, created_at from ai_work_events
+           select kind, message, data->>'href' as href, created_at from ai_work_events
             where job_id = j.id order by id desc limit 1
          ) e on true
         where j.org_id = $1
@@ -90,7 +94,7 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
     return rows;
   });
   const draftCounts = await loadDraftCountsForJobs(ctx.org.orgId, rows.map((row) => ({ id: row.id, draftMessageIds: row.draft_message_ids })));
-  return rows.map((row) => {
+  const jobs = rows.map((row) => {
     const drafts = draftCounts.get(row.id) ?? null;
     const evidence = workJobEvidence(row, drafts);
     return {
@@ -98,7 +102,9 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       capability: row.capability,
       title: row.title,
       status: row.status,
-      statusLabel: workJobStatusLabel({ status: row.status, recoveryPending: row.recovery_pending, capability: row.capability }, evidence, drafts),
+      statusLabel: row.failure_code === "awaiting_connection"
+        ? "Waiting for connection"
+        : workJobStatusLabel({ status: row.status, recoveryPending: row.recovery_pending, capability: row.capability }, evidence, drafts),
       evidence,
       recoveryPending: row.recovery_pending,
       stage: row.stage,
@@ -106,6 +112,8 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
       resultSummary: row.result_summary,
       resultCount: row.result_count,
       failureMessage: row.failure_message,
+      failureCode: row.failure_code,
+      failureHref: row.event_href?.startsWith("/") && !row.event_href.startsWith("//") && !row.event_href.includes("\\") ? row.event_href : null,
       employeeName: row.employee_name,
       employeeRole: row.employee_role,
       conversationId: row.conversation_id,
@@ -117,31 +125,43 @@ export async function listWorkBoardJobs(ctx: OrgContext, filter: WorkBoardFilter
         : null,
     };
   });
+  return filter === "completed"
+    ? jobs.filter((job) => isCompletedWork(job.status, job.evidence, job.capability))
+    : jobs;
 }
 
 export async function workBoardSummary(ctx: OrgContext): Promise<WorkBoardSummary> {
   if (!ctx.can("agents.use") && !ctx.can("activity.view")) return { active: 0, waiting: 0, needsAttention: 0, completedToday: 0 };
   const scopeAll = ctx.can("activity.view");
-  return withUser(ctx.user.id, async (db) => {
-    const { rows } = await db.query<{ active: number; waiting: number; needs_attention: number; completed_today: number }>(
+  const data = await withUser(ctx.user.id, async (db) => {
+    const { rows } = await db.query<{ active: number; waiting: number; needs_attention: number }>(
       `select
          count(*) filter (where status = 'running' and lease_owner is not null and lease_expires_at is not null and lease_expires_at > now())::int as active,
          count(*) filter (where status = 'waiting_for_approval')::int as waiting,
-         count(*) filter (where status in ('failed', 'blocked') or (status = 'running' and not (lease_owner is not null and lease_expires_at is not null and lease_expires_at > now())))::int as needs_attention,
-         count(*) filter (
-           where status = 'completed'
-             and finished_at >= (date_trunc('day', now() at time zone $4) at time zone $4)
-         )::int as completed_today
+         count(*) filter (where status in ('failed', 'blocked', 'waiting_for_approval') or (status = 'running' and not (lease_owner is not null and lease_expires_at is not null and lease_expires_at > now())))::int as needs_attention
        from ai_work_jobs
        where org_id = $1 and ($2::boolean or requested_by = $3)`,
+      [ctx.org.orgId, scopeAll, ctx.user.id],
+    );
+    const completed = await db.query<{ id: string; capability: string; status: WorkJobStatus; draft_message_ids: unknown }>(
+      `select j.id, j.capability, j.status, ${DRAFT_MESSAGE_IDS_SQL} as draft_message_ids
+         from ai_work_jobs j
+        where j.org_id = $1 and ($2::boolean or j.requested_by = $3)
+          and j.status = 'completed'
+          and j.finished_at >= (date_trunc('day', now() at time zone $4) at time zone $4)`,
       [ctx.org.orgId, scopeAll, ctx.user.id, ctx.org.timezone],
     );
-    const row = rows[0];
-    return {
-      active: row?.active ?? 0,
-      waiting: row?.waiting ?? 0,
-      needsAttention: row?.needs_attention ?? 0,
-      completedToday: row?.completed_today ?? 0,
-    };
+    return { counts: rows[0], completedJobs: completed.rows };
   });
+  const draftCounts = await loadDraftCountsForJobs(ctx.org.orgId, data.completedJobs.map((job) => ({ id: job.id, draftMessageIds: job.draft_message_ids })));
+  const completedToday = data.completedJobs.reduce((count, job) => {
+    const evidence = workJobEvidence(job, draftCounts.get(job.id) ?? null);
+    return count + (isPreparedOnlyWork(job.status, evidence, job.capability) ? 0 : 1);
+  }, 0);
+  return {
+    active: data.counts?.active ?? 0,
+    waiting: data.counts?.waiting ?? 0,
+    needsAttention: data.counts?.needs_attention ?? 0,
+    completedToday,
+  };
 }

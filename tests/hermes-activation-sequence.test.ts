@@ -66,7 +66,7 @@ describe("the documented activation sequence", () => {
   it("cannot go online before a configuration is applied", async () => {
     const health = await runHealthCheck(agentId, { userId: admin.id, kind: "agency" });
     expect(health).toMatchObject({ ok: false, status: "setup_required" });
-    expect(health.detail).toMatch(/configuration hasn't been applied/);
+    expect(health.detail).toMatch(/needs an applied configuration/);
     const { rows } = await withSystem((db) => db.query<{ status: string; active_config_version_id: string | null }>(
       "select status, active_config_version_id from agent_instances where id=$1",
       [agentId],

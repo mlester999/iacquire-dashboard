@@ -380,7 +380,7 @@ export function Segmented<V extends string>({
 }: {
   value: V;
   onChange: (v: V) => void;
-  options: Array<{ value: V; label: React.ReactNode }>;
+  options: Array<{ value: V; label: React.ReactNode; disabled?: boolean }>;
   id: string;
   size?: "sm" | "md";
   ariaLabel: string;
@@ -393,10 +393,11 @@ export function Segmented<V extends string>({
           key={o.value}
           className={cn(
             "relative inline-flex shrink-0 cursor-pointer items-center justify-center rounded-[10px] font-medium text-muted transition-colors hover:text-ink has-[:checked]:text-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary",
+            o.disabled && "cursor-not-allowed opacity-50 hover:text-muted",
             size === "sm" ? "min-h-11 px-2.5 text-[13px] sm:min-h-7" : "min-h-11 px-3 text-[14px] sm:min-h-8",
           )}
         >
-          <input type="radio" name={groupName} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} className="sr-only" />
+          <input type="radio" name={groupName} value={o.value} checked={value === o.value} disabled={o.disabled} onChange={() => onChange(o.value)} className="sr-only" />
           {value === o.value && (
             <motion.span
               layoutId={`seg-${id}`}

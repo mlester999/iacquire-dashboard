@@ -67,4 +67,19 @@ describe("migration file numbers", () => {
   it("notices a shared number (the check itself works)", () => {
     expect(duplicates(["0082_client_employee_provisioning.sql", "0082_unified_inbox.sql", "0083_other.sql"])).toEqual(["0082: 0082_client_employee_provisioning.sql, 0082_unified_inbox.sql"]);
   });
+
+  it("keeps workspace OAuth migration 0143 behind the tenant schema and site runtime role", () => {
+    expect(MIGRATION_PREREQUISITES["0143_workspace_oauth_connections"]).toEqual(["0001_foundation", "0021_websites"]);
+    expect(listMigrationFiles().filter((file) => file.startsWith("0143_"))).toEqual(["0143_workspace_oauth_connections.sql"]);
+  });
+
+  it("keeps Growth Partner preparation receipts behind plan and Brain version storage", () => {
+    expect(MIGRATION_PREREQUISITES["0144_growth_partner_migration_preparations"])
+      .toEqual(["0120_ai_growth_partner_foundation", "0142_growth_partner_migration_plans"]);
+  });
+
+  it("applies the FSA directory extension after the existing research source and usage tables", () => {
+    expect(MIGRATION_PREREQUISITES["0145_fsa_directory_research_source"]).toEqual(["0128_lead_research_source_budgets"]);
+    expect(listMigrationFiles().filter((file) => file.startsWith("0145_"))).toEqual(["0145_fsa_directory_research_source.sql"]);
+  });
 });

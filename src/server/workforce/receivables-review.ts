@@ -222,7 +222,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
   ];
 };
 
-export async function runReceivablesReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runReceivablesReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "receivables_review",
     allowedRoles: ["performance_analyst", "growth_partner"],
@@ -232,5 +232,5 @@ export async function runReceivablesReviewJob(job: WorkJobRow, _context: { worke
     metrics,
     limitations: "Only stored records in this workspace were read. Nothing was issued, sent, voided, recorded or refunded, and neither a customer nor a payment provider was contacted. Amounts in different currencies are never added together and no exchange rate is used. Overdue is judged as of this review in the workspace's time zone, not live. The review says what is owed and what needs a person; it does not know why a customer has not paid.",
     subject: "Receivables",
-  });
+  }, context.controller.signal);
 }

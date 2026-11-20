@@ -30,6 +30,9 @@ import { hashPurchaseToken, looksLikePurchaseToken, newPurchaseReference, newPur
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isId = (value: unknown): value is string => typeof value === "string" && UUID.test(value);
 
+/** A purchase is the sole authority for this server-created workspace key; it never comes from buyer input. */
+const purchaseTenantKey = (intentId: string) => `purchase:${intentId}`;
+
 export const createPurchaseIntentSchema = z.object({
   buyerName: z.string().trim().min(2, "Enter the buyer's name.").max(120),
   buyerEmail: z.string().trim().toLowerCase().email("Enter a valid email address.").max(254),
@@ -648,34 +651,45 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
   if (!clientOrgId) {
     // Which employees the purchase includes comes from one reviewed table (src/lib/plan-employees.ts). A product it does not list gets the full team, and the audit trail records which key.
     const plan = rolesForPlan(current.product_version);
-    if (plan.defaulted) {
-      await withSystem((db) => recordAudit({
-        orgId: current.agency_org_id, actorUserId: user.id, actorKind: "agency", action: "purchase.plan_roles_defaulted", targetType: "purchase_intent", targetId: id, result: "success",
-        metadata: { planKey: current.product_version },
-      }, db));
+    // The purchase is reserved for the new workspace INSIDE the transaction that creates it (and the creation is keyed by the purchase), so two provisions of one purchase, a retry and
+    // a crash can never leave a second workspace, a second invitation or a second email behind: the one that loses the reservation rolls its whole creation back, and the one
+    // that comes after the winner finds the winner's workspace by the key. The timeline entry and the audit note are written in the same transaction, so they exist once, with the workspace.
+    const claim = async (db: Queryable, orgId: string): Promise<boolean> => {
+      const taken = await db.query<{ client_org_id: string | null }>("update purchase_intents set client_org_id = $2 where id = $1 and client_org_id is null returning client_org_id", [id, orgId]);
+      if (!taken.rows[0]?.client_org_id) return false;
+      if (plan.defaulted) {
+        await recordAudit({
+          orgId: current.agency_org_id, actorUserId: user.id, actorKind: "agency", action: "purchase.plan_roles_defaulted", targetType: "purchase_intent", targetId: id, result: "success",
+          metadata: { planKey: current.product_version },
+        }, db);
+      }
+      await addEvent(db, current.id, current.agency_org_id, "workspace_created", { clientOrgId: orgId }, user.id, "user");
+      return true;
+    };
+    try {
+      const created = await createClientTenant(user, {
+        name: current.company,
+        ownerEmail: current.buyer_email,
+        industry: current.industry,
+        website: current.website,
+        timezone: current.timezone,
+        crmMode: "native",
+        blueprint: null,
+        enabledRoles: plan.roles,
+      }, { idempotencyKey: purchaseTenantKey(current.id), claim });
+      clientOrgId = created.orgId;
+      inviteLink = created.inviteLink;
+      emailDelivery = created.emailDelivery;
+    } catch (error) {
+      // Only a lost reservation is recovered from: the purchase now names the workspace another provision made, so this one carries on with it instead of making a second.
+      const winner = error instanceof AppError && error.code === "conflict"
+        ? (await withSystem((db) => db.query<{ client_org_id: string | null }>("select client_org_id from purchase_intents where id = $1", [id]))).rows[0]?.client_org_id
+        : null;
+      if (!winner) throw error;
+      clientOrgId = winner;
     }
-    const created = await createClientTenant(user, {
-      name: current.company,
-      ownerEmail: current.buyer_email,
-      industry: current.industry,
-      website: current.website,
-      timezone: current.timezone,
-      crmMode: "native",
-      blueprint: null,
-      enabledRoles: plan.roles,
-    });
-    clientOrgId = created.orgId;
-    inviteLink = created.inviteLink;
-    emailDelivery = created.emailDelivery;
-    const claimed = await withSystem((db) =>
-      db.query<{ client_org_id: string | null }>("update purchase_intents set client_org_id = $2 where id = $1 and client_org_id is null returning client_org_id", [id, clientOrgId]),
-    );
-    if (!claimed.rows[0]?.client_org_id) {
-      // A concurrent provision created a workspace first. Do not create a second one; use the stored one and complete its payment.
-      const winner = await withSystem((db) => db.query<IntentRow>(`${SELECT} where id = $1`, [id]));
-      if (winner.rows[0]?.client_org_id) clientOrgId = winner.rows[0].client_org_id;
-    }
-    await withSystem((db) => addEvent(db, current.id, current.agency_org_id, "workspace_created", { clientOrgId }, user.id, "user"));
+    // A purchase that has no workspace after all of that (it should not happen: the reservation and the creation are one transaction) is never paid into another purchase's workspace.
+    if (!clientOrgId) throw new AppError("conflict", "The workspace for this purchase could not be confirmed. Nothing was recorded; try again.");
   }
 
   // The canonical payment of the new workspace: the one the provider's signed notice produced, or the one a Super Admin recorded by hand. Either way it is the existing billing
@@ -689,23 +703,49 @@ export async function provisionPurchaseIntent(user: SessionUser, id: unknown, op
         if (!checkout) throw new AppError("conflict", "The checkout that paid this purchase could not be found.");
         return recordProviderSetupPayment(db, { orgId: clientOrgId as string, checkout, actorUserId: user.id });
       })
-    : await recordManualPayment(user, clientOrgId, {
-        kind: "setup_fee",
-        amount: (current.setup_fee_cents / 100).toFixed(2),
-        method: current.payment_method as never,
-        externalReference: current.payment_reference as string,
-        paidOn: current.payment_paid_on as string,
-        note: current.payment_note as string,
-      }, { now });
+    : await (async () => {
+        const fields = {
+          kind: "setup_fee" as const,
+          amount: (current.setup_fee_cents / 100).toFixed(2),
+          method: current.payment_method as never,
+          externalReference: current.payment_reference as string,
+          paidOn: current.payment_paid_on as string,
+          note: current.payment_note as string,
+        };
+        try {
+          return await recordManualPayment(user, clientOrgId as string, fields, { now });
+        } catch (error) {
+          // The billing row is locked while a payment is recorded, but a request can still lose the response after that transaction commits. Read back only the exact
+          // purchase reference, workspace, kind and amount; this makes a concurrent call or a lost response idempotent without treating a different payment as ours.
+          const existing = await withSystem((db) => db.query<{ id: string; org_id: string; kind: string; usd_amount_micros: string }>(
+            "select id, org_id, kind, usd_amount_micros::text from payments where provider = 'manual' and lower(external_reference) = lower($1)",
+            [fields.externalReference],
+          ));
+          const row = existing.rows[0];
+          if (row?.org_id === clientOrgId && row.kind === "setup_fee" && Number(row.usd_amount_micros) === current.setup_fee_cents * 10_000) {
+            return { paymentId: row.id, duplicate: true, clearedSetup: false, provisioningRequested: 0 };
+          }
+          throw error;
+        }
+      })();
 
   const finalized = await withSystem(async (db) => {
-    await db.query(
-      "update purchase_intents set status = 'provisioned', payment_id = $2, provisioned_at = $3, provisioned_by = $4, last_provision_error = null where id = $1 and status = 'payment_verified'",
+    const changed = await db.query(
+      "update purchase_intents set status = 'provisioned', payment_id = $2, provisioned_at = $3, provisioned_by = $4, last_provision_error = null where id = $1 and status = 'payment_verified' returning id",
       [id, payment.paymentId, now.toISOString(), user.id],
     );
-    await addEvent(db, current.id, current.agency_org_id, "provisioned", { clientOrgId, paymentId: payment.paymentId, duplicate: payment.duplicate, source: current.payment_source, maintenanceSelected: current.maintenance_selected, automatic: opts.automatic === true }, user.id, opts.automatic ? "system" : "user");
-    await recordAudit({ orgId: current.agency_org_id, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.provisioned", targetType: "purchase_intent", targetId: id, result: "success",
-      metadata: { reference: current.reference, clientOrgId, paymentId: payment.paymentId, amountCents: current.payment_amount_cents, duplicate: payment.duplicate } }, db);
+    if (changed.rows.length) {
+      await addEvent(db, current.id, current.agency_org_id, "provisioned", { clientOrgId, paymentId: payment.paymentId, duplicate: payment.duplicate, source: current.payment_source, maintenanceSelected: current.maintenance_selected, automatic: opts.automatic === true }, user.id, opts.automatic ? "system" : "user");
+      await recordAudit({ orgId: current.agency_org_id, actorUserId: user.id, actorKind: "agency", action: "purchase_intent.provisioned", targetType: "purchase_intent", targetId: id, result: "success",
+        metadata: { reference: current.reference, clientOrgId, paymentId: payment.paymentId, amountCents: current.payment_amount_cents, duplicate: payment.duplicate } }, db);
+    } else {
+      // Another provision attempt finalized while this one was recording the same canonical payment.
+      const fresh = (await db.query<IntentRow>(`${SELECT} where id = $1`, [id])).rows[0];
+      if (!fresh || fresh.status !== "provisioned" || fresh.payment_id !== payment.paymentId || fresh.client_org_id !== clientOrgId) {
+        throw new AppError("conflict", "This purchase changed while provisioning. Reload before trying again.");
+      }
+      return fresh;
+    }
     const fresh = (await db.query<IntentRow>(`${SELECT} where id = $1`, [id])).rows[0];
     return fresh;
   });

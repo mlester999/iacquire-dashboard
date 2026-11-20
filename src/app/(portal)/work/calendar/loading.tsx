@@ -2,9 +2,9 @@ import { CalendarDays } from "lucide-react";
 
 export default function WorkforceCalendarLoading() {
   return (
-    <div className="space-y-4" role="status" aria-busy="true" aria-label="Loading schedules and calendar">
+    <div className="space-y-4" role="status" aria-busy="true" aria-label="Loading Workforce Calendar">
       <div className="rounded-3xl border border-line bg-surface p-6 shadow-soft sm:p-8">
-        <p className="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.12em] text-primary"><CalendarDays className="size-4" aria-hidden />Work Board</p>
+        <p className="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[.12em] text-primary"><CalendarDays className="size-4" aria-hidden />AI Work Board</p>
         <div className="skeleton mt-4 h-8 w-64 rounded-lg" />
         <div className="skeleton mt-3 h-4 max-w-xl rounded-md" />
       </div>

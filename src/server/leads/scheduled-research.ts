@@ -5,9 +5,10 @@ import { appendWorkEvent, createWorkJob } from "@/server/workforce/jobs";
 import { parseResearchAssignment } from "@/lib/research-intent";
 import { targetingSchema } from "@/lib/leads-targeting";
 import { consumeRateLimitInTx, RATE_LIMITS } from "@/server/security/rate-limit";
+import { isWorkforceRoleKey } from "@/lib/agents";
 
 /**
- * Creates the real research request and durable job for an owner-approved Lead Hunter schedule.
+ * Creates the research request and durable job for an owner-approved lead discovery schedule.
  *
  * This is deliberately a server-side helper, not a provider call. The scheduler tick calls it while
  * holding the schedule row, then wakes the worker. The research handler performs the existing run
@@ -34,6 +35,13 @@ export async function createScheduledResearchJob(
     return { skipped: "invalid_research_assignment" };
   }
 
+  const agentRow = await db.query<{ role_key: string }>(
+    "select role_key from agent_instances where id = $1 and org_id = $2",
+    [input.agentId, input.orgId],
+  );
+  const agentRole = agentRow.rows[0]?.role_key;
+  if (!isWorkforceRoleKey(agentRole)) return { skipped: "agent_unavailable" };
+
   // The schedule's saved prompt is the authority; the target/location/quantity are re-derived here
   // rather than trusted from a stale client payload.
   const cleanPrompt = `Find ${assignment.quantity} ${assignment.target} in ${assignment.location}`.slice(0, 1000);
@@ -56,9 +64,9 @@ export async function createScheduledResearchJob(
 
   if (!prior.rows[0]) {
     await db.query(
-      `insert into lead_research_requests (id, org_id, requested_by, prompt, campaign_type, criteria, status)
-       values ($1, $2, $3, $4, 'business', $5::jsonb, 'queued')`,
-      [requestId, input.orgId, input.requestedBy, cleanPrompt, JSON.stringify(criteria)],
+      `insert into lead_research_requests (id, org_id, requested_by, prompt, campaign_type, criteria, status, agent_role)
+       values ($1, $2, $3, $4, 'business', $5::jsonb, 'queued', $6)`,
+      [requestId, input.orgId, input.requestedBy, cleanPrompt, JSON.stringify(criteria), agentRole],
     );
   }
 

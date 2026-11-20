@@ -7,6 +7,41 @@ import { getDashboard } from "@/server/queries/dashboard";
 import { agentId, addMember, createOrg, createUser, ctxFor } from "./support/fixtures";
 
 describe("AI Growth Partner canonical conversation foundation", () => {
+  it("reports persisted Work Board and integration status under workspace permissions", async () => {
+    const org = await createOrg();
+    const other = await createOrg();
+    const owner = await createUser();
+    const member = await createUser();
+    const viewer = await createUser();
+    await addMember(org.id, owner.id, "owner");
+    await addMember(org.id, member.id, "member");
+    await addMember(org.id, viewer.id, "viewer");
+    const runtime = await agentId(org.id, "operations_manager");
+    const otherRuntime = await agentId(other.id, "operations_manager");
+    await withSystem(async (db) => {
+      await db.query(
+        `insert into ai_work_jobs (org_id, agent_instance_id, requested_by, capability, title, status, idempotency_key)
+         values ($1, $2, $3, 'operations_summary', 'Owner failure', 'failed', $5),
+                ($1, $2, $4, 'operations_summary', 'Own failure', 'failed', $6),
+                ($1, $2, $4, 'operations_summary', 'Own success', 'completed', $7),
+                ($8, $9, $4, 'operations_summary', 'Other tenant failure', 'failed', $10)`,
+        [org.id, runtime, owner.id, member.id, randomUUID(), randomUUID(), randomUUID(), other.id, otherRuntime, randomUUID()],
+      );
+      await db.query(
+        `insert into ai_work_schedules (org_id, agent_instance_id, capability, enabled)
+         values ($1, $2, 'operations_summary', true), ($1, $2, 'company_review', false)`,
+        [org.id, runtime],
+      );
+      await db.query("insert into integration_status (org_id, provider, status) values ($1, 'email', 'error')", [org.id]);
+    });
+    const ownerWork = (await getDashboard(ctxFor(owner, org, "owner"))).work;
+    expect(ownerWork).toEqual({ enabledSchedules: 1, failedJobs: 2, leadReviews: 0, integrationErrors: 1 });
+    const memberWork = (await getDashboard(ctxFor(member, org, "member"))).work;
+    expect(memberWork).toEqual({ enabledSchedules: null, failedJobs: 1, leadReviews: 0, integrationErrors: null });
+    const viewerWork = (await getDashboard(ctxFor(viewer, org, "viewer"))).work;
+    expect(viewerWork).toEqual({ enabledSchedules: null, failedJobs: null, leadReviews: 0, integrationErrors: null });
+  });
+
   it("shares exactly one tenant thread with authorized members and keeps it beyond legacy retention", async () => {
     const org = await createOrg({ name: "Shared Growth Partner Conversation" });
     const otherOrg = await createOrg({ name: "Isolated Growth Partner Conversation" });

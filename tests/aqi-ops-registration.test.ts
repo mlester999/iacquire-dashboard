@@ -132,6 +132,7 @@ describe("scheduled jobs", () => {
       "aqiOperationsBriefings",
       "aqiOperationsRetention",
       "aiWorkRecovery",
+      "aiWorkRunQueued",
       "aiWorkSchedules",
       "aiWorkTriggers",
       "aiProactiveHeldReports",

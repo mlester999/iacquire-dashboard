@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, ArrowUpRight, Clock3, MessageSquareText, Search, Send, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowUpRight, Clock3, MessageSquareText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, Square } from "lucide-react";
 import { toast } from "sonner";
 import { loadOlderGrowthPartnerMessagesAction, refreshGrowthPartnerConversationAction, searchGrowthPartnerConversationAction } from "@/app/actions/ai-growth-partner-conversation";
 import { EvidenceChip } from "@/components/chat/evidence-chip";
@@ -22,6 +23,7 @@ interface ConversationMessage {
   workJobId: string | null;
   errorCode: string | null;
   evidence: EvidenceMarker | null;
+  workJobRunning: boolean;
   createdAt: string;
 }
 
@@ -29,6 +31,7 @@ interface ConversationSnapshot {
   conversation: { id: string; title: string; lastMessageAt: string | null; createdAt: string };
   messages: ConversationMessage[];
   hasMore: boolean;
+  nextCursor?: { createdAt: string; id: string } | null;
 }
 
 interface SearchResult {
@@ -47,7 +50,52 @@ function messageLabel(message: Pick<ConversationMessage, "role" | "authorLabel">
   return message.authorLabel || "Workspace member";
 }
 
-function ConversationTimeline({ messages, now, timeZone }: { messages: ConversationMessage[]; now: Date; timeZone: string }) {
+function mergeConversationMessages(current: ConversationMessage[], incoming: ConversationMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, { ...byId.get(message.id), ...message });
+  return [...byId.values()].sort((a, b) => {
+    const byTime = Date.parse(a.createdAt) - Date.parse(b.createdAt);
+    return byTime || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+}
+
+function mergeLatestConversationPage(current: ConversationMessage[], incoming: ConversationMessage[]) {
+  if (incoming.length === 0) return current;
+  const oldestIncoming = incoming.reduce((oldest, message) => {
+    const byTime = Date.parse(message.createdAt) - Date.parse(oldest.createdAt);
+    return byTime < 0 || (byTime === 0 && message.id < oldest.id) ? message : oldest;
+  });
+  const olderPages = current.filter((message) => {
+    const byTime = Date.parse(message.createdAt) - Date.parse(oldestIncoming.createdAt);
+    return byTime < 0 || (byTime === 0 && message.id < oldestIncoming.id);
+  });
+  return mergeConversationMessages(olderPages, incoming);
+}
+
+function friendlyError(errorCode: string | null) {
+  const messages: Record<string, string> = {
+    interrupted: "The response stopped before it finished. You can try again.",
+    connection_lost: "The connection dropped before the answer finished. You can try again.",
+    timeout: "The response took too long and was stopped. You can try again.",
+    upstream_timeout: "The response took too long. You can try again.",
+    execution_failed: "The response could not be completed. You can try again.",
+  };
+  return errorCode ? messages[errorCode] ?? "The response could not be completed. You can try again." : null;
+}
+
+function ConversationTimeline({
+  messages,
+  now,
+  timeZone,
+  onStop,
+  onRetry,
+}: {
+  messages: ConversationMessage[];
+  now: Date;
+  timeZone: string;
+  onStop: (message: ConversationMessage) => void;
+  onRetry: (message: ConversationMessage) => void;
+}) {
   const datedMessages = messages.map((message, index) => {
     const dateKey = conversationDateKey(message.createdAt, timeZone);
     const previousDate = index === 0 ? null : conversationDateKey(messages[index - 1].createdAt, timeZone);
@@ -57,7 +105,7 @@ function ConversationTimeline({ messages, now, timeZone }: { messages: Conversat
     };
   });
   return (
-    <ol className="space-y-5" aria-label="Permanent conversation history">
+    <ol className="space-y-5" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Permanent conversation history">
       {datedMessages.map(({ message, dateLabel }) => {
         const isUser = message.role === "user";
         const isNotice = message.role === "notice";
@@ -73,6 +121,11 @@ function ConversationTimeline({ messages, now, timeZone }: { messages: Conversat
               <div className={isNotice ? "rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-muted" : isUser ? "rounded-2xl rounded-tr-md border border-primary/15 bg-primary-soft/60 px-4 py-3 text-[14px] text-ink" : "rounded-2xl rounded-tl-md border border-line bg-surface px-4 py-3 text-[14px] text-ink shadow-soft"}>
                 <Markdown>{message.content || (message.status === "streaming" ? "Working on a response…" : "No message text was saved.")}</Markdown>
                 {message.evidence && <EvidenceChip evidence={message.evidence} timeZone={timeZone} className="mt-3" />}
+                {message.workJobId && <div className="mt-3 text-[13px]"><Link href={`/work?job=${encodeURIComponent(message.workJobId)}`} className="font-medium text-primary-ink underline underline-offset-2">{message.workJobRunning ? "View work in progress" : "View work"}</Link></div>}
+                {message.evidence?.ledger && <div className="mt-2 text-[13px]"><Link href="/approvals" className="font-medium text-primary-ink underline underline-offset-2">Open ledger evidence</Link></div>}
+                {message.status === "failed" && friendlyError(message.errorCode) && <p className="mt-2 text-[13px] text-danger-ink">{friendlyError(message.errorCode)}</p>}
+                {message.status === "streaming" && message.runId && <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={() => onStop(message)}><Square className="size-3.5" aria-hidden /> Stop response</Button>}
+                {message.role === "assistant" && (message.status === "failed" || message.status === "cancelled") && <Button type="button" variant="secondary" size="sm" className="mt-3" onClick={() => onRetry(message)}><RotateCcw className="size-3.5" aria-hidden /> Try again</Button>}
               </div>
             </article>
           </li>
@@ -127,12 +180,21 @@ export function PermanentGrowthPartnerConversation({
 }) {
   const [messages, setMessages] = React.useState(initial?.messages ?? []);
   const [hasMore, setHasMore] = React.useState(initial?.hasMore ?? false);
+  const [nextCursor, setNextCursor] = React.useState(initial?.nextCursor ?? (initial?.hasMore && initial.messages[0]
+    ? { createdAt: initial.messages[0].createdAt, id: initial.messages[0].id }
+    : null));
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<SearchResult[] | null>(null);
   const [loadingOlder, setLoadingOlder] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [input, setInput] = React.useState(initialInput ?? "");
   const [sending, setSending] = React.useState(false);
+  const retryClientMessageId = React.useRef<{ id: string; content: string } | null>(null);
+  const messageEndRef = React.useRef<HTMLDivElement>(null);
+  const hasLoadedOlderPages = React.useRef(false);
+  const hasActiveWork = messages.some((message) => message.status === "streaming" || message.workJobRunning);
+  const newestMessage = messages[messages.length - 1];
   const now = new Date(nowIso);
 
   const search = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -143,37 +205,169 @@ export function PermanentGrowthPartnerConversation({
       return;
     }
     setSearching(true);
-    const response = await searchGrowthPartnerConversationAction(clean);
-    setSearching(false);
-    if (!response.ok) return toast.error(response.error);
-    setResults(response.data);
+    try {
+      const response = await searchGrowthPartnerConversationAction(clean);
+      if (!response.ok) return toast.error(response.error);
+      setResults(response.data);
+    } catch {
+      toast.error("Search could not reach the conversation. Try again.");
+    } finally {
+      setSearching(false);
+    }
   };
 
   const loadOlder = async () => {
-    const first = messages[0];
-    if (!first || loadingOlder || !hasMore) return;
+    if (!nextCursor || loadingOlder || !hasMore) return;
     setLoadingOlder(true);
-    const response = await loadOlderGrowthPartnerMessagesAction(first.createdAt);
-    setLoadingOlder(false);
-    if (!response.ok) return toast.error(response.error);
-    setMessages((current) => [...response.data.messages as ConversationMessage[], ...current]);
-    setHasMore(response.data.hasMore);
+    try {
+      const response = await loadOlderGrowthPartnerMessagesAction(nextCursor);
+      if (!response.ok) return toast.error(response.error);
+      setMessages((current) => mergeConversationMessages(current, response.data.messages as ConversationMessage[]));
+      if (response.data.messages.length > 0) hasLoadedOlderPages.current = true;
+      setHasMore(response.data.hasMore);
+      setNextCursor(response.data.nextCursor ?? null);
+    } catch {
+      toast.error("Older messages could not be loaded. Try again.");
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
-  const refreshConversation = async () => {
-    const response = await refreshGrowthPartnerConversationAction();
-    if (!response.ok) return false;
-    setMessages(response.data.messages as ConversationMessage[]);
-    setHasMore(response.data.hasMore);
-    return response.data.messages.some((message) => message.status === "streaming");
+  const refreshConversation = React.useCallback(async (isCurrent: () => boolean = () => true) => {
+    try {
+      const response = await refreshGrowthPartnerConversationAction();
+      if (!response.ok || !isCurrent()) return false;
+      setMessages((current) => mergeLatestConversationPage(current, response.data.messages as ConversationMessage[]));
+      if (!hasLoadedOlderPages.current) {
+        setHasMore(response.data.hasMore);
+        setNextCursor(response.data.nextCursor ?? null);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const refreshHistory = async () => {
+    setRefreshing(true);
+    const refreshed = await refreshConversation();
+    setRefreshing(false);
+    if (!refreshed) toast.error("The saved conversation could not be refreshed. Try again.");
+  };
+
+  React.useEffect(() => {
+    if (!hasActiveWork || sending || refreshing) return;
+    let stopped = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight || stopped) return;
+      inFlight = true;
+      await refreshConversation(() => !stopped);
+      inFlight = false;
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 1800);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [hasActiveWork, sending, refreshing, refreshConversation]);
+
+  React.useEffect(() => {
+    messageEndRef.current?.scrollIntoView?.({ block: "end" });
+  }, [newestMessage?.id, newestMessage?.content, newestMessage?.status]);
+
+  const stopMessage = async (message: ConversationMessage) => {
+    if (!message.runId) return;
+    try {
+      const response = await fetch(`/api/chat/runs/${encodeURIComponent(message.runId)}/stop`, { method: "POST" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        toast.error(data?.error ?? "The response could not be stopped.");
+        return;
+      }
+      if (!await refreshConversation()) toast.error("The stop request succeeded. Refresh the conversation to see its status.");
+    } catch {
+      toast.error("The response could not be stopped because the connection dropped.");
+    }
+  };
+
+  const applyResponseFrame = (assistantId: string | null, frame: Exclude<GrowthPartnerStreamEvent, { type: "ready" }>) => {
+    if (frame.type === "error") toast.error(frame.message);
+    if (!assistantId) return;
+    setMessages((current) => current.map((message) => {
+      if (message.id !== assistantId) return message;
+      switch (frame.type) {
+        case "snapshot":
+          return { ...message, content: frame.content };
+        case "delta":
+          return { ...message, content: message.content + frame.text };
+        case "done":
+          return { ...message, content: frame.content, status: "complete", evidence: frame.evidence ?? message.evidence };
+        case "cancelled":
+          return { ...message, content: frame.content, status: "cancelled" };
+        case "error":
+          return { ...message, status: "failed", errorCode: frame.code };
+      }
+    }));
+  };
+
+  const retryAssistant = async (message: ConversationMessage) => {
+    if (!initial || sending || refreshing) return;
+    setSending(true);
+    try {
+      const response = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "growth_partner", conversationId: initial.conversation.id, regenerateMessageId: message.id }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        toast.error(data?.error ?? "The AI Growth Partner couldn't retry that response.");
+        return;
+      }
+      if (response.headers.get("content-type")?.includes("text/event-stream")) {
+        let assistantId: string | null = null;
+        for await (const frame of readGrowthPartnerEvents(response)) {
+          if (frame.type === "ready") {
+            assistantId = frame.assistantMessageId;
+            setMessages((current) => mergeConversationMessages(current, [{
+              id: frame.assistantMessageId,
+              role: "assistant",
+              authorUserId: null,
+              authorLabel: "AI Growth Partner",
+              content: "",
+              status: "streaming",
+              runId: frame.runId,
+              workJobId: null,
+              workJobRunning: false,
+              errorCode: null,
+              evidence: null,
+              createdAt: new Date().toISOString(),
+            }]));
+          } else {
+            applyResponseFrame(assistantId, frame);
+          }
+        }
+      }
+      if (!await refreshConversation()) toast.error("The saved response could not be refreshed. Try refreshing the conversation.");
+    } catch {
+      toast.error("The retry connection dropped. Refreshing the saved conversation.");
+      await refreshConversation();
+    } finally {
+      setSending(false);
+    }
   };
 
   const sendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const content = input.trim();
-    if (!initial || !content || sending) return;
-    const clientMessageId = crypto.randomUUID();
+    if (!initial || !content || sending || refreshing) return;
+    const clientMessageId = retryClientMessageId.current?.content === content
+      ? retryClientMessageId.current.id
+      : crypto.randomUUID();
     const localId = "local-" + clientMessageId;
+    retryClientMessageId.current = { id: clientMessageId, content };
     setSending(true);
     setInput("");
     setResults(null);
@@ -186,6 +380,7 @@ export function PermanentGrowthPartnerConversation({
       status: "complete",
       runId: null,
       workJobId: null,
+      workJobRunning: false,
       errorCode: null,
       evidence: null,
       createdAt: new Date().toISOString(),
@@ -219,12 +414,12 @@ export function PermanentGrowthPartnerConversation({
       toast.error(data?.error ?? "The AI Growth Partner couldn't receive that message.");
       return;
     }
-
     if (response.headers.get("content-type")?.includes("text/event-stream")) {
       let assistantId: string | null = null;
       try {
         for await (const frame of readGrowthPartnerEvents(response)) {
           if (frame.type === "ready") {
+            retryClientMessageId.current = null;
             assistantId = frame.assistantMessageId;
             setMessages((current) => {
               const next = current.map((message) => message.id === localId && frame.userMessageId
@@ -240,33 +435,29 @@ export function PermanentGrowthPartnerConversation({
                 status: "streaming" as const,
                 runId: frame.runId,
                 workJobId: null,
+                workJobRunning: false,
                 errorCode: null,
                 evidence: null,
                 createdAt: new Date().toISOString(),
               }];
             });
-          } else if (frame.type === "snapshot" && assistantId) {
-            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: frame.content } : message));
-          } else if (frame.type === "delta" && assistantId) {
-            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: message.content + frame.text } : message));
-          } else if (frame.type === "done" && assistantId) {
-            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: frame.content, status: "complete", evidence: frame.evidence ?? message.evidence } : message));
-          } else if (frame.type === "cancelled" && assistantId) {
-            setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: frame.content, status: "cancelled" } : message));
-          } else if (frame.type === "error") {
-            if (assistantId) setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, status: "failed", errorCode: frame.code } : message));
-            toast.error(frame.message);
+          } else {
+            applyResponseFrame(assistantId, frame);
           }
         }
       } catch {
         toast.error("The response stream disconnected. Refreshing the saved conversation.");
       }
-      await refreshConversation();
+      if (!assistantId) {
+        setMessages((current) => current.filter((message) => message.id !== localId));
+        setInput(content);
+      }
+      if (!await refreshConversation()) toast.error("The saved conversation could not be refreshed. Try again.");
       setSending(false);
       return;
     }
 
-    const result = await response.json().catch(() => null) as { conversationId?: string; runId?: string | null; error?: string } | null;
+    const result = await response.json().catch(() => null) as { conversationId?: string; runId?: string | null; assistantMessageId?: string; error?: string } | null;
     if (!result?.conversationId) {
       setMessages((current) => current.filter((message) => message.id !== localId));
       setInput(content);
@@ -274,14 +465,9 @@ export function PermanentGrowthPartnerConversation({
       toast.error(result?.error ?? "The AI Growth Partner couldn't receive that message.");
       return;
     }
-    if (result.runId) {
-      for (let attempt = 0; attempt < 120; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        if (!await refreshConversation()) break;
-      }
-    } else {
-      await refreshConversation();
-    }
+    retryClientMessageId.current = null;
+    setMessages((current) => current.filter((message) => message.id !== localId));
+    if (!await refreshConversation()) toast.error("The saved conversation could not be refreshed. Try again.");
     setSending(false);
   };
 
@@ -318,6 +504,9 @@ export function PermanentGrowthPartnerConversation({
               <Button type="submit" variant="secondary" size="sm" loading={searching}><Search className="size-4" aria-hidden /><span className="sr-only sm:not-sr-only">Search</span></Button>
               {results && <Button type="button" variant="ghost" size="sm" onClick={() => { setResults(null); setQuery(""); }}>Clear</Button>}
             </form>
+            <Button type="button" variant="ghost" size="sm" loading={refreshing} disabled={sending} onClick={refreshHistory}>
+              <RefreshCw className="size-4" aria-hidden /> Refresh conversation
+            </Button>
           </CardHeader>
           <CardContent className="space-y-5 px-4 py-4 sm:px-6 sm:py-5">
             {results ? (
@@ -333,7 +522,7 @@ export function PermanentGrowthPartnerConversation({
             ) : (
               <>
                 {hasMore && <div className="text-center"><Button type="button" variant="secondary" size="sm" loading={loadingOlder} onClick={loadOlder}>Load older messages</Button></div>}
-                {messages.length > 0 ? <ConversationTimeline messages={messages} now={now} timeZone={timeZone} /> : <p className="rounded-xl border border-line bg-surface-2/50 px-4 py-8 text-center text-[13px] text-muted">No messages have been saved in this thread yet.</p>}
+                {messages.length > 0 ? <><ConversationTimeline messages={messages} now={now} timeZone={timeZone} onStop={stopMessage} onRetry={retryAssistant} /><div ref={messageEndRef} /></> : <p className="rounded-xl border border-line bg-surface-2/50 px-4 py-8 text-center text-[13px] text-muted">No messages have been saved in this thread yet.</p>}
               </>
             )}
             <form onSubmit={sendMessage} className="rounded-xl border border-line bg-surface-2/45 p-3">
@@ -352,7 +541,7 @@ export function PermanentGrowthPartnerConversation({
                 rows={3}
                 placeholder="Ask about growth, customers, pipeline or operations…"
                 disabled={sending}
-                className="min-h-[84px] w-full resize-y rounded-lg border border-line bg-surface px-3 py-2.5 text-[14px] text-ink outline-none transition placeholder:text-faint focus:border-primary/50 focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
+                className="min-h-[84px] w-full resize-y rounded-lg border border-line bg-surface px-3 py-2.5 text-[16px] text-ink outline-none transition placeholder:text-faint focus:border-primary/50 focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
               />
               <div className="mt-2 flex flex-col-reverse justify-between gap-2 sm:flex-row sm:items-center">
                 <p className="text-[12px] leading-relaxed text-muted">Each member sees the same thread. Work that changes records or contacts people remains permission and approval gated.</p>

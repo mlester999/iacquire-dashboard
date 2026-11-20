@@ -121,7 +121,7 @@ const noContactLink: ReviewCheck = async (db, job) => {
 
 export const PIPELINE_REVIEW_CHECKS: readonly ReviewCheck[] = [staleDeals, missingValue, missingOwner, passedCloseDate, noContactLink];
 
-export async function runPipelineReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runPipelineReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "pipeline_review",
     allowedRoles: ["sales_assistant", "growth_partner"],
@@ -136,5 +136,5 @@ export async function runPipelineReviewJob(job: WorkJobRow, _context: { workerId
     sourceArea: "opportunities",
     limitations: "Only open opportunities stored in this workspace were read. No provider was contacted and no deal, stage or owner was changed.",
     subject: "Pipeline",
-  });
+  }, context.controller.signal);
 }

@@ -22,7 +22,7 @@ vi.mock("@/app/actions/workforce", () => ({ requestSetupAction: vi.fn() }));
 vi.mock("@/app/actions/launch-readiness", () => ({ getLaunchReadinessAction: vi.fn(() => new Promise<never>(() => {})), dismissCalendarNoticeAction: vi.fn(), runLaunchIntentAction: vi.fn() }));
 
 // The Setup page reads the workspace, the launch state and the saved answers. Each is a fixture a test sets; the page's own output is what is rendered.
-const server = vi.hoisted(() => ({ ctx: null as unknown, launch: null as unknown, answerRows: [] as unknown[], answersFail: false, roleRows: [{ role_key: "lead_hunter" }] }));
+const server = vi.hoisted(() => ({ ctx: null as unknown, launch: null as unknown, growthPartner: null as unknown, answerRows: [] as unknown[], answersFail: false, roleRows: [{ role_key: "lead_hunter" }] }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {}, replace() {} }), usePathname: () => "/setup" }));
 vi.mock("@/server/tenancy/context", () => ({ requireOrgContext: async () => server.ctx }));
@@ -39,6 +39,8 @@ vi.mock("@/server/db", () => ({
   withUser: async (_id: string, fn: (db: unknown) => unknown) => fn({ query: async (sql: string) => ({ rows: /from agent_instances where/.test(sql) ? server.roleRows : [] }) }),
 }));
 vi.mock("@/server/workforce/service", () => ({ listAgents: async () => [] }));
+vi.mock("@/server/workforce/schedules", () => ({ schedulesOperatorEnabled: () => false }));
+vi.mock("@/server/ai-growth-partner/service", () => ({ getGrowthPartnerControlState: async () => server.growthPartner }));
 vi.mock("@/server/billing/clearance", () => ({ isSetupPaymentClearedFor: async () => true }));
 vi.mock("@/server/setup/native-evidence", () => ({ crmOwners: async () => ({ mode: "native" }) }));
 vi.mock("@/server/onboarding/service", () => ({ latestOnboardingNotes: async () => [] }));
@@ -142,11 +144,11 @@ describe("the employee cards while Setup required", () => {
 
   it("says the Hermes profile once the payment is confirmed, or when the page did not ask", () => {
     show([employee({ role_key: "sales_assistant" })], true);
-    expect(screen.getByText(`${SETUP_REQUIRED_LABEL}: Hermes profile not connected`)).toBeTruthy();
+    expect(screen.getByText(`${SETUP_REQUIRED_LABEL}: AI runtime not connected`)).toBeTruthy();
     expect(screen.queryByText(/waiting for setup payment/)).toBeNull();
     cleanup();
     show([employee({ role_key: "sales_assistant" })], undefined);
-    expect(screen.getByText(`${SETUP_REQUIRED_LABEL}: Hermes profile not connected`)).toBeTruthy();
+    expect(screen.getByText(`${SETUP_REQUIRED_LABEL}: AI runtime not connected`)).toBeTruthy();
   });
 
   it("the pill and the line agree, and a paused employee keeps its own wording", () => {
@@ -337,6 +339,7 @@ describe("the Setup page", () => {
   beforeEach(() => {
     server.ctx = { user: { id: "u1", fullName: "Dana Reyes" }, org: { orgId: "o1", kind: "client", name: "Roofing Co", onboardingCompletedAt: null, isDemo: false, timezone: "America/Chicago" }, can: () => true };
     server.launch = null;
+    server.growthPartner = null;
     server.answerRows = [];
     server.answersFail = false;
   });
@@ -390,6 +393,7 @@ describe("the Setup page", () => {
       await page();
       expect(screen.getByRole("heading", { name: "Action required" })).toBeTruthy();
       expect(screen.getByTestId("setup-center")).toBeTruthy();
+      expect(screen.queryByRole("region", { name: "Next steps for your AI Growth Partner" })).toBeNull();
       expect(screen.queryByText("We couldn't read your launch status just now")).toBeNull();
     });
 
@@ -412,6 +416,41 @@ describe("the Setup page", () => {
       } finally {
         warn.mockRestore();
       }
+    });
+
+    it("offers authorized owners real Setup destinations and a contextual first question on return visits", async () => {
+      submitted();
+      server.growthPartner = { conversationId: "conversation-1", status: "configured" };
+      const launch = deriveLaunchReadiness(launchFacts({
+        growthPartner: { status: "configured", runtimeBound: true, enabled: true, runtimeStatus: "online", profileConnected: true, runtimeReady: true, healthFailed: false, brainActive: true, latestBrainVersion: 1, conversationReady: true, provisioning: "succeeded" },
+      }));
+      server.launch = { ...launch, steps: launch.steps.map((step) => step.key === "calendar" ? { ...step, state: "done" } : step) };
+      await page();
+
+      const checklist = within(screen.getByRole("region", { name: "Next steps for your AI Growth Partner" }));
+      expect(checklist.getByRole("link", { name: "Configure permissions" }).getAttribute("href")).toBe("/growth-partner#capability-access");
+      expect(checklist.getByRole("link", { name: "Open Growth Partner Settings" }).getAttribute("href")).toBe("/settings/ai");
+      expect(checklist.getByRole("link", { name: "Open Integrations" }).getAttribute("href")).toBe("/settings/integrations");
+      expect(checklist.getByRole("link", { name: "Open scheduled work" }).getAttribute("href")).toBe("/work#scheduled-work");
+      expect(checklist.getByText(/Saved schedules wait while the scheduler is off/)).toBeTruthy();
+      const firstAction = new URL(checklist.getByRole("link", { name: "Open with this question" }).getAttribute("href")!, "http://localhost");
+      expect(firstAction.pathname).toBe("/growth-partner/conversation");
+      expect(firstAction.searchParams.get("q")).toBe("What appointments do I have today?");
+    });
+
+    it("keeps setup links permission-filtered and waits for recorded readiness before suggesting a question", async () => {
+      submitted();
+      server.ctx = { ...(server.ctx as object), can: (permission: string) => permission === "agents.use" };
+      server.growthPartner = { conversationId: "conversation-1", status: "configured" };
+      await page();
+
+      const checklist = within(screen.getByRole("region", { name: "Next steps for your AI Growth Partner" }));
+      expect(checklist.queryByRole("link", { name: "Configure permissions" })).toBeNull();
+      expect(checklist.queryByRole("link", { name: "Open Growth Partner Settings" })).toBeNull();
+      expect(checklist.queryByRole("link", { name: "Open Integrations" })).toBeNull();
+      expect(checklist.queryByRole("link", { name: "Open scheduled work" })).toBeNull();
+      expect(checklist.queryByRole("link", { name: "Open with this question" })).toBeNull();
+      expect(checklist.getByRole("link", { name: "Review Partner setup" }).getAttribute("href")).toBe("/growth-partner");
     });
 
     it("hands the panel the judge's reading and the banner the same one, so they cannot disagree", async () => {

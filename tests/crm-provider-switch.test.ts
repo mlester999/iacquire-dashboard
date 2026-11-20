@@ -991,7 +991,7 @@ describe("while switching", () => {
     const later = await withSystem((db) => queueOutbound(db, { orgId: m.org.id, conversationId: conv.conversationId, scope: "reply", actor: { kind: "ai", agentId: m.salesAgentId }, body: "One more thing." }));
     expect(later.status).toBe("queued");
     await withSystem((db) => db.query("update conversations set owner_kind = 'human', owner_user_id = $2 where id = $1", [conv3.conversationId, m.people.sales.id]));
-    await expectAppError(sendHumanReply(m.ctx("sales"), conv3.conversationId, "One moment"), "conflict", /switching providers/);
+    await expectAppError(sendHumanReply(m.ctx("sales"), conv3.conversationId, "One moment", { purpose: "service" }), "conflict", /switching providers/);
     // The campaign waits in place, with the reason; nothing is queued for it.
     await processCampaigns({ now: new Date() });
     const waiting = await one<{ status: string; reason: string | null }>("select status, reason from crm_campaign_recipients where campaign_id = $1", [campaign]);
@@ -1082,7 +1082,7 @@ describe("hybrid ownership", () => {
     expect(rec.calls.filter((x) => x.orgId === m.org.id)).toHaveLength(0);
     expect(await messageStatus(before.messageId)).toMatchObject({ status: "blocked", blocked_reason: "provider_owned" });
     await withSystem((db) => db.query("update conversations set owner_kind = 'human', owner_user_id = $2 where id = $1", [conv.conversationId, m.people.sales.id]));
-    await expectAppError(sendHumanReply(m.ctx("sales"), conv.conversationId, "Hi there"), "conflict", /Conversations are managed in GoHighLevel/);
+    await expectAppError(sendHumanReply(m.ctx("sales"), conv.conversationId, "Hi there", { purpose: "service" }), "conflict", /Conversations are managed in GoHighLevel/);
     // A campaign stops with the reason before anything is queued.
     const campaign = await approvedCampaign(m);
     await processCampaigns({ now: new Date() });

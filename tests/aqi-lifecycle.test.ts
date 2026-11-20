@@ -107,7 +107,7 @@ describe("AQi automatic conversation titles", () => {
   it("never overwrites a manual rename, even when generation was already requested", async () => {
     const { viewer } = await fixtures();
     const conversation = await createAqiConversation(viewer, "/employees");
-    await addTurn(viewer, conversation.id, "How can I manage my AI employees?");
+    await addTurn(viewer, conversation.id, "How can I use my AI Growth Partner?");
 
     const pending = generateAqiConversationTitle(viewer, conversation.id);
     await renameAqiConversation(viewer, conversation.id, "My workforce notes");
@@ -190,20 +190,21 @@ describe("AQi welcome suggestions respect permissions", () => {
     };
     const welcome = await getAqiWelcome(restricted, "/employees");
     expect(welcome.page).toBeNull();
-    expect(welcome.suggestions.map((item) => item.question)).not.toContain("How do I manage my AI employees?");
+    expect(welcome.suggestions.map((item) => item.question)).not.toContain("How do I use my AI Growth Partner?");
     expect(welcome.suggestions.map((item) => item.question)).not.toContain("Where can I find my integrations?");
     expect(welcome.suggestions.map((item) => item.question)).not.toContain("How do I contact support?");
     expect(welcome.suggestions.length).toBeGreaterThan(0);
 
     const ownerWelcome = await getAqiWelcome(viewer, "/employees");
     expect(ownerWelcome.page?.label).toBe("Previous role profiles");
-    expect(ownerWelcome.suggestions.map((item) => item.question)).toContain("How do I change an employee's instructions?");
+    expect(ownerWelcome.suggestions.map((item) => item.question)).not.toContain("How do I review my AI Growth Partner setup?");
     expect(ownerWelcome.suggestions.length).toBeLessThanOrEqual(4);
     expect(org.id).toBeTruthy();
 
     const partnerWelcome = await getAqiWelcome(viewer, "/growth-partner");
     expect(partnerWelcome.page?.label).toBe("AI Growth Partner");
     expect(partnerWelcome.allowedPaths).toContain("/growth-partner/conversation");
+    expect(partnerWelcome.suggestions.map((item) => item.question)).toContain("How do I review my AI Growth Partner setup?");
   });
 
   it("does not leak a page label for an unauthorized route", async () => {

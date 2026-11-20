@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { withSystem, withUser } from "@/server/db";
 import { resetEnvCache } from "@/server/env";
 import { setClientPause } from "@/server/automation/controls";
-import { dispatchDue } from "@/server/messaging/send";
+import { dispatchDue, dispatchMessage } from "@/server/messaging/send";
 import { onBooking } from "@/server/messaging/followups";
 import { recordConsent, suppressAddress } from "@/server/messaging/contacts";
 import { JOBS } from "@/server/ops/tick";
@@ -273,9 +273,15 @@ describe("sending", () => {
     await withSystem((db) => suppressAddress(db, { orgId: m.org.id, channel: "sms", address: optOut.address, reason: "opt_out", source: "test" }));
     await withSystem((db) => db.query("update conversations set owner_kind = 'human', owner_user_id = $2 where id = $1", [owned.conversationId, m.people.sales.id]));
     await prepareDueSteps({ now: hours(1), limit: 100 });
-    expect((await steps(optOut.contactId, "onboarding_checkin")).some((s) => s.reason === "suppressed")).toBe(true);
-    expect((await steps(owned.contactId, "onboarding_checkin")).some((s) => s.reason === "human_owner")).toBe(true);
-    for (const c of [optOut, owned]) expect((await enrollments(c.contactId, "onboarding_checkin"))[0].status).toBe("cancelled");
+    for (const [c, reason] of [[optOut, "suppressed"], [owned, "human_owner"]] as const) {
+      const checkins = await steps(c.contactId, "onboarding_checkin");
+      expect(checkins).toHaveLength(2);
+      for (const step of checkins) {
+        expect(step).toMatchObject({ reason, message_id: null });
+        expect(["blocked", "cancelled"]).toContain(step.status);
+      }
+      expect(await enrollments(c.contactId, "onboarding_checkin")).toMatchObject([{ status: "cancelled", cancel_reason: reason }]);
+    }
     await dueNow(paused.contactId, "onboarding_checkin"); // becomes due only now, while messaging is paused
     await setClientPause(m.ctx("owner"), { scope: "messaging", paused: true, reason: "test" });
     try {
@@ -285,9 +291,37 @@ describe("sending", () => {
     }
     expect((await steps(paused.contactId, "onboarding_checkin")).some((s) => s.reason === "automation_paused")).toBe(true);
     const rec = recordingProvider();
-    await dispatchDue({ provider: rec.provider, now: hours(1), limit: 100 });
-    const stuck = (await steps(optOut.contactId)).concat(await steps(owned.contactId)).filter((s) => s.message_id);
-    for (const s of stuck) expect(rec.calls.some((x) => x.messageId === s.message_id)).toBe(false);
+    await dispatchDue({ transport: rec.transport, now: hours(1), limit: 100 });
+    for (const c of [optOut, owned, paused]) expect(rec.calls.map((call) => call.to)).not.toContain(c.address);
+  });
+
+  it("preserves the opt-out for an earlier worker's expired claims", async () => {
+    const c = await newCustomer(m, "Restart Rosa");
+    await enrollEligible();
+    await dueNow(c.contactId, "onboarding_checkin");
+    // A worker had claimed the check-ins and stopped before recording messages.
+    await withSystem((db) => db.query(
+      `update retention_steps s set status = 'queued' from retention_enrollments e join retention_programs p on p.id = e.program_id
+       where s.enrollment_id = e.id and e.contact_id = $1 and p.kind = 'onboarding_checkin'`,
+      [c.contactId],
+    ));
+    const checkins = () => steps(c.contactId, "onboarding_checkin");
+    expect(await checkins()).toMatchObject([{ status: "queued", message_id: null }, { status: "queued", message_id: null }]);
+
+    await withSystem((db) => suppressAddress(db, { orgId: m.org.id, channel: "sms", address: c.address, reason: "opt_out", source: "test" }));
+    await prepareDueSteps({ now: new Date(), limit: 100 });
+    expect(await steps(c.contactId, "welcome")).toMatchObject([{ status: "blocked", reason: "suppressed", message_id: null }]);
+    expect(await enrollments(c.contactId, "onboarding_checkin")).toMatchObject([{ status: "cancelled", cancel_reason: "suppressed" }]);
+
+    await prepareDueSteps({ now: hours(1), limit: 100 });
+    expect(await checkins()).toMatchObject([
+      { status: "cancelled", reason: "suppressed", message_id: null },
+      { status: "cancelled", reason: "suppressed", message_id: null },
+    ]);
+    expect(await enrollments(c.contactId, "welcome")).toMatchObject([{ status: "cancelled", cancel_reason: "suppressed" }]);
+    const rec = recordingProvider();
+    await dispatchDue({ transport: rec.transport, now: hours(1), limit: 100 });
+    expect(rec.calls.map((call) => call.to)).not.toContain(c.address);
   });
 
   it("needs explicit marketing consent for promotional messages, and a message carries its own opt-out", async () => {
@@ -338,11 +372,43 @@ describe("sending", () => {
     await withSystem((db) => db.query("update agent_instances set status = 'online', last_health_ok = true, enabled = true, mode = 'approval_required' where org_id = $1 and role_key = 'crm_manager'", [cautious.org.id]));
     await setProgramEnabled(cautious.ctx("owner"), "welcome", true);
     const c = await newCustomer(cautious, "Cautious Cal");
+    const later = await newCustomer(cautious, "Cautious Lena");
+    const wrong = await newCustomer(cautious, "Wrong Grant");
     await enrollEligible();
-    await prepareDueSteps({ now: hours(1) });
-    const s = (await steps(c.contactId, "welcome"))[0];
+    const now = hours(1);
+    await prepareDueSteps({ now });
+    const [s] = await steps(c.contactId, "welcome");
+    const [pending] = await steps(later.contactId, "welcome");
+    const [mismatched] = await steps(wrong.contactId, "welcome");
     expect(s.status).toBe("queued");
+    expect(pending.status).toBe("queued");
     expect((await message(s.message_id)).status).toBe("queued"); // not held as a draft
+    if (!s.message_id || !pending.message_id || !mismatched.message_id) throw new Error("Expected all program steps to have queued messages.");
+
+    const recorder = recordingProvider();
+    expect(await dispatchMessage(s.message_id, { provider: recorder.provider, now })).toEqual({ status: "sent" });
+    expect(recorder.calls.map((call) => call.messageId)).toEqual([s.message_id]);
+
+    // Even an autonomous employee cannot use a live grant from a different program.
+    await setProgramEnabled(cautious.ctx("owner"), "feedback_request", true);
+    await withSystem(async (db) => {
+      await db.query("update agent_instances set mode = 'autonomous' where org_id = $1 and role_key = 'crm_manager'", [cautious.org.id]);
+      await db.query(
+        "update conversation_messages set approval_id = (select approval_id from retention_programs where org_id = $1 and kind = 'feedback_request') where org_id = $1 and id = $2",
+        [cautious.org.id, mismatched.message_id],
+      );
+    });
+    expect(await dispatchMessage(mismatched.message_id, { provider: recorder.provider, now })).toEqual({ status: "blocked" });
+    expect((await message(mismatched.message_id)).blocked_reason).toBe("authorization_needed");
+
+    // An approval lapsing after queueing must still stop the message at dispatch.
+    await withSystem((db) => db.query(
+      "update approval_requests set expires_at = now() - interval '1 minute' where org_id = $1 and id = (select approval_id from retention_programs where org_id = $1 and kind = 'welcome')",
+      [cautious.org.id],
+    ));
+    expect(await dispatchMessage(pending.message_id, { provider: recorder.provider, now })).toEqual({ status: "blocked" });
+    expect((await message(pending.message_id)).blocked_reason).toBe("authorization_needed");
+    expect(recorder.calls.map((call) => call.messageId)).toEqual([s.message_id]);
   });
 
   it("skips a message that is far overdue rather than sending it late", async () => {

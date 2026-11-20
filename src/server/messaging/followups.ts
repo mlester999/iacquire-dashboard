@@ -341,6 +341,7 @@ export async function processDueFollowUps(deps: FollowUpDeps = {}, limit = 50): 
         orgId: step.org_id,
         conversationId,
         scope: "followup",
+        purpose: "service",
         actor: { kind: "ai", agentId: plan[0].agent_id },
         body,
         now,

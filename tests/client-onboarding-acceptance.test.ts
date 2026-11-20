@@ -5,7 +5,7 @@ import { agentSettingsSchema } from "@/lib/agent-settings";
 import { createClientTenant } from "@/server/admin/tenants";
 import { resetEnvCache } from "@/server/env";
 import { withSystem } from "@/server/db";
-import { saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
+import { getOnboardingReview, saveOnboardingStep, submitOnboarding } from "@/server/onboarding/service";
 import { createConfigVersion } from "@/server/workforce/service";
 import { addMember, agencyUser, createUser, ctxFor, uid } from "./support/fixtures";
 import { clearSetupPayment } from "./support/billing";
@@ -15,7 +15,7 @@ afterEach(() => {
   resetEnvCache();
 });
 
-async function onboard(name: string, description: string, service: string, customer: string, extraAnswers: Record<string, unknown> = {}) {
+async function prepareOnboarding(name: string, description: string, service: string, customer: string, extraAnswers: Record<string, unknown> = {}) {
   const admin = agencyUser(await createUser({ platformRole: "agency_super_admin" }), "agency_super_admin");
   const ownerEmail = `owner-${uid()}@example.test`;
   // Capture invitation mail in the test environment. This acceptance makes no outbound requests.
@@ -50,19 +50,62 @@ async function onboard(name: string, description: string, service: string, custo
     "b.website_need": "have",
     "d.pricing_policy": "never",
     ...extraAnswers,
-    "f.review": true,
   };
   const saved = await saveOnboardingStep(ctx, {
     answers: Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, { value }])),
     currentQuestionId: "f.review",
   });
   expect(saved.rejected).toEqual({});
-  const result = await submitOnboarding(ctx);
   expect(client.emailDelivery.status).toBe("captured");
-  return { org, owner, ctx, result };
+  return { org, owner, ctx };
+}
+
+async function onboard(...args: Parameters<typeof prepareOnboarding>) {
+  const client = await prepareOnboarding(...args);
+  const review = await getOnboardingReview(client.ctx);
+  const confirmation = review.businessBrain?.confirmation;
+  expect(confirmation).toMatch(/^[0-9a-f]{64}$/);
+  const mapped = review.businessBrain?.groups.flatMap(({ facts }) => facts);
+  expect(mapped).toEqual(expect.arrayContaining([
+    expect.objectContaining({ key: "companyName", value: client.org.name, state: "client_confirmed" }),
+    expect.objectContaining({ key: "industry", questionId: "a.industry", value: "Home services" }),
+  ]));
+  expect(mapped?.some((fact) => fact.questionId === "d.pricing_info")).toBe(false);
+  await saveOnboardingStep(client.ctx, { answers: { "f.review": { value: true } } });
+  const result = await submitOnboarding(client.ctx, { confirmation });
+  return { ...client, confirmation, result };
 }
 
 describe("isolated new-client onboarding acceptance (test database; no Hermes writes)", () => {
+  it("requires explicit approval and refuses a stale Business Brain confirmation before creating work", async () => {
+    const { ctx, org } = await prepareOnboarding("Spruce Roof Repair", "We inspect roofs in Austin.", "Roof inspections", "Austin homeowners");
+    const reviewed = await getOnboardingReview(ctx);
+    await expect(submitOnboarding(ctx, { confirmation: reviewed.businessBrain?.confirmation })).rejects.toMatchObject({
+      code: "invalid_input", message: "Confirm that you approve this setup",
+    });
+    await saveOnboardingStep(ctx, { answers: { "a.description": { value: "We repair storm-damaged roofs in Austin too." } } });
+    await saveOnboardingStep(ctx, { answers: { "f.review": { value: true } } });
+
+    await expect(submitOnboarding(ctx)).rejects.toMatchObject({ code: "conflict" });
+    await expect(submitOnboarding(ctx, {})).rejects.toMatchObject({ code: "conflict" });
+    await expect(submitOnboarding(ctx, { confirmation: reviewed.businessBrain?.confirmation })).rejects.toMatchObject({ code: "conflict" });
+    const counts = (await withSystem((db) => db.query(
+      `select (select count(*)::int from ai_growth_partner_versions where org_id = $1) as versions,
+              (select count(*)::int from agent_provisioning_jobs where org_id = $1) as jobs`,
+      [org.id],
+    ))).rows[0];
+    expect(counts).toEqual({ versions: 0, jobs: 0 });
+
+    const current = await getOnboardingReview(ctx);
+    expect(current.businessBrain?.confirmation).not.toBe(reviewed.businessBrain?.confirmation);
+    expect(current.businessBrain?.groups.flatMap(({ facts }) => facts)).toContainEqual(expect.objectContaining({
+      key: "background", value: "We repair storm-damaged roofs in Austin too.",
+    }));
+    await expect(submitOnboarding(ctx, { confirmation: current.businessBrain?.confirmation })).resolves.toMatchObject({
+      employees: [expect.objectContaining({ role: "growth_partner" })],
+    });
+  });
+
   it("creates one Growth Partner, one Business Brain and one provisioning request per client from one onboarding flow", async () => {
     const roofing = await onboard("Brightside Roofing", "We repair residential roofs after storm damage.", "Roof repair and inspection", "Austin homeowners", {
       "c.ai_behavior": "answer_book",
@@ -70,6 +113,7 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
       "c.company_rules": "Use plain language with homeowners.",
       "c.never_promise": "Never guarantee a repair date.",
       "c.human_escalation": ["unsafe_or_uncertain"],
+      "d.pricing_info": "Stale prices from a hidden question."
     });
     const plumbing = await onboard("Harbor Plumbing", "We repair plumbing systems for local homes.", "Pipe repair and drain cleaning", "Austin property owners");
 
@@ -128,8 +172,16 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
       expect(brainRows.rows).toHaveLength(1);
       expect(brainRows.rows[0].current_version).toBe(1);
       expect(brainRows.rows[0].source).toBe("onboarding");
+      const audit = (await withSystem((db) => db.query(
+        "select actor_user_id, metadata from audit_logs where org_id = $1 and action = 'onboarding.completed'",
+        [client.org.id],
+      ))).rows[0];
+      expect(audit).toMatchObject({ actor_user_id: client.owner.id, metadata: {
+        businessBrainReview: { version: 1, confirmation: client.confirmation },
+      } });
       const brain = parseBusinessBrain(brainRows.rows[0].business_brain);
       expect(brain.sections.businessIdentity.companyName).toMatchObject({ value: client.org.name, state: "client_confirmed" });
+      expect(brain.sections.businessIdentity.industry).toMatchObject({ value: "home_services", state: "client_confirmed" });
       expect(brain.sections.productsServicesOffers.services).toMatchObject({ value: client === roofing ? "Roof repair and inspection" : "Pipe repair and drain cleaning", state: "client_confirmed" });
       expect(brain.sections.productsServicesOffers.pricing).toMatchObject({
         value: "Do not share prices. Hand pricing questions to a person.",
@@ -147,7 +199,12 @@ describe("isolated new-client onboarding acceptance (test database; no Hermes wr
         "select count(*)::int as n from ai_growth_partner_versions where org_id = $1",
         [client.org.id],
       ));
-      await submitOnboarding(client.ctx);
+      const replay = await saveOnboardingStep(client.ctx, {
+        answers: { "d.pricing_info": { value: "Old draft pricing that was hidden from the reviewed answers." }, "f.review": { value: true } },
+      });
+      expect(replay.rejected).toEqual({});
+      const replayed = await submitOnboarding(client.ctx, { confirmation: client.confirmation });
+      expect(replayed.notes.map((note) => note.key)).toContain("nothing.changed");
       const after = await withSystem((db) => db.query<{ n: number }>(
         "select count(*)::int as n from ai_growth_partner_versions where org_id = $1",
         [client.org.id],

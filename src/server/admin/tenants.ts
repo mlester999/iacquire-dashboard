@@ -4,6 +4,7 @@ import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError, toPublicError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
 import { createInvitation, deliverInvitation, normalizeEmail } from "@/server/auth/service";
+import type { EmailDelivery } from "@/server/email";
 import { consumeRateLimit, RATE_LIMITS } from "@/server/security/rate-limit";
 import { sha256 } from "@/server/security/crypto";
 import { ensureGrowthPartnerRuntime } from "@/server/workforce/service";
@@ -127,15 +128,87 @@ async function assertPublishedBlueprint(blueprintId: string): Promise<void> {
   }
 }
 
-export async function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>) {
+/** What a caller may add to a creation. Both parts are optional, so every caller that passes neither keeps the behaviour it always had. */
+export interface CreateClientTenantOptions {
+  /**
+   * A key the SERVER chooses (8 to 160 printable characters; a purchase uses "purchase:<intent id>") that makes the creation idempotent. Every creation that carries the key runs
+   * one at a time; the first makes the workspace and stores the key on it (organizations.creation_key, migration 0141), and any later one finds that workspace and returns it with
+   * `duplicate: true`: no second workspace, Growth Partner, invitation or invitation email. The permission check still runs first, so a key never hands a workspace to a caller who
+   * may not create one.
+   */
+  idempotencyKey?: string;
+  /**
+   * Reserves something for the new workspace INSIDE the creating transaction, right after the organization row is inserted (a purchase intent takes its client_org_id here).
+   * Returning false means another request holds that reservation already: the whole creation rolls back with a conflict (no organization, no Growth Partner rows, no invitation) and the
+   * invitation email, which only goes out after the commit, is never sent. Anything it throws rolls the creation back the same way.
+   */
+  claim?: (db: Queryable, orgId: string) => Promise<boolean>;
+}
+
+interface ClientTenantBase {
+  orgId: string;
+  slug: string;
+  crmMode: OnboardingCrmMode;
+}
+
+/** A workspace this call made: its owner invitation was created and its email attempted once, and the real outcome is returned. */
+export interface CreatedClientTenant extends ClientTenantBase {
+  inviteLink: string;
+  emailDelivery: EmailDelivery;
+  blueprint: OnboardingBlueprintResult | null;
+  duplicate: false;
+}
+
+/**
+ * The workspace an earlier call with the same idempotency key already made. Nothing was created, invited, emailed or applied by this call: the invitation link exists only in the
+ * first call's result (the stored token is a hash), and a Blueprint is not re-applied here (use blueprintRetryPath).
+ */
+export interface ExistingClientTenant extends ClientTenantBase {
+  inviteLink: null;
+  emailDelivery: null;
+  blueprint: null;
+  duplicate: true;
+}
+
+const CREATION_KEY = /^[\x21-\x7e]{8,160}$/;
+
+export function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>, opts: CreateClientTenantOptions & { idempotencyKey: string }): Promise<CreatedClientTenant | ExistingClientTenant>;
+export function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>, opts?: { idempotencyKey?: undefined; claim?: CreateClientTenantOptions["claim"] }): Promise<CreatedClientTenant>;
+export async function createClientTenant(admin: SessionUser, input: z.input<typeof createTenantSchema>, opts: CreateClientTenantOptions = {}): Promise<CreatedClientTenant | ExistingClientTenant> {
   const { rows: permissionRows } = await withSystem((db) => db.query<{ allowed: boolean }>(
     "select coalesce(app.user_has_agency_permission($1, 'agency.clients.create'), false) as allowed",
     [admin.id],
   ));
   if (!permissionRows[0]?.allowed) throw new AppError("forbidden", "Your role does not allow creating client workspaces.");
+  const key = opts.idempotencyKey;
+  if (key !== undefined && !CREATION_KEY.test(key)) throw new AppError("invalid_input", "The creation key must be 8 to 160 printable characters.");
   const data = createTenantSchema.parse(input);
   if (data.blueprint) await assertBlueprintChoice(admin, data.blueprint);
   const created = await withSystem(async (db) => {
+    if (key !== undefined) {
+      // Creations that carry this key take turns: the second waits here until the first has committed (or rolled back), so it either finds the workspace or makes it itself.
+      await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`organization-creation:${key}`]);
+      const { rows: found } = await db.query<{ id: string; slug: string; mode: string | null }>(
+        `select o.id, o.slug, w.mode from organizations o left join crm_workspaces w on w.org_id = o.id where o.creation_key = $1 and o.kind = 'client'`,
+        [key],
+      );
+      if (found[0]) return { duplicate: true as const, orgId: found[0].id, slug: found[0].slug, crmMode: ONBOARDING_CRM_MODES.find((mode) => mode === found[0].mode) ?? data.crmMode };
+    }
+    const normalizedName = data.name.trim().replace(/\s+/g, " ").toLowerCase();
+    const normalizedOwnerEmail = normalizeEmail(data.ownerEmail);
+    const submissionKey = sha256(`${admin.id}\0${normalizedName}\0${normalizedOwnerEmail}`);
+    await db.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`organization-submit:${submissionKey}`]);
+    const recent = await db.query<{ id: string }>(
+      `select o.id from organizations o
+       join invitations i on i.org_id = o.id and i.role = 'owner'
+       where o.kind = 'client' and o.created_by = $1
+         and lower(regexp_replace(btrim(o.name), '[[:space:]]+', ' ', 'g')) = $2
+         and lower(i.email::text) = $3
+         and o.created_at >= now() - interval '120 seconds'
+       order by o.created_at desc limit 1`,
+      [admin.id, normalizedName, normalizedOwnerEmail],
+    );
+    if (recent.rows[0]) throw new AppError("conflict", "A workspace with this name and owner was just created. Open it from Clients instead of creating it again.");
     let slug = slugify(data.name);
     for (let i = 2; ; i++) {
       const { rows } = await db.query("select 1 from organizations where slug = $1", [slug]);
@@ -143,11 +216,15 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
       slug = `${slugify(data.name).slice(0, 36)}-${i}`;
     }
     const { rows } = await db.query<{ id: string }>(
-      `insert into organizations (name, slug, kind, status, industry, website, timezone, created_by)
-       values ($1, $2, 'client', 'invited', nullif($3, ''), nullif($4, ''), $5, $6) returning id`,
-      [data.name, slug, data.industry, data.website, data.timezone, admin.id],
+      `insert into organizations (name, slug, kind, status, industry, website, timezone, created_by, creation_key)
+       values ($1, $2, 'client', 'invited', nullif($3, ''), nullif($4, ''), $5, $6, $7) returning id`,
+      [data.name, slug, data.industry, data.website, data.timezone, admin.id, key ?? null],
     );
     const orgId = rows[0].id;
+    // The caller's reservation is taken in THIS transaction, before anything else is written: if another request already holds it, every row made here goes with the rollback.
+    if (opts.claim && !(await opts.claim(db, orgId))) {
+      throw new AppError("conflict", "Another request already created this workspace. Nothing was created here.");
+    }
     // A staff member who creates a client gets access through an explicit assignment,
     // keeping their default client scope assigned-only.
     if (admin.platformRole === "agency_staff") {
@@ -174,17 +251,19 @@ export async function createClientTenant(admin: SessionUser, input: z.input<type
     await recordAudit(
       {
         orgId, actorUserId: admin.id, actorKind: "agency", action: "tenant.created", targetType: "organization", targetId: orgId, result: "success",
-        metadata: { slug, workforceModel: "growth_partner", crmMode: data.crmMode, blueprint: data.blueprint ? (data.blueprint.kind === "blueprint" ? { blueprintId: data.blueprint.blueprintId } : { starterKey: data.blueprint.starterKey }) : null },
+        metadata: { slug, workforceModel: "growth_partner", crmMode: data.crmMode, keyed: key !== undefined, blueprint: data.blueprint ? (data.blueprint.kind === "blueprint" ? { blueprintId: data.blueprint.blueprintId } : { starterKey: data.blueprint.starterKey }) : null },
       },
       db,
     );
-    return { orgId, slug, invite };
+    return { duplicate: false as const, orgId, slug, invite };
   });
+  // A repeat of a creation that already happened: the existing workspace, with nothing sent and nothing applied.
+  if (created.duplicate) return { orgId: created.orgId, slug: created.slug, inviteLink: null, emailDelivery: null, crmMode: created.crmMode, blueprint: null, duplicate: true };
   // The owner email goes out only after the workspace and invitation are committed, and the real outcome is returned.
   const emailDelivery = await deliverInvitation(created.invite.message);
   // The Blueprint is applied after the client is committed, in its own transaction: whatever happens to it, the client and the invitation stay.
   const blueprint = data.blueprint ? await applyOnboardingBlueprint(admin, created.orgId, data.blueprint) : null;
-  return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery, crmMode: data.crmMode, blueprint };
+  return { orgId: created.orgId, slug: created.slug, inviteLink: created.invite.link, emailDelivery, crmMode: data.crmMode, blueprint, duplicate: false };
 }
 
 /**
@@ -345,7 +424,7 @@ export async function setAgentEnabled(admin: SessionUser, orgId: string, agentId
        where id = $1 and org_id = $2`,
       [agentId, orgId, enabled],
     );
-    if (!res.rowCount) throw new AppError("not_found", "AI employee not found.");
+    if (!res.rowCount) throw new AppError("not_found", "AI runtime not found.");
     await recordAudit({ orgId, actorUserId: admin.id, actorKind: "agency", agentInstanceId: agentId, action: enabled ? "agent.enabled" : "agent.disabled", targetType: "agent_instance", targetId: agentId, result: "success", metadata: { reason: why } }, db);
     return null;
   });

@@ -293,7 +293,7 @@ export const metrics = async (db: Queryable, job: WorkJobRow): Promise<ReviewMet
   ];
 };
 
-export async function runSocialPerformanceReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runSocialPerformanceReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "social_performance_review",
     allowedRoles: ["performance_analyst", "growth_partner"],
@@ -303,5 +303,5 @@ export async function runSocialPerformanceReviewJob(job: WorkJobRow, _context: {
     metrics,
     limitations: `Only stored records in this workspace were read. Nothing was drafted, published or changed. Engagement is limited to the likes, comments and shares a platform returned; reach and impressions are not collected. Posts are compared within one account, and a difference or a change is reported only with at least ${MIN_PER_GROUP} posts in each group (${MIN_PER_PERIOD} in each period) and a clear gap. Leads are credited to a post only through its tracking link; a post without one cannot be measured.`,
     subject: "Social media",
-  });
+  }, context.controller.signal);
 }

@@ -96,7 +96,7 @@ const recoveryOff: ReviewCheck = async (db, job) => {
   });
 };
 
-export async function runMissedCallReviewJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runMissedCallReviewJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   return runReadOnlyReviewJob(job, {
     capability: "missed_call_review",
     allowedRoles: ["appointment_setter", "growth_partner"],
@@ -105,5 +105,5 @@ export async function runMissedCallReviewJob(job: WorkJobRow, _context: { worker
     checks: [waitingOnTeam, draftsWaiting, failedFollowUps, recoveryOff],
     limitations: "Only missed-call records stored in this workspace were read. No customer was contacted, no call was placed and no case, task or message was changed.",
     subject: "Missed calls",
-  });
+  }, context.controller.signal);
 }

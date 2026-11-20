@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FACT_AUDIENCES, resolveFactAudience } from "@/lib/ai-growth-partner-audience";
 import { QUESTION_BY_ID } from "@/lib/onboarding/definitions";
 import type { StoredAnswers } from "@/lib/onboarding/types";
 
@@ -20,7 +21,7 @@ export const AI_GROWTH_PARTNER_CAPABILITY_INFO: Record<(typeof AI_GROWTH_PARTNER
   },
   sales_outreach: {
     title: "Sales & Outreach",
-    description: "Prepare relevant customer communication and keep external contact behind the required approval.",
+    description: "Prepare relevant customer communication under the workspace's approval rules.",
   },
   calendar_appointments: {
     title: "Calendar & Appointment Management",
@@ -54,6 +55,20 @@ export const BUSINESS_BRAIN_SECTIONS = [
   "employeeBehavior",
 ] as const;
 
+export const BUSINESS_BRAIN_SECTION_TITLES: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = {
+  businessIdentity: "Business identity",
+  productsServicesOffers: "Products, services & offers",
+  idealCustomers: "Ideal customers",
+  acquisitionStrategy: "Customer acquisition",
+  salesKnowledge: "Sales knowledge",
+  brandCommunication: "Brand communication",
+  businessOperations: "Business operations",
+  policies: "Policies",
+  employeeGoals: "Goals and priorities",
+  productOperations: "iAcquireOS tools",
+  employeeBehavior: "Working style",
+};
+
 export const BusinessBrainProvenanceSchema = z.object({
   source: z.enum([
     "onboarding",
@@ -79,6 +94,8 @@ export const BusinessBrainFactSchema = z.object({
   provenance: z.array(BusinessBrainProvenanceSchema).max(50),
   updatedAt: z.string().datetime({ offset: true }).nullable(),
   clientOverride: z.boolean().default(false),
+  /** Who may be told this fact. Absent in every snapshot saved before it existed: it then reads as internal, except in the few default customer-safe slots (src/lib/ai-growth-partner-audience.ts). */
+  audience: z.enum(FACT_AUDIENCES).optional(),
 }).superRefine((fact, ctx) => {
   if (fact.state === "unknown" && fact.value !== null) {
     ctx.addIssue({ code: "custom", message: "Unknown Business Brain facts must have a null value.", path: ["value"] });
@@ -185,16 +202,21 @@ function expandedBrainQueryTerms(query: string): Set<string> {
   return expanded;
 }
 
-/** Selects a bounded, deterministic view of the active Brain for one request; the stored version is never changed. */
+/**
+ * Selects a bounded, deterministic view of the active Brain for one request; the stored version is never changed. With `audience: "customer_safe"` only the facts a customer may be
+ * told are candidates (the owner's own view, without options, is unchanged).
+ */
 export function retrieveBusinessBrainFacts(
   input: unknown,
   query: string,
+  options: { audience?: "customer_safe" } = {},
 ): Array<{ section: (typeof BUSINESS_BRAIN_SECTIONS)[number]; key: string; fact: BusinessBrainFact }> {
   const brain = parseBusinessBrain(input);
   const queryTerms = brainSearchTerms(query);
   const expandedQueryTerms = expandedBrainQueryTerms(query);
   const candidates = BUSINESS_BRAIN_SECTIONS.flatMap((section) => Object.entries(brain.sections[section])
-    .filter(([, fact]) => fact.state === "verified" || fact.state === "client_confirmed")
+    .filter(([key, fact]) => (fact.state === "verified" || fact.state === "client_confirmed")
+      && (options.audience !== "customer_safe" || resolveFactAudience(section, key, fact) === "customer_safe"))
     .map(([key, fact], order) => {
       const keyTerms = brainSearchTerms(`${section} ${key}`);
       const value = typeof fact.value === "string" ? fact.value : JSON.stringify(fact.value);

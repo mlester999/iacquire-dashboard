@@ -1,5 +1,6 @@
 import "server-only";
 import { AppError } from "@/server/errors";
+import { FSA_DIRECTORY_NAME, RESEARCH_SOURCE_KEYS, type ResearchSourceKey } from "@/lib/lead-research-sources";
 import type { PageFetcher } from "@/server/onboarding/website";
 import {
   researchApprovedCompanyWebsite,
@@ -9,18 +10,21 @@ import {
   type OpenStreetMapCandidate,
   type OverpassFetcher,
 } from "@/server/leads/openstreetmap-source";
+import { fsaDirectoryConfigSchema, searchFsaDirectory, type FsaDirectoryFetcher } from "@/server/leads/fsa-directory-source";
 import { withSystem } from "@/server/db";
 import {
   createResearchSourceUsageTracker,
   getResearchSourceUsageForJob,
   getResearchSourcePolicy,
   openStreetMapBounds,
+  researchSourceApprovalCurrent,
   toCompanyWebsiteAdapterConfig,
   toOpenStreetMapAdapterConfig,
   type StoredResearchSourcePolicy,
 } from "@/server/leads/research-source-policy";
 import type { ResearchLead } from "@/server/leads/research-contract";
 import type { Queryable } from "@/server/db";
+import type { Targeting } from "@/lib/leads-targeting";
 
 const MAX_CANDIDATES_PER_RUN = 20;
 const MAX_EVIDENCE_SUMMARY_CHARS = 480;
@@ -29,7 +33,7 @@ export interface ResearchBundleEvidence {
   url: string;
   observed_at: string;
   summary: string;
-  source: "openstreetmap" | "company_website";
+  source: ResearchSourceKey;
 }
 
 export interface ResearchBundleCandidate {
@@ -42,9 +46,11 @@ export interface ResearchBundleCandidate {
 }
 
 export interface ResearchSourceBundle {
+  synthetic: boolean;
   candidates: ResearchBundleCandidate[];
   sourceNames: string[];
   requests: number;
+  discoveryRequests: number;
   providerFeeUsd: number;
   pagesReviewed: number;
   warnings: string[];
@@ -53,6 +59,7 @@ export interface ResearchSourceBundle {
 export interface ResearchSourceRunnerDependencies {
   openStreetMapFetcher?: OverpassFetcher;
   companyWebsitePageFetcher?: PageFetcher;
+  fsaDirectoryFetcher?: FsaDirectoryFetcher;
   now?: () => number;
   wait?: (ms: number) => Promise<void>;
   /** Test-only label supplied with a locally bundled, synthetic provider response. */
@@ -62,11 +69,8 @@ export interface ResearchSourceRunnerDependencies {
 type Progress = (stage: "searching" | "reviewing" | "extracting") => Promise<void>;
 
 async function loadEnabledPolicies(db: Queryable, orgId: string): Promise<StoredResearchSourcePolicy[]> {
-  const policies = await Promise.all([
-    getResearchSourcePolicy(db, orgId, "openstreetmap"),
-    getResearchSourcePolicy(db, orgId, "company_website"),
-  ]);
-  return policies.filter((policy): policy is StoredResearchSourcePolicy => policy?.enabled === true);
+  const policies = await Promise.all(RESEARCH_SOURCE_KEYS.map((source) => getResearchSourcePolicy(db, orgId, source)));
+  return policies.filter((policy): policy is StoredResearchSourcePolicy => Boolean(policy && researchSourceApprovalCurrent(policy)));
 }
 
 function cleanSummary(parts: Array<string | null | undefined>): string {
@@ -105,6 +109,8 @@ export async function runApprovedResearchSources(input: {
   orgId: string;
   jobId: string;
   requestId: string;
+  workerId?: string;
+  targeting?: Pick<Targeting, "excluded">;
   onProgress?: Progress;
   beforeProviderRequest?: () => Promise<void>;
   dependencies?: ResearchSourceRunnerDependencies;
@@ -112,42 +118,63 @@ export async function runApprovedResearchSources(input: {
   const policies = await withSystem((db) => loadEnabledPolicies(db, input.orgId));
   if (!policies.length) return null;
   const osmPolicy = policies.find((policy) => policy.source === "openstreetmap") ?? null;
+  const directoryPolicy = policies.find((policy) => policy.source === "fsa_directory") ?? null;
   const websitePolicy = policies.find((policy) => policy.source === "company_website") ?? null;
-  if (!osmPolicy && websitePolicy) {
+  if (!osmPolicy && !directoryPolicy && websitePolicy) {
     throw new AppError("forbidden", "Company website reads need an approved discovery source to supply candidate URLs. No fallback source was used.");
   }
-  if (!osmPolicy) return null;
+  if (!osmPolicy && !directoryPolicy) return null;
 
-  // Capability checks must happen before reserving a request or calling an approved source.
   await input.beforeProviderRequest?.();
   await input.onProgress?.("searching");
-  const osmTracker = createResearchSourceUsageTracker({
+  const dependencies = input.dependencies;
+  const synthetic = Boolean(dependencies?.syntheticSourceLabel
+    || dependencies?.openStreetMapFetcher || dependencies?.companyWebsitePageFetcher || dependencies?.fsaDirectoryFetcher);
+  if (synthetic && ((osmPolicy && !dependencies?.openStreetMapFetcher)
+    || (osmPolicy && websitePolicy && !dependencies?.companyWebsitePageFetcher)
+    || (directoryPolicy && !dependencies?.fsaDirectoryFetcher))) {
+    throw new AppError("forbidden", "Synthetic research requires offline transports for each selected source.");
+  }
+  const transport = synthetic ? "synthetic_fixture" as const : "approved_source" as const;
+  const tracker = (source: ResearchSourceKey) => createResearchSourceUsageTracker({
     orgId: input.orgId,
     jobId: input.jobId,
     requestId: input.requestId,
-    source: "openstreetmap",
+    workerId: input.workerId,
+    source,
+    transport,
   });
-  const osm = await searchOpenStreetMap(
+  const osm = osmPolicy ? await searchOpenStreetMap(
     toOpenStreetMapAdapterConfig(osmPolicy),
     openStreetMapBounds(osmPolicy),
-    input.dependencies?.openStreetMapFetcher,
-    osmTracker,
-  );
+    dependencies?.openStreetMapFetcher,
+    tracker("openstreetmap"),
+  ) : null;
+  if (directoryPolicy && osm) await input.beforeProviderRequest?.();
+  const directory = directoryPolicy ? await searchFsaDirectory(
+    fsaDirectoryConfigSchema.parse(directoryPolicy.sourceConfig),
+    tracker("fsa_directory"),
+    dependencies?.fsaDirectoryFetcher,
+  ) : null;
 
-  const websiteConfig = websitePolicy ? toCompanyWebsiteAdapterConfig(websitePolicy) : null;
-  const websiteTracker = websiteConfig ? createResearchSourceUsageTracker({
-    orgId: input.orgId,
-    jobId: input.jobId,
-    requestId: input.requestId,
-    source: "company_website",
-  }) : null;
-  const candidates = osm.candidates.slice(0, MAX_CANDIDATES_PER_RUN);
+  const websiteConfig = osm && websitePolicy ? toCompanyWebsiteAdapterConfig(websitePolicy) : null;
+  const websiteTracker = websiteConfig ? tracker("company_website") : null;
   const results: ResearchBundleCandidate[] = [];
   const warnings: string[] = [];
+  const excluded = new Set(input.targeting?.excluded.map(normalizedSourceField));
+  const matchesExclusion = (...fields: Array<string | null>) => fields.some((value) => value && excluded.has(normalizedSourceField(value)));
+  const osmCandidates = osm?.candidates.filter((candidate) => !matchesExclusion(
+    candidate.businessName, candidate.category, candidate.location, normalizedDomain(candidate.websiteUrl),
+  )) ?? [];
+  const directoryCandidates = directory?.candidates.filter((row) => !matchesExclusion(row.businessName, row.industry, row.location)) ?? [];
+  const excludedCount = (osm?.candidates.length ?? 0) + (directory?.candidates.length ?? 0) - osmCandidates.length - directoryCandidates.length;
+  if (excludedCount) warnings.push(`${excludedCount} candidate${excludedCount === 1 ? "" : "s"} matched an exact exclusion in the saved targeting rules.`);
   let pagesReviewed = 0;
   await input.onProgress?.("reviewing");
 
-  for (const candidate of candidates) {
+  if (osm) for (const candidate of osmCandidates.slice(0, directory
+    ? Math.max(MAX_CANDIDATES_PER_RUN / 2, MAX_CANDIDATES_PER_RUN - directoryCandidates.length)
+    : MAX_CANDIDATES_PER_RUN)) {
     const evidence: ResearchBundleEvidence[] = [{
       url: candidate.evidenceUrl,
       observed_at: osm.retrievedAt,
@@ -199,18 +226,31 @@ export async function runApprovedResearchSources(input: {
       websiteFacts,
     });
   }
+  if (directory) {
+    results.push(...directoryCandidates.slice(0, MAX_CANDIDATES_PER_RUN - results.length).map((row): ResearchBundleCandidate => ({
+      businessName: row.businessName,
+      website: null,
+      industry: row.industry,
+      location: row.location,
+      evidence: [{ url: row.evidenceUrl, summary: row.summary, observed_at: directory.retrievedAt, source: "fsa_directory" }],
+      websiteFacts: [],
+    })));
+  }
   await input.onProgress?.("extracting");
 
   const sourceUsage = await withSystem((db) => getResearchSourceUsageForJob(db, input.orgId, input.jobId));
   const bundle: ResearchSourceBundle = {
+    synthetic,
     candidates: results,
     sourceNames: [
-      input.dependencies?.syntheticSourceLabel ? "synthetic OpenStreetMap fixture" : "OpenStreetMap",
-      ...(websitePolicy
-        ? [input.dependencies?.syntheticSourceLabel ? "synthetic company website fixtures" : "approved company websites"]
+      ...(osm ? [synthetic ? "synthetic OpenStreetMap fixture" : "OpenStreetMap"] : []),
+      ...(directory ? [synthetic ? "synthetic FSA directory fixture" : FSA_DIRECTORY_NAME] : []),
+      ...(websiteConfig
+        ? [synthetic ? "synthetic company website fixtures" : "approved company websites"]
         : []),
     ],
     requests: sourceUsage.reduce((sum, row) => sum + row.requests, 0),
+    discoveryRequests: sourceUsage.filter((row) => row.source !== "company_website").reduce((sum, row) => sum + row.requests, 0),
     providerFeeUsd: sourceUsage.reduce((sum, row) => sum + row.providerFeeUsd, 0),
     pagesReviewed,
     warnings,
@@ -218,8 +258,12 @@ export async function runApprovedResearchSources(input: {
   return { bundle, promptContext: promptBundle(bundle) };
 }
 
+function normalizedSourceField(value: string) {
+  return value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function normalizedName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+  return normalizedSourceField(value).replace(/[^\p{L}\p{M}\p{N}]+/gu, " ").trim();
 }
 
 function normalizedDomain(value: string | null | undefined): string | null {
@@ -240,23 +284,20 @@ export function bindResearchOutputToSourceBundle(
   let rejected = 0;
   for (const lead of leads) {
     const suppliedDomain = normalizedDomain(lead.website);
-    const candidate = bundle.candidates.find((item) => {
+    const matches = bundle.candidates.filter((item) => {
       const sameName = normalizedName(item.businessName) === normalizedName(lead.business_name);
       const candidateDomain = normalizedDomain(item.website);
-      return sameName && (!candidateDomain || !suppliedDomain || candidateDomain === suppliedDomain);
+      return sameName && (!candidateDomain || !suppliedDomain || candidateDomain === suppliedDomain)
+        && lead.evidence.every(({ url }) => item.evidence.some((e) => e.url === url));
     });
-    if (!candidate) {
+    if (matches.length !== 1) {
       rejected += 1;
       continue;
     }
-    const evidenceByUrl = new Map(candidate.evidence.map((item) => [item.url, item]));
-    const proposedEvidenceUrls = lead.evidence.map((item) => item.url);
-    if (proposedEvidenceUrls.some((url) => !evidenceByUrl.has(url))) {
-      rejected += 1;
-      continue;
-    }
+    const [candidate] = matches;
     const evidence = candidate.evidence;
     const evidenceUrls = new Set(evidence.map((item) => item.url));
+    const basedOnDirectory = evidence.some((item) => item.source === "fsa_directory");
     accepted.push({
       ...lead,
       business_name: candidate.businessName,
@@ -265,12 +306,18 @@ export function bindResearchOutputToSourceBundle(
       location: candidate.location,
       evidence,
       public_contact: null,
+      ...(basedOnDirectory ? {
+        buying_signals: [], signal_records: [], score: {},
+        qualification_summary: "The directory supports the listed category and local authority. Review first-party details before deciding whether the prospect fits the Business Brain.",
+        disqualification_reason: null, disqualification_evidence_url: null,
+      } : {
       disqualification_evidence_url: lead.disqualification_evidence_url && evidenceUrls.has(lead.disqualification_evidence_url)
         ? lead.disqualification_evidence_url
         : null,
       signal_records: lead.signal_records.map((signal) => evidenceUrls.has(signal.evidence_url ?? "")
         ? signal
         : { ...signal, source: null, evidence_url: null, recorded_at: null, confidence: null, client_fit: null }),
+      }),
     });
   }
   return { leads: accepted, rejected };

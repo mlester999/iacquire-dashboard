@@ -25,6 +25,13 @@ export const WORK_JOB_STATUSES = [
 ] as const;
 export type WorkJobStatus = (typeof WORK_JOB_STATUSES)[number];
 
+/** Jobs that have never been claimed are abandoned after this much time in the queue. */
+export const STALE_QUEUED_MS = 30 * 60_000;
+const STALE_QUEUED_SWEEP_LIMIT = 100;
+/** The lease API clamps claims to at least this many seconds. */
+export const WORK_JOB_MIN_LEASE_SECONDS = 30;
+const SCHEDULE_FAILURES_BEFORE_PAUSE = 3;
+
 export const WORK_JOB_STAGES = [
   "preparing",
   "scanning",
@@ -37,6 +44,7 @@ export const WORK_JOB_STAGES = [
   "checking_duplicates",
   "preparing_results",
   "waiting_for_approval",
+  "awaiting_connection",
   "completed",
   "blocked",
   "failed",
@@ -49,13 +57,14 @@ export const WORK_JOB_STAGE_LABELS: Record<WorkJobStage, string> = {
   scanning: "Reading persisted workspace records",
   analyzing: "Assessing impact and preparing recommendations",
   searching: "Searching approved public sources",
-  reviewing: "Reviewing discovered company websites",
+  reviewing: "Reviewing approved source evidence",
   extracting: "Extracting prospect details and evidence",
   verifying: "Verifying information against sources",
   qualifying: "Qualifying candidates against your criteria",
   checking_duplicates: "Checking candidate companies against existing CRM records",
   preparing_results: "Research completed. Preparing results for review.",
   waiting_for_approval: "Waiting for your approval",
+  awaiting_connection: "Waiting for a connection",
   completed: "Completed",
   blocked: "Blocked and needs a person",
   failed: "Failed",
@@ -119,6 +128,9 @@ export function countDraftStatuses(statuses: readonly DraftLiveStatus[]): DraftC
  * person has decided its drafts: approved drafts that are only queued are an approved write, and it is a confirmed action only when every approved draft has really been sent.
  */
 export function workJobEvidence(job: { id: string; capability: string; status: WorkJobStatus }, drafts?: DraftCounts | null): EvidenceMarker | null {
+  if (job.capability === "lead_list_upload" && job.status === "completed") {
+    return { v: 1, class: "completed_action", ledger: { kind: "work_job", id: job.id } };
+  }
   if (job.capability === "crm_lead_import") {
     if (job.status === "waiting_for_approval") return { v: 1, class: "proposed_change", ledger: { kind: "work_job", id: job.id } };
     if (job.status === "completed") return { v: 1, class: "approved_write", ledger: { kind: "work_job", id: job.id } };
@@ -339,7 +351,7 @@ export async function claimWorkJob(
   db: Queryable,
   input: { jobId: string; orgId: string; workerId: string; leaseSeconds?: number },
 ): Promise<WorkJobRow | null> {
-  const lease = Math.min(3600, Math.max(30, input.leaseSeconds ?? 120));
+  const lease = Math.min(3600, Math.max(WORK_JOB_MIN_LEASE_SECONDS, input.leaseSeconds ?? 120));
   const { rows } = await db.query<WorkJobRow>(
     `update ai_work_jobs
         set status = 'running', stage = 'preparing', attempts = attempts + 1,
@@ -359,7 +371,7 @@ export async function heartbeatWorkJob(
   db: Queryable,
   input: { jobId: string; workerId: string; leaseSeconds?: number; progress?: Record<string, unknown> },
 ): Promise<boolean> {
-  const lease = Math.min(3600, Math.max(30, input.leaseSeconds ?? 120));
+  const lease = Math.min(3600, Math.max(WORK_JOB_MIN_LEASE_SECONDS, input.leaseSeconds ?? 120));
   const { rowCount } = await db.query(
     `update ai_work_jobs
         set lease_expires_at = now() + make_interval(secs => $3),
@@ -381,29 +393,85 @@ export interface FinishWorkJobInput {
   resultCount?: number;
   failureCode?: string | null;
   failureMessage?: string | null;
+  now?: Date;
   event?: { kind: WorkJobEventRow["kind"]; stage?: WorkJobStage | null; message: string; data?: Record<string, unknown> };
+}
+
+async function notifyWorkJobFailureAndPauseSchedule(db: Queryable, input: { jobId: string; orgId: string; now?: Date }): Promise<void> {
+  const reports = await import("@/server/workforce/reports");
+  await reports.publishWorkJobFailureReport(db, input);
+
+  const scheduleRows = await db.query<{ id: string }>(
+    `select id from ai_work_schedules
+      where org_id = $1 and last_job_id = $2 and enabled = true
+      for update`,
+    [input.orgId, input.jobId],
+  );
+  const schedule = scheduleRows.rows[0];
+  if (!schedule) return;
+
+  const prefix = `schedule:${schedule.id}:`;
+  const recent = await db.query<{ status: string }>(
+    `select status from ai_work_jobs
+      where org_id = $1 and idempotency_key like $2
+      order by created_at desc, id desc
+      limit $3`,
+    [input.orgId, `${prefix}%`, SCHEDULE_FAILURES_BEFORE_PAUSE],
+  );
+  let failureCount = 0;
+  for (const job of recent.rows) {
+    if (job.status !== "failed" && job.status !== "blocked") break;
+    failureCount += 1;
+  }
+  if (failureCount < SCHEDULE_FAILURES_BEFORE_PAUSE) return;
+
+  const disabled = await db.query<{ id: string }>(
+    `update ai_work_schedules
+        set enabled = false, last_skipped_reason = 'consecutive_failures', last_skipped_at = now()
+      where id = $1 and org_id = $2 and enabled = true
+      returning id`,
+    [schedule.id, input.orgId],
+  );
+  if (!disabled.rows[0]) return;
+  await reports.publishScheduleAutoDisabledReport(db, {
+    orgId: input.orgId,
+    scheduleId: schedule.id,
+    jobId: input.jobId,
+    failureCount,
+    now: input.now,
+  });
 }
 
 /** Sets a terminal (or approval-waiting) state. Idempotent: a second finish returns false. */
 export async function finishWorkJob(db: Queryable, input: FinishWorkJobInput): Promise<boolean> {
-  const { rows } = await db.query<{ id: string }>(
+  const { rows } = await db.query<{ id: string; status: WorkJobStatus; cancelled_by_request: boolean }>(
     `with finished as (
        update ai_work_jobs
-          set status = $3, stage = $4, result = $5::jsonb, result_summary = $6, result_count = $7,
-              failure_code = $8, failure_message = $9,
+          set status = case when cancel_requested_at is not null and $3 <> 'cancelled' then 'cancelled' else $3 end,
+              stage = case when cancel_requested_at is not null and $3 <> 'cancelled' then 'cancelled' else $4 end,
+              result = case when cancel_requested_at is not null and $3 <> 'cancelled' then '{}'::jsonb else $5::jsonb end,
+              result_summary = case when cancel_requested_at is not null and $3 <> 'cancelled' then null else $6 end,
+              result_count = case when cancel_requested_at is not null and $3 <> 'cancelled' then 0 else $7 end,
+              failure_code = case when cancel_requested_at is not null and $3 <> 'cancelled' then 'cancelled' else $8 end,
+              failure_message = case when cancel_requested_at is not null and $3 <> 'cancelled' then 'The work was stopped before it completed.' else $9 end,
               lease_owner = null, lease_expires_at = null, finished_at = now()
         where id = $1 and org_id = $2 and status in ('running', 'waiting_for_approval', 'blocked')
           and lease_owner = $10 and lease_expires_at > now()
-        returning id, org_id
+        returning id, org_id, status, (cancel_requested_at is not null and $3 <> 'cancelled') as cancelled_by_request
      ),
      finished_event as (
        insert into ai_work_events (job_id, org_id, kind, stage, message, data)
-       select f.id, f.org_id, $11::text, $12::text, left($13::text, 500), $14::jsonb
+       select f.id, f.org_id,
+              case when f.cancelled_by_request then 'notice' else $11::text end,
+              case when f.cancelled_by_request then 'cancelled' else $12::text end,
+              case when f.cancelled_by_request then 'The work was stopped before it completed.' else left($13::text, 500) end,
+              case when f.cancelled_by_request then '{}'::jsonb else $14::jsonb end
          from finished f
-        where $13::text is not null
+        where $13::text is not null or f.cancelled_by_request
        returning id
      )
-     select f.id from finished f cross join (select count(*) from finished_event) event_count`,
+     select f.id, f.status, f.cancelled_by_request
+       from finished f cross join (select count(*) from finished_event) event_count`,
     [
       input.jobId,
       input.orgId,
@@ -421,20 +489,27 @@ export async function finishWorkJob(db: Queryable, input: FinishWorkJobInput): P
       JSON.stringify(input.event?.data ?? {}),
     ],
   );
-  return rows.length > 0;
+  if (!rows.length) return false;
+  if (rows[0].status === "failed" || rows[0].status === "blocked") {
+    await notifyWorkJobFailureAndPauseSchedule(db, { jobId: input.jobId, orgId: input.orgId, now: input.now });
+  }
+  // A persisted stop wins over a worker's late result, and false prevents success-only follow-up
+  // (such as publishing a review report) from running after this update.
+  return !rows[0].cancelled_by_request;
 }
 
 /** Locks a live lease while a worker persists a capability-specific side effect. */
 export async function lockActiveWorkJobLease(
   db: Queryable,
-  input: { jobId: string; orgId: string; workerId: string },
+  input: { jobId: string; orgId: string; workerId: string; allowCancelRequested?: boolean },
 ): Promise<boolean> {
   const { rows } = await db.query<{ id: string }>(
     `select id from ai_work_jobs
       where id = $1 and org_id = $2 and status = 'running'
         and lease_owner = $3 and lease_expires_at > now()
+        and ($4::boolean or cancel_requested_at is null)
       for update`,
-    [input.jobId, input.orgId, input.workerId],
+    [input.jobId, input.orgId, input.workerId, input.allowCancelRequested ?? false],
   );
   return rows.length > 0;
 }
@@ -538,12 +613,61 @@ export async function listRunnableWorkJobs(limit = 3): Promise<WorkJobRow[]> {
   return rows;
 }
 
+/** Cancels old queued jobs that no worker has ever claimed, with durable failure and event evidence. */
+export async function staleQueuedJobs(db: Queryable, olderThanMs: number, onlyJobIds?: readonly string[]): Promise<string[]> {
+  if (onlyJobIds && onlyJobIds.length === 0) return [];
+  const ageMs = Number.isFinite(olderThanMs) ? Math.max(0, Math.floor(olderThanMs)) : STALE_QUEUED_MS;
+  const jobIds = onlyJobIds ? [...onlyJobIds] : null;
+  const { rows } = await db.query<{ id: string; org_id: string; capability: string }>(
+    `with stale as (
+       select id
+         from ai_work_jobs
+        where status = 'queued' and attempts = 0 and started_at is null
+          and lease_owner is null and lease_expires_at is null and cancel_requested_at is null
+          and created_at <= now() - ($1::double precision * interval '1 millisecond')
+          and ($2::uuid[] is null or id = any($2::uuid[]))
+        order by created_at asc
+        for update skip locked
+        limit case when $2::uuid[] is null then $3::int else cardinality($2::uuid[]) end
+     ), cancelled as (
+       update ai_work_jobs j
+          set status = 'cancelled', stage = 'cancelled', failure_code = 'stale_queued',
+              failure_message = 'This work was queued for over 30 minutes without a worker claim and was cancelled as stale.',
+              lease_owner = null, lease_expires_at = null, finished_at = now()
+         from stale s
+        where j.id = s.id and j.status = 'queued' and j.cancel_requested_at is null
+        returning j.id, j.org_id, j.capability
+     )
+     select id, org_id, capability from cancelled`,
+    [ageMs, jobIds, STALE_QUEUED_SWEEP_LIMIT],
+  );
+  for (const job of rows) {
+    await appendWorkEvent(db, {
+      jobId: job.id,
+      orgId: job.org_id,
+      kind: "notice",
+      stage: "cancelled",
+      message: "This work was queued for over 30 minutes without a worker claim and was cancelled as stale.",
+    });
+    if (job.capability === "lead_research") {
+      await db.query(
+        `update lead_research_requests set status = 'failed',
+                failure_reason = 'The research was queued for over 30 minutes without a worker claim and was cancelled as stale.',
+                completed_at = now()
+          where org_id = $1 and work_job_id = $2 and status in ('queued', 'running', 'waiting_for_agent')`,
+        [job.org_id, job.id],
+      );
+    }
+  }
+  return rows.map((job) => job.id);
+}
+
 /**
  * Recovery for a crashed or stopped worker. A lost lease is retried while attempts remain, then
  * failed with an honest reason. Cancel requests left by a dead worker are settled here. Never
  * deletes evidence and never claims the work succeeded.
  */
-export async function recoverExpiredWorkJobs(): Promise<{ retried: number; failed: number; cancelled: number }> {
+export async function recoverExpiredWorkJobs(): Promise<{ retried: number; failed: number; cancelled: number; requeuedIds: string[] }> {
   return withSystem(async (db) => {
     const { rows } = await db.query<{
       id: string; org_id: string; attempts: number; max_attempts: number; cancel_requested_at: Date | null; stage: string | null; capability: string;
@@ -568,6 +692,7 @@ export async function recoverExpiredWorkJobs(): Promise<{ retried: number; faile
     let retried = 0;
     let failed = 0;
     let cancelled = 0;
+    const requeuedIds: string[] = [];
     for (const job of rows) {
       if (job.cancel_requested_at) {
         await db.query(
@@ -591,11 +716,13 @@ export async function recoverExpiredWorkJobs(): Promise<{ retried: number; faile
           message: "The worker stopped unexpectedly. The work was queued to retry; no result was claimed.",
         });
         retried += 1;
+        requeuedIds.push(job.id);
       } else {
-        await db.query(
+        const failedJob = await db.query(
           `update ai_work_jobs set status = 'failed', stage = 'failed', failure_code = 'worker_lost',
                   failure_message = 'The worker stopped before the work completed.', lease_owner = null, lease_expires_at = null, finished_at = now()
-            where id = $1 and org_id = $2`,
+            where id = $1 and org_id = $2
+            returning id`,
           [job.id, job.org_id],
         );
         await appendWorkEvent(db, {
@@ -606,6 +733,7 @@ export async function recoverExpiredWorkJobs(): Promise<{ retried: number; faile
           message: "The worker stopped before the work completed. It was not retried automatically because its attempts were exhausted.",
         });
         await settleResearchRequest(job, "failed", "The worker stopped before the research completed.");
+        if (failedJob.rows[0]) await notifyWorkJobFailureAndPauseSchedule(db, { jobId: job.id, orgId: job.org_id });
         failed += 1;
       }
     }
@@ -620,7 +748,7 @@ export async function recoverExpiredWorkJobs(): Promise<{ retried: number; faile
       await settleResearchRequest(job, "cancelled", "The research was stopped before it started.");
       cancelled += 1;
     }
-    return { retried, failed, cancelled };
+    return { retried, failed, cancelled, requeuedIds };
   });
 }
 
@@ -645,6 +773,7 @@ export interface WorkJobView {
   resultCount: number;
   failureCode: string | null;
   failureMessage: string | null;
+  failureHref?: string | null;
   attempts: number;
   cancelRequested: boolean;
   canCancel: boolean;
@@ -773,7 +902,9 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     capability: job.capability,
     title: job.title,
     status: job.status,
-    statusLabel: workJobStatusLabel({ status: job.status, recoveryPending, capability: job.capability }, evidence, result.counts),
+    statusLabel: job.failure_code === "awaiting_connection"
+      ? "Waiting for connection"
+      : workJobStatusLabel({ status: job.status, recoveryPending, capability: job.capability }, evidence, result.counts),
     recoveryPending,
     evidence,
     stage: job.stage,
@@ -784,6 +915,9 @@ export async function getWorkJobView(ctx: OrgContext, jobId: string, options: { 
     resultCount: job.result_count,
     failureCode: job.failure_code,
     failureMessage: job.failure_message,
+    failureHref: job.failure_code === "awaiting_connection"
+      ? [...data.events].reverse().map((event) => event.data?.href).find((href): href is string => typeof href === "string" && href.startsWith("/") && !href.startsWith("//") && !href.includes("\\")) ?? null
+      : null,
     attempts: job.attempts,
     cancelRequested: Boolean(job.cancel_requested_at),
     canCancel: job.capability !== "crm_lead_import" && !isTerminalWorkJobStatus(job.status) && !job.cancel_requested_at && canActOnJob(ctx, job, cancelPermission),

@@ -283,7 +283,7 @@ export async function readPerformanceMetrics(
   return { period: resolved.label, previousPeriod: resolved.previousLabel, metrics: await metrics(db, resolved) };
 }
 
-export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runPerformanceSnapshotJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   // Resolve lazily inside the shared handler, after it verifies the employee's role. A malformed
   // job cannot query even organization settings before the capability gate passes.
   let periodPromise: Promise<PerformancePeriod> | null = null;
@@ -340,5 +340,5 @@ export async function runPerformanceSnapshotJob(job: WorkJobRow, _context: { wor
     sourceArea: "reporting",
     limitations: "KPIs cover only records stored in this workspace for the requested calendar month or last 30 days, compared with the matching prior period. No provider was contacted, no estimate was produced and no metric was inferred. AI run figures are shown only to people who may view activity.",
     subject: "Performance",
-  });
+  }, context.controller.signal);
 }

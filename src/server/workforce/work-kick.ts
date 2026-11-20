@@ -5,8 +5,8 @@ import { runWorkJob } from "@/server/workforce/work-runner";
 /**
  * Starts work after the response without blocking it. Registering with Next's `after()` keeps a
  * request-triggered run alive for the platform's configured function duration; an untracked
- * promise can be frozen as soon as a serverless response is sent. The dedicated worker and
- * scheduler recovery remain the durable path if the function itself is stopped.
+ * promise can be frozen as soon as a serverless response is sent. The dedicated worker or the
+ * scheduler's queued-work runner can resume work after recovery if this function is stopped.
  */
 export function kickWorkJob(jobId: string): void {
   const execute = async () => {

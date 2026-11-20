@@ -10,6 +10,9 @@ import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
 import {
   appendWorkEvent,
   claimWorkJob,
+  staleQueuedJobs,
+  STALE_QUEUED_MS,
+  WORK_JOB_MIN_LEASE_SECONDS,
   finishWorkJob,
   getWorkJob,
   listRunnableWorkJobs,
@@ -33,8 +36,8 @@ import { recordActionDenied } from "@/server/workforce/action-policy";
  * Persistent worker entry points for AI work.
  *
  * A job is claimed with a lease before any provider call, so two workers cannot execute the same
- * job. The in-process `after()`/background kick makes normal use immediate; the scheduler tick and
- * `recoverExpiredWorkJobs` are the durable recovery path, independent of an open browser tab.
+ * job. The in-process `after()`/background kick can make normal use immediate; the scheduler tick
+ * recovers expired leases and runs queued jobs independently of an open browser tab.
  */
 
 type Handler = (job: WorkJobRow, context: { workerId: string; controller: AbortController }) => Promise<void>;
@@ -55,6 +58,7 @@ const HANDLERS: Record<string, Handler> = {
   appointment_availability: runAppointmentAvailabilityJob,
   performance_snapshot: runPerformanceSnapshotJob,
 };
+const HANDLER_OVERRIDES = new Map<string, Handler>();
 
 type RequesterGateResult =
   | { allowed: true }
@@ -114,7 +118,12 @@ function workerId() {
 
 export function registerWorkHandler(capability: string, handler: Handler): void {
   if (!/^[a-z][a-z0-9_]{2,39}$/.test(capability)) throw new Error("Invalid work capability.");
-  HANDLERS[capability] = handler;
+  HANDLER_OVERRIDES.set(capability, handler);
+}
+
+/** Clears process-local handler overrides, for isolated runner tests and restart simulations. */
+export function clearWorkHandlerOverrides(): void {
+  HANDLER_OVERRIDES.clear();
 }
 
 /** Runs one job. Returns false when another worker holds it or it is no longer queued. */
@@ -144,7 +153,7 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
 
   const controller = new AbortController();
   registerWorkJobController(claimed.id, controller);
-  const runHandler = HANDLERS[claimed.capability];
+  const runHandler = HANDLER_OVERRIDES.get(claimed.capability) ?? HANDLERS[claimed.capability];
   try {
     // A pause or readiness change after enqueue must stop the worker before it invokes a handler.
     const gate = await withSystem((db) => jobGate(db, { orgId: claimed.org_id, agentId: claimed.agent_instance_id }));
@@ -260,11 +269,18 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
     }
     return true;
   } catch (err) {
-    const message = controller.signal.aborted
+    const cancelRequested = controller.signal.aborted || await withSystem(async (db) => {
+      const { rows } = await db.query<{ status: string; cancel_requested_at: Date | null }>(
+        "select status, cancel_requested_at from ai_work_jobs where id = $1 and org_id = $2",
+        [claimed.id, claimed.org_id],
+      );
+      return rows[0]?.status === "cancelled" || Boolean(rows[0]?.cancel_requested_at);
+    }).catch(() => false);
+    const message = cancelRequested
       ? "The work was stopped before it completed."
       : "The work stopped because of an unexpected error. No success was claimed.";
-    const status = controller.signal.aborted ? "cancelled" : "failed";
-    const stage = controller.signal.aborted ? "cancelled" : "failed";
+    const status = cancelRequested ? "cancelled" : "failed";
+    const stage = cancelRequested ? "cancelled" : "failed";
     await withSystem(async (db) => {
       await finishWorkJob(db, {
         jobId: claimed.id,
@@ -272,24 +288,24 @@ export async function runWorkJob(jobId: string): Promise<boolean> {
         workerId: id,
         status,
         stage,
-        failureCode: controller.signal.aborted ? "cancelled" : "worker_error",
+        failureCode: cancelRequested ? "cancelled" : "worker_error",
         failureMessage: message,
         event: {
-          kind: controller.signal.aborted ? "notice" : "error",
+          kind: cancelRequested ? "notice" : "error",
           stage,
           message,
           data: { error: err instanceof Error ? err.name : "unknown" },
         },
       });
     }).catch(() => undefined);
-    console.error(`[iacquire] work job ${claimed.id} (${claimed.capability}) failed safely`);
+    if (!cancelRequested) console.error(`[iacquire] work job ${claimed.id} (${claimed.capability}) failed safely`);
     return true;
   } finally {
     unregisterWorkJobController(claimed.id, controller);
   }
 }
 
-/** Runs a small bounded batch of queued jobs. Used by the scheduler tick. */
+/** Runs a small bounded batch of queued jobs. Used by the dedicated workforce worker. */
 export async function processQueuedWorkJobs(limit = 2): Promise<{ claimed: number; ran: number }> {
   const jobs = await listRunnableWorkJobs(limit);
   let ran = 0;
@@ -298,4 +314,28 @@ export async function processQueuedWorkJobs(limit = 2): Promise<{ claimed: numbe
     if (started) ran += 1;
   }
   return { claimed: jobs.length, ran };
+}
+
+export const WORK_RUN_BUDGET_MS = 45_000;
+
+/**
+ * Runs queued jobs while there is room in the tick's start budget for the claim API's minimum
+ * lease window. The budget bounds new starts; an individual handler can continue until it returns.
+ */
+export async function runQueuedWorkWithinBudget(options: { budgetMs?: number; now?: () => number } = {}): Promise<number> {
+  const requestedBudget = options.budgetMs ?? WORK_RUN_BUDGET_MS;
+  const budgetMs = Number.isFinite(requestedBudget) ? Math.max(0, requestedBudget) : WORK_RUN_BUDGET_MS;
+  const now = options.now ?? Date.now;
+  const startedAt = now();
+  let ran = 0;
+
+  await withSystem((db) => staleQueuedJobs(db, STALE_QUEUED_MS));
+
+  while (budgetMs - (now() - startedAt) >= WORK_JOB_MIN_LEASE_SECONDS * 1000) {
+    const result = await processQueuedWorkJobs(1);
+    ran += result.ran;
+    if (result.claimed === 0) break;
+  }
+
+  return ran;
 }

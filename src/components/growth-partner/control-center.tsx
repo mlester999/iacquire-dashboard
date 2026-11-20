@@ -1,3 +1,4 @@
+import type { ComponentProps, ReactNode } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -22,8 +23,10 @@ import {
 } from "lucide-react";
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, SectionHeading } from "@/components/ui/primitives";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { PageHero } from "@/components/ui/workspace";
 
 import { SETUP_REQUIRED_LABEL } from "@/lib/agents";
+import { isRuntimeOnline } from "@/lib/employee-runtime";
 import {
   GROWTH_PARTNER_CAPABILITY_GROUPS,
   type GrowthPartnerCapabilityAccess,
@@ -31,37 +34,29 @@ import {
   type GrowthPartnerCapabilityDomainKey,
 } from "@/lib/ai-growth-partner-capability-access";
 import { BrainFactEditor } from "@/components/growth-partner/brain-fact-editor";
+import { GrowthPartnerAbilityEditor } from "@/components/growth-partner/ability-editor";
 import { BusinessBrainDraftReview } from "@/components/growth-partner/brain-draft-review";
 import { GrowthPartnerMemoryPanel } from "@/components/growth-partner/memory-panel";
 import { GrowthPartnerGoalsPanel } from "@/components/growth-partner/goals-panel";
 import { GrowthPartnerLegacyKnowledgeReview } from "@/components/growth-partner/legacy-knowledge-review";
+import { GrowthPartnerSectionUnavailable } from "@/components/growth-partner/section-unavailable";
 import { ResearchSourceSettings, type ResearchSourcePoliciesView } from "@/components/growth-partner/research-source-settings";
 import { WorkforceSafetyControls } from "@/components/workforce/safety-controls";
 import {
+  BUSINESS_BRAIN_SECTION_TITLES,
   BUSINESS_BRAIN_SECTIONS,
   type BusinessBrain,
   type BusinessBrainFact,
 } from "@/lib/ai-growth-partner";
 import type { GrowthPartnerControlState } from "@/server/ai-growth-partner/service";
+import type { GrowthPartnerAbilityControls } from "@/server/ai-growth-partner/ability-controls";
 import type { WorkBoardSummary } from "@/server/workforce/work-board";
 import type { GrowthPartnerMemory } from "@/lib/ai-growth-partner-memory";
 import type { GrowthPartnerGoalProgress } from "@/lib/ai-growth-partner-goals";
 import type { GrowthPartnerLegacyKnowledgeReview as GrowthPartnerLegacyKnowledgeReviewData } from "@/server/ai-growth-partner/legacy-knowledge";
 import { prepareGrowthPartnerFromSubmittedOnboardingAction } from "@/app/actions/ai-growth-partner";
 
-const sectionTitles: Record<(typeof BUSINESS_BRAIN_SECTIONS)[number], string> = {
-  businessIdentity: "Business identity",
-  productsServicesOffers: "Products, services & offers",
-  idealCustomers: "Ideal customers",
-  acquisitionStrategy: "Customer acquisition",
-  salesKnowledge: "Sales knowledge",
-  brandCommunication: "Brand communication",
-  businessOperations: "Business operations",
-  policies: "Policies",
-  employeeGoals: "Goals and priorities",
-  productOperations: "iAcquireOS tools",
-  employeeBehavior: "Working style",
-};
+const sectionTitles = BUSINESS_BRAIN_SECTION_TITLES;
 
 const capabilityAreaPresentation: Record<GrowthPartnerCapabilityDomainKey, { description: string; icon: typeof Target }> = {
   lead_discovery: { description: "Find relevant prospects and check fit against approved criteria.", icon: Target },
@@ -87,16 +82,17 @@ const capabilityStatusInfo: Record<GrowthPartnerCapabilityAccessStatus, { label:
 };
 
 const workspaceControlItems = [
-  { key: "work", label: "Work Board", description: "Review tasks, schedules and execution history.", href: "/work", permission: "agents.use", icon: ClipboardList },
-  { key: "schedules", label: "Schedules & calendar", description: "Manage recurring work and its schedule.", href: "/work/calendar", permission: "agents.use", icon: CalendarDays },
-  { key: "preferences", label: "Partner preferences", description: "Set the workspace's AI behavior and conversation preferences.", href: "/settings/ai", permission: "agents.configure", icon: Settings2 },
-  { key: "knowledge", label: "Business knowledge", description: "Review approved company knowledge used by the Partner.", href: "/knowledge", permission: "knowledge.view", icon: BookOpen },
+  { key: "work", label: "AI Work Board", description: "Review tasks, schedules and execution history.", href: "/work", permission: "agents.use", icon: ClipboardList },
+  { key: "schedules", label: "Schedules & Calendar", description: "Manage recurring work and its schedule.", href: "/work/calendar", permission: "agents.use", icon: CalendarDays },
+  { key: "preferences", label: "Growth Partner Settings", description: "Set the workspace's AI behavior and conversation preferences.", href: "/settings/ai", permission: "agents.configure", icon: Settings2 },
+  { key: "knowledge", label: "Knowledge Center", description: "Review approved company knowledge used by the Partner.", href: "/knowledge", permission: "knowledge.view", icon: BookOpen },
   { key: "integrations", label: "Integrations", description: "Check connected tools and their status.", href: "/settings/integrations", permission: "integrations.view", icon: Plug },
   { key: "crm", label: "CRM", description: "Open contacts, opportunities and acquisition records.", href: "/crm", permission: "crm.view", icon: ClipboardList },
   { key: "appointments", label: "Appointments", description: "Review bookings and appointment settings.", href: "/appointments", permission: "appointments.view", icon: CalendarClock },
   { key: "messaging", label: "Messaging", description: "Review customer messaging channels and AI reply settings.", href: "/settings/messaging", permission: "inbox.view", icon: MessageSquareText },
   { key: "approvals", label: "Approvals", description: "Review work waiting for a decision.", href: "/approvals", permission: "approvals.view", icon: ShieldCheck },
   { key: "access", label: "Team & access", description: "Review workspace members and their access.", href: "/settings/team", permission: "team.view", icon: Users },
+  { key: "reports", label: "Performance Reporting", description: "See acquisition, pipeline and appointment outcomes.", href: "/analytics", permission: "analytics.view", icon: Gauge },
   { key: "activity", label: "Activity", description: "Review recorded work by your AI Growth Partner.", href: "/activity", permission: "activity.view", icon: Activity },
   { key: "usage", label: "Usage & health", description: "Check AI usage and workspace limits.", href: "/settings/usage", permission: "usage.view", icon: Gauge },
 ] as const;
@@ -124,22 +120,27 @@ function growthPartnerStateInfo(state: GrowthPartnerControlState | null, legacyP
 
 function runtimeConnectionInfo(state: GrowthPartnerControlState | null): { label: string; detail: string; tone: "neutral" | "success" | "warning" } {
   if (!state) return { label: "Not set up", detail: "Your AI Growth Partner has not been connected yet.", tone: "neutral" };
-  if (state.status === "configured") {
-    return { label: "Online", detail: "The active runtime configuration passed its latest health check.", tone: "success" };
-  }
-  if (state.status === "provisioning") {
-    return { label: "Setting up", detail: "The runtime is being prepared and has not passed its health check yet.", tone: "warning" };
-  }
-  if (state.status === "paused") {
-    return { label: "Paused", detail: "The AI Growth Partner is paused and cannot start new work.", tone: "warning" };
-  }
   if (state.status === "migration_required") {
     return { label: "Review migration", detail: "Previous profiles are preserved while the unified Partner migration is reviewed.", tone: "warning" };
   }
-  if (state.runtimeAgentInstanceId) {
-    return { label: "Health check needed", detail: "A runtime profile is linked, but it has not passed the current health check.", tone: "neutral" };
+  if (state.status === "paused" || state.runtimeEnabled === false || state.runtimeStatus === "disabled") {
+    return { label: "Paused", detail: "The AI Growth Partner is paused and cannot start new work.", tone: "warning" };
   }
-  return { label: "Not connected", detail: "Your AI Growth Partner needs a verified runtime connection before it can work.", tone: "neutral" };
+  if (state.runtimeAgentInstanceId && (state.runtimeStatus === "error" || state.runtimeStatus === "offline" || state.runtimeHealthOk === false)) {
+    return { label: "Needs attention", detail: "The runtime is unavailable or failed its latest health check.", tone: "warning" };
+  }
+  if (state.status === "provisioning" || state.runtimeStatus === "provisioning") {
+    return { label: "Setting up", detail: "The runtime is being prepared and has not passed its health check yet.", tone: "warning" };
+  }
+  if (!state.runtimeAgentInstanceId || state.runtimeEnabled !== true) {
+    return { label: "Not connected", detail: "Your AI Growth Partner needs a verified runtime connection before it can work.", tone: "neutral" };
+  }
+  if (isRuntimeOnline(state.runtimeStatus)) {
+    return state.runtimeHealthOk === true
+      ? { label: "Online", detail: "The runtime passed its latest health check.", tone: "success" }
+      : { label: "Connection not checked yet", detail: "The linked runtime has no recorded health check.", tone: "neutral" };
+  }
+  return { label: "Health check needed", detail: "A runtime profile is linked, but it has not passed the current health check.", tone: "neutral" };
 }
 
 const factStateLabels: Record<BusinessBrainFact["state"], string> = {
@@ -312,12 +313,12 @@ function MetricCard({
   label: string;
   value: string;
   detail: string;
-  tone?: "neutral" | "success" | "warning";
+  tone?: "neutral" | "success" | "warning" | "danger";
 }) {
   return (
-    <Card className="h-full border border-line bg-surface shadow-soft">
+    <Card role="group" aria-label={label} className="h-full border border-line bg-surface shadow-soft">
       <CardContent className="flex h-full gap-3 p-4 sm:p-5">
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tone === "success" ? "bg-success-soft text-success-ink" : tone === "warning" ? "bg-warning-soft text-warning-ink" : "bg-surface-2 text-muted"}`}>
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tone === "success" ? "bg-success-soft text-success-ink" : tone === "warning" ? "bg-warning-soft text-warning-ink" : tone === "danger" ? "bg-danger-soft text-danger-ink" : "bg-surface-2 text-muted"}`}>
           {icon}
         </div>
         <div className="min-w-0">
@@ -333,6 +334,7 @@ function MetricCard({
 export function GrowthPartnerControlCenter({
   state,
   capabilityAccess,
+  abilityControls,
   memories,
   goals,
   workSummary,
@@ -341,7 +343,9 @@ export function GrowthPartnerControlCenter({
   canConfigure,
   canConfigureResearch,
   researchSourcePolicies,
+  researchSourceWorkspaceId,
   legacyKnowledgeReview,
+  migrationReview,
   canOpenSetup,
   controlPermissions,
   legacyProfilesPresent,
@@ -349,9 +353,11 @@ export function GrowthPartnerControlCenter({
   submittedAnswerCount,
   timezone,
   safetyControls,
+  unavailable = {},
 }: {
   state: GrowthPartnerControlState | null;
   capabilityAccess: GrowthPartnerCapabilityAccess[];
+  abilityControls?: GrowthPartnerAbilityControls | null;
   memories: GrowthPartnerMemory[];
   goals: GrowthPartnerGoalProgress[];
   workSummary: WorkBoardSummary;
@@ -360,14 +366,28 @@ export function GrowthPartnerControlCenter({
   canConfigure: boolean;
   canConfigureResearch: boolean;
   researchSourcePolicies: ResearchSourcePoliciesView;
+  researchSourceWorkspaceId?: string;
   legacyKnowledgeReview: GrowthPartnerLegacyKnowledgeReviewData;
+  migrationReview?: ReactNode;
   canOpenSetup: boolean;
   controlPermissions: Record<string, boolean>;
   legacyProfilesPresent: boolean;
   hasSubmittedOnboarding: boolean;
   submittedAnswerCount: number;
   timezone: string;
-  safetyControls: { messagingPaused: boolean; outboundPaused: boolean; agencyPaused: boolean; canPause: boolean };
+  safetyControls: ComponentProps<typeof WorkforceSafetyControls>;
+  unavailable?: {
+    previousProfiles?: boolean;
+    submittedOnboarding?: boolean;
+    memories?: boolean;
+    capabilityAccess?: boolean;
+    abilityControls?: boolean;
+    goals?: boolean;
+    workSummary?: boolean;
+    researchSourcePolicies?: boolean;
+    legacyKnowledgeReview?: boolean;
+    controls?: boolean;
+  };
 }) {
   const stateInfo = growthPartnerStateInfo(state, legacyProfilesPresent);
   const activeBrain = state?.currentBusinessBrain ?? null;
@@ -378,43 +398,70 @@ export function GrowthPartnerControlCenter({
   const latestVersion = state?.draftVersion ?? state?.currentVersion ?? null;
   const capabilityAccessByKey = new Map(capabilityAccess.map((item) => [item.key, item]));
   const runtimeConnection = runtimeConnectionInfo(state);
+  const visibleWorkspaceControlItems = workspaceControlItems.filter((item) => controlPermissions[item.permission]);
+  const workspaceItems = visibleWorkspaceControlItems.filter((item) => item.key !== "approvals" && item.key !== "activity");
+  const activityItems = visibleWorkspaceControlItems.filter((item) => item.key === "approvals" || item.key === "activity");
+  const renderWorkspaceControl = ({ key, label, description, href, icon: Icon }: (typeof workspaceControlItems)[number]) => (
+    <Card key={key} className="border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
+      <CardContent className="flex h-full flex-col items-start gap-3 p-4 sm:p-5">
+        <div className="flex size-10 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[14px] font-semibold text-ink">{label}</h3>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
+        </div>
+        <ButtonLink href={href} variant="secondary" size="sm">
+          Open {label} <ArrowUpRight className="size-4" aria-hidden />
+        </ButtonLink>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-7 pb-10">
-      <WorkforceSafetyControls {...safetyControls} />
+      <PageHero
+        target="growth-partner.header"
+        tone="dark"
+        eyebrow="Control Center"
+        title="AI Growth Partner"
+        description="See what your partner knows, what it can do, and which work needs your decision."
+        icon={<Sparkles className="size-4" />}
+        action={<>
+          {state?.conversationId ? (
+            <ButtonLink href="/growth-partner/conversation" variant="brand" size="md">
+              <MessageSquareText className="size-4" aria-hidden /> Open conversation
+            </ButtonLink>
+          ) : canOpenSetup ? (
+            <ButtonLink href="/setup" variant="brand" size="md">Open Setup Center <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>
+          ) : null}
+          <ButtonLink href="#business-brain" variant="secondary" size="md">Review Business Brain</ButtonLink>
+        </>}
+        aside={<div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/5 px-4 py-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-white/15 text-white">
+            <Activity className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[12px] text-slate-300">Workspace readiness</p>
+            <p className="mt-0.5 text-[14px] font-semibold text-white">{stateInfo.label}</p>
+          </div>
+        </div>}
+      />
+
+      {unavailable.controls
+        ? <GrowthPartnerSectionUnavailable title="Safety controls" />
+        : <WorkforceSafetyControls {...safetyControls} />}
+      {migrationReview}
+      {unavailable.previousProfiles && <GrowthPartnerSectionUnavailable title="Previous role profile status" />}
       {legacyProfilesPresent && (
         <div role="status" className="rounded-xl border border-warning/25 bg-warning-soft/60 px-4 py-3 text-[13px] leading-relaxed text-warning-ink">
           This workspace still has enabled profiles from its previous setup. Their settings, schedules and history remain in place while a Growth Partner migration is reviewed.
         </div>
       )}
-      <section data-aqi-target="growth-partner.header" className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-[radial-gradient(ellipse_at_top_right,rgba(103,88,229,0.16),transparent_44%),linear-gradient(135deg,var(--surface),var(--surface-2))] px-5 py-6 shadow-soft sm:px-8 sm:py-8">
-        <div className="absolute -right-12 -top-16 size-52 rounded-full border border-primary/10" aria-hidden />
-        <div className="absolute -right-2 -top-6 size-32 rounded-full border border-primary/10" aria-hidden />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-3xl">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge tone="violet"><Sparkles className="size-3.5" aria-hidden /> AI Growth Partner</Badge>
-              <Badge tone={stateInfo.tone}>{stateInfo.label}</Badge>
-            </div>
-            <h1 className="text-[30px] font-semibold tracking-[-0.045em] text-ink sm:text-[38px]">AI Growth Partner</h1>
-            <p className="mt-2 max-w-2xl text-[14px] leading-[1.75] text-muted sm:text-[15px]">
-              One partner for your customer acquisition work, shaped by your submitted business information and the tools your workspace authorizes.
-            </p>
-            <p className="mt-4 text-[13px] font-medium text-ink-2">One AI Growth Partner · six connected capabilities · one Business Brain</p>
-          </div>
-          <div className="relative flex size-[74px] shrink-0 items-center justify-center self-start rounded-[22px] border border-primary/15 bg-surface/80 text-primary shadow-card sm:self-auto">
-            <Sparkles className="size-8" aria-hidden />
-            <span className="absolute -bottom-2 -right-2 flex size-8 items-center justify-center rounded-xl border border-line bg-surface text-violet-ink shadow-soft"><Brain className="size-4" aria-hidden /></span>
-          </div>
-        </div>
-      </section>
-
       <section aria-label="Partner status" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           icon={<CircleCheck className="size-5" aria-hidden />}
           label="Partner"
-          value={state ? "Set up" : "Not set up"}
-          detail={state ? `This workspace has one ${state.name}.` : "Your AI Growth Partner has not been set up here yet."}
+          value={state ? "Created" : "Not created"}
+          detail={state ? "This workspace has one Growth Partner identity." : "The workspace needs its Growth Partner identity."}
           tone={state ? "success" : "neutral"}
         />
         <MetricCard
@@ -433,11 +480,27 @@ export function GrowthPartnerControlCenter({
         />
         <MetricCard
           icon={<MessageSquareText className="size-5" aria-hidden />}
-          label="Permanent conversation"
+          label="Permanent Conversation"
           value={state?.conversationId ? "Connected" : "Not connected"}
           detail={state?.conversationId ? "One shared history is available to workspace members with AI access." : "Your shared conversation will be ready when setup and connection checks are complete."}
           tone={state?.conversationId ? "success" : "warning"}
         />
+      </section>
+
+      <section aria-label="Work Board status">
+        <SectionHeading
+          title="AI Work Board"
+          description="See what is running, waiting, or finished in your workspace."
+          action={<ButtonLink href="/work" variant="secondary" size="sm">Open AI Work Board <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>}
+        />
+        {unavailable.workSummary
+          ? <GrowthPartnerSectionUnavailable title="AI Work Board" />
+          : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Running now" value={String(workSummary.active)} detail="Jobs with an active worker lease." icon={<Activity className="size-5" />} tone="success" />
+              <MetricCard label="Waiting for approval" value={String(workSummary.waiting)} detail="A person must decide." icon={<ShieldCheck className="size-5" />} tone="warning" />
+              <MetricCard label="Needs attention" value={String(workSummary.needsAttention)} detail="Includes approvals, failures, blocked work and interrupted runs." icon={<ClipboardList className="size-5" />} tone="warning" />
+              <MetricCard label="Completed today" value={String(workSummary.completedToday)} detail="In this workspace's time zone." icon={<CircleCheck className="size-5" />} tone="success" />
+            </div>}
       </section>
 
       <section aria-label="Growth Partner workspace controls">
@@ -445,28 +508,19 @@ export function GrowthPartnerControlCenter({
           title="Workspace controls"
           description="Manage the tools, schedules, access and activity connected to your AI Growth Partner."
         />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {workspaceControlItems.filter((item) => controlPermissions[item.permission]).map(({ key, label, description, href, icon: Icon }) => (
-            <Card key={key} className="border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
-              <CardContent className="flex h-full flex-col items-start gap-3 p-4 sm:p-5">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-[14px] font-semibold text-ink">{label}</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
-                </div>
-                <ButtonLink href={href} variant="secondary" size="sm">
-                  Open {label} <ArrowUpRight className="size-4" aria-hidden />
-                </ButtonLink>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{workspaceItems.map(renderWorkspaceControl)}</div>
+        {activityItems.length > 0 && (
+          <div className="mt-6 space-y-3">
+            <SectionHeading title="Activity and Approvals" description="Review decisions waiting for you and work recorded by the AI Growth Partner." />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{activityItems.map(renderWorkspaceControl)}</div>
+          </div>
+        )}
       </section>
 
       <section aria-label="Partner personality and behavior">
         <SectionHeading
           title="Partner personality & behavior"
-          description="One approved voice and response profile is shared across the Growth Partner’s capabilities. Chat changes and AI preferences update this same saved profile."
+          description="Set the voice, communication style and behavior your Growth Partner uses across its capabilities."
           action={controlPermissions["agents.configure"] ? (
             <ButtonLink href="/settings/ai" variant="secondary" size="sm">
               Edit AI preferences <ArrowUpRight className="size-4" aria-hidden />
@@ -512,7 +566,7 @@ export function GrowthPartnerControlCenter({
                 ))}
               </div>
               {state.behaviorProfile.runtimeSyncStatus === "pending" && (
-                <p className="text-[12px] leading-relaxed text-warning-ink">The saved profile has not finished syncing to its Hermes runtime. The version above is the approved application setting; check the connection status before relying on it at runtime.</p>
+                <p className="text-[12px] leading-relaxed text-warning-ink">The approved profile is saved. Check the connection status to see when the AI Growth Partner has received this version.</p>
               )}
             </CardContent>
           </Card>
@@ -523,39 +577,43 @@ export function GrowthPartnerControlCenter({
         )}
       </section>
 
-      <section aria-label="Work Board status">
+      <section aria-label="Memory and Knowledge">
         <SectionHeading
-          title="Work Board"
-          description="Live counts from the same tenant-scoped queue shown on the board."
-          action={<ButtonLink href="/work" variant="secondary" size="sm">Open Work Board <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>}
+          title="Memory and Knowledge"
+          description="Review the notes your AI Growth Partner remembers. Open the Knowledge Center to manage company documents and reference text."
+          action={<ButtonLink href="/knowledge" variant="secondary" size="sm">Open Knowledge Center <ArrowUpRight className="size-4" aria-hidden /></ButtonLink>}
         />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Running now" value={String(workSummary.active)} detail="Jobs with an active worker lease." icon={<Activity className="size-5" />} tone="success" />
-          <MetricCard label="Waiting for approval" value={String(workSummary.waiting)} detail="A person must decide." icon={<ShieldCheck className="size-5" />} tone="warning" />
-          <MetricCard label="Needs attention" value={String(workSummary.needsAttention)} detail="Failed, blocked or awaiting recovery." icon={<ClipboardList className="size-5" />} tone="warning" />
-          <MetricCard label="Completed today" value={String(workSummary.completedToday)} detail="In this workspace's time zone." icon={<CircleCheck className="size-5" />} tone="success" />
-        </div>
+        {unavailable.memories
+          ? <GrowthPartnerSectionUnavailable title="Memory" />
+          : <GrowthPartnerMemoryPanel memories={memories} canManage={canManageMemory} hasPartner={Boolean(state)} timezone={timezone} />}
       </section>
 
-      <GrowthPartnerMemoryPanel memories={memories} canManage={canManageMemory} hasPartner={Boolean(state)} timezone={timezone} />
+      <section aria-label="Goals">
+        {unavailable.goals
+          ? <GrowthPartnerSectionUnavailable title="Goals" />
+          : <GrowthPartnerGoalsPanel goals={goals} canManage={canManageGoals} hasPartner={Boolean(state)} />}
+      </section>
 
-      <GrowthPartnerGoalsPanel goals={goals} canManage={canManageGoals} hasPartner={Boolean(state)} />
-
-      {canConfigureResearch && <ResearchSourceSettings policies={researchSourcePolicies} />}
+      {canConfigureResearch && (unavailable.researchSourcePolicies
+        ? <GrowthPartnerSectionUnavailable title="Research source settings" />
+        : <ResearchSourceSettings policies={researchSourcePolicies} timeZone={timezone} workspaceId={researchSourceWorkspaceId} />)}
 
       {state?.status === "paused" && (
         <div role="status" className="flex gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-warning-ink">
           <PauseCircle className="mt-0.5 size-5 shrink-0" aria-hidden />
-          <p className="text-[14px] leading-relaxed">This AI Growth Partner is paused. Its status is shown here; this page does not change the pause setting.</p>
+          <p className="text-[14px] leading-relaxed">This AI Growth Partner is paused. Safety controls above show whether workspace messaging is also paused.</p>
         </div>
       )}
 
-      <section data-aqi-target="growth-partner.brain">
+      <section id="capability-access" className="scroll-mt-24">
         <SectionHeading
-          title="One partner, six capabilities"
+          title="Capability Access"
           description="These capabilities belong to one AI Growth Partner. We show your access, the tools it is allowed to use and whether its connection has been checked. Service limits and approval rules are checked again before work starts."
         />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {canConfigure && (unavailable.abilityControls
+          ? <GrowthPartnerSectionUnavailable title="Restricted capabilities" />
+          : abilityControls && <GrowthPartnerAbilityEditor controls={abilityControls} />)}
+        {unavailable.capabilityAccess ? <GrowthPartnerSectionUnavailable title="Capability access" /> : <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {capabilityAreas.map(({ key, title, description, icon: Icon, capabilityKeys }) => {
             const items = capabilityKeys.map((capabilityKey) => capabilityAccessByKey.get(capabilityKey)).filter((item): item is GrowthPartnerCapabilityAccess => Boolean(item));
             const availableCount = items.filter((item) => item.status === "available").length;
@@ -568,12 +626,14 @@ export function GrowthPartnerControlCenter({
                   ? { label: "Access needed", tone: "warning" as const }
                   : { label: "Setup needs review", tone: "neutral" as const };
             return (
-              <Card key={key} data-capability-domain={key} className="border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
-                <CardHeader className="items-start">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
-                  <div className="min-w-0 flex-1">
-                    <CardTitle>{title}</CardTitle>
-                    <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
+              <Card key={key} data-capability-domain={key} className="min-w-0 border border-line bg-surface shadow-soft transition-colors hover:border-primary/25">
+                <CardHeader className="flex-col items-start gap-2">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-violet-soft text-violet-ink"><Icon className="size-5" aria-hidden /></div>
+                    <div className="min-w-0">
+                      <CardTitle>{title}</CardTitle>
+                      <p className="mt-1 text-[13px] leading-relaxed text-muted">{description}</p>
+                    </div>
                   </div>
                   <Badge tone={summary.tone}>{summary.label}</Badge>
                 </CardHeader>
@@ -594,10 +654,10 @@ export function GrowthPartnerControlCenter({
               </Card>
             );
           })}
-        </div>
+        </div>}
       </section>
 
-      <section>
+      <section id="business-brain" className="scroll-mt-24" data-aqi-target="growth-partner.brain">
         <SectionHeading
           title="Business Brain"
           description="Structured business knowledge with its source and review status. Unknown details stay marked as unknown."
@@ -612,7 +672,8 @@ export function GrowthPartnerControlCenter({
             </div>
           )}
           {activeBrain && <BrainSnapshot brain={activeBrain} title="Active Business Brain" version={state?.currentVersion ?? null} active timezone={timezone} canEdit={canConfigure && !draftBrain} />}
-          {!hasAnyBrain && (
+          {!hasAnyBrain && unavailable.submittedOnboarding && <GrowthPartnerSectionUnavailable title="Submitted setup answers" />}
+          {!hasAnyBrain && !unavailable.submittedOnboarding && (
             <Card className="border border-line bg-surface shadow-soft">
               <CardContent className="p-3 sm:p-5">
                 <EmptyState
@@ -665,7 +726,9 @@ export function GrowthPartnerControlCenter({
 
       {state && canConfigure && controlPermissions["knowledge.view"] && (
         <section aria-label="Retained profile knowledge review">
-          <GrowthPartnerLegacyKnowledgeReview data={legacyKnowledgeReview} />
+          {unavailable.legacyKnowledgeReview
+            ? <GrowthPartnerSectionUnavailable title="Previous profile knowledge review" />
+            : <GrowthPartnerLegacyKnowledgeReview data={legacyKnowledgeReview} />}
         </section>
       )}
 
@@ -673,7 +736,7 @@ export function GrowthPartnerControlCenter({
         <Card className="border border-line bg-surface shadow-soft">
           <CardHeader>
             <div>
-              <CardTitle>One lasting conversation</CardTitle>
+              <CardTitle>Permanent Conversation</CardTitle>
               <p className="mt-1 text-[13px] leading-relaxed text-muted">A single shared place for requests, decisions, approvals and progress updates.</p>
             </div>
             <Badge tone={state?.conversationId ? "success" : "warning"}>{state?.conversationId ? "Connected" : "Not connected"}</Badge>
@@ -683,7 +746,7 @@ export function GrowthPartnerControlCenter({
               <div className="space-y-3">
                 <div className="flex gap-3 rounded-xl border border-success/20 bg-success-soft/40 p-4">
                   <MessageSquareText className="mt-0.5 size-5 shrink-0 text-success-ink" aria-hidden />
-                  <p className="text-[13px] leading-relaxed text-ink-2">This is the single shared Growth Partner thread. Members with AI access see the same history; conversations from previous role profiles remain in their original records.</p>
+                  <p className="text-[13px] leading-relaxed text-ink-2">Members with AI access share this conversation and its full history.</p>
                 </div>
                 {state.conversationLastMessageAt && <p className="text-[12px] text-faint">Latest message {formatDate(state.conversationLastMessageAt, timezone)}</p>}
                 <ButtonLink href="/growth-partner/conversation" variant="secondary" size="sm">

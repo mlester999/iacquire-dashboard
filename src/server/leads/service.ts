@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
+import { isIP } from "node:net";
 import { withSystem, withUser, type Queryable } from "@/server/db";
 import { AppError } from "@/server/errors";
 import { recordAudit } from "@/server/audit";
@@ -12,9 +13,12 @@ import { runWorkJob } from "@/server/workforce/work-runner";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { canChat, isWorkforceRoleKey, type AgentStatus, type WorkforceRoleKey, workforceRoleShortName } from "@/lib/agents";
 import { targetingSchema, type Targeting } from "@/lib/leads-targeting";
+import { isResearchSourceKey } from "@/lib/lead-research-sources";
 import { roleMayUseCapability } from "@/lib/workforce-capabilities";
-import { sanitizeQualificationSummary, type LeadSignalRecord } from "@/server/leads/research-contract";
+import { findLeadDuplicates, lockLeadIntake, normalizeDomain, sanitizeQualificationSummary, type LeadSignalRecord, type LeadSourceEvidence } from "@/server/leads/research-contract";
+import { parsePublicUrl } from "@/server/onboarding/website";
 import type { OrgContext } from "@/server/tenancy/context";
+import { resolveActorAgent } from "@/server/workforce/partner-runtime";
 
 export { targetingSchema };
 export type { Targeting };
@@ -98,17 +102,23 @@ export async function createResearchRequest(
   options: { conversationId?: string | null; deferKick?: boolean; agentRole?: WorkforceRoleKey } = {},
 ) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can request lead research.");
-  const agentRole = options.agentRole ?? "lead_hunter";
+  const selection = await withSystem(async (db) => {
+    const resolved = options.agentRole ? null : await resolveActorAgent(db, ctx.org.orgId, "lead_hunter");
+    const role = options.agentRole ?? (resolved?.viaPartner ? resolved.roleKey : "lead_hunter");
+    return { role, agent: await researchAgent(db, ctx.org.orgId, role) };
+  });
+  const agentRole = selection.role;
   // The reviewed capability allowlist is the same one the generic dispatcher and work board use.
   if (!roleMayUseCapability(agentRole, "lead_research")) {
-    throw new AppError("forbidden", "This AI employee is not allowed to perform research in this deployment.");
+    throw new AppError("forbidden", "Lead research is unavailable under this workspace’s capability settings.");
   }
   const prompt = input.prompt.trim();
   if (prompt.length < 3 || prompt.length > 1000) throw new AppError("invalid_input", "Describe who you'd like to find in up to 1,000 characters.");
+  // Saving a request still creates a request and audit record while the runtime is unavailable.
   const limit = await consumeRateLimit(RATE_LIMITS.researchByOrg, ctx.org.orgId);
   if (!limit.allowed) throw new AppError("rate_limited", "Too many research requests this hour.");
   const targeting = await getTargeting(ctx);
-  const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
+  const agent = selection.agent;
   const partnerConversationId = agent && agentRole === "growth_partner"
     ? await withSystem((db) => growthPartnerConversationId(db, ctx.org.orgId, agent.id))
     : null;
@@ -166,15 +176,33 @@ export async function createResearchRequest(
 /** Re-runs a saved research request after its assigned runtime becomes available. Never automatic. */
 export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
   if (!ctx.can("leads.research")) throw new AppError("forbidden", "Only owners and admins can run lead research.");
-  const roleRow = await withSystem(async (db) => (await db.query<{ agent_role: string }>(
-    "select agent_role from lead_research_requests where id = $1 and org_id = $2",
-    [requestId, ctx.org.orgId],
-  )).rows[0] ?? null);
-  if (!roleRow || !isWorkforceRoleKey(roleRow.agent_role) || !roleMayUseCapability(roleRow.agent_role, "lead_research")) {
+  const selection = await withSystem(async (db) => {
+    const roleRow = (await db.query<{ agent_role: string }>(
+      "select agent_role from lead_research_requests where id = $1 and org_id = $2",
+      [requestId, ctx.org.orgId],
+    )).rows[0] ?? null;
+    if (!roleRow || !isWorkforceRoleKey(roleRow.agent_role) || !roleMayUseCapability(roleRow.agent_role, "lead_research")) {
+      return { role: null, agent: null };
+    }
+    const storedRole = roleRow.agent_role;
+    const storedAgent = await researchAgent(db, ctx.org.orgId, storedRole);
+    if (storedAgent) return { role: storedRole, agent: storedAgent };
+
+    // Older Partner-only requests were saved with the default legacy role and no job. Recover that
+    // saved request through the bound runtime; a bound but unavailable Partner still wins over any
+    // legacy fallback by design.
+    const resolved = await resolveActorAgent(db, ctx.org.orgId, "lead_hunter");
+    if (!resolved?.viaPartner) return { role: storedRole, agent: null };
+    return {
+      role: resolved.roleKey,
+      agent: { id: resolved.agentId, status: resolved.status as AgentStatus, enabled: resolved.enabled },
+    };
+  });
+  if (!selection.role) {
     throw new AppError("not_found", "Research request not found.");
   }
-  const agentRole = roleRow.agent_role;
-  const agent = await withSystem((db) => researchAgent(db, ctx.org.orgId, agentRole));
+  const agentRole = selection.role;
+  const agent = selection.agent;
   if (!agent?.enabled || !canChat(agent.status)) throw new AppError("agent_unavailable", workforceRoleShortName(agentRole) + " isn't connected yet.");
   const partnerConversationId = agentRole === "growth_partner"
     ? await withSystem((db) => growthPartnerConversationId(db, ctx.org.orgId, agent.id))
@@ -193,8 +221,8 @@ export async function retryResearchRequest(ctx: OrgContext, requestId: string) {
     if (!request) throw new AppError("not_found", "Request not found.");
     if (!["waiting_for_agent", "failed", "cancelled"].includes(request.status)) throw new AppError("conflict", "This request is already running or finished.");
     const { rows: updated } = await db.query(
-      "update lead_research_requests set status = 'queued', failure_reason = null, completed_at = null where id = $1 and org_id = $2 and status in ('waiting_for_agent', 'failed', 'cancelled') returning id",
-      [requestId, ctx.org.orgId],
+      "update lead_research_requests set status = 'queued', agent_role = $3, failure_reason = null, completed_at = null where id = $1 and org_id = $2 and status in ('waiting_for_agent', 'failed', 'cancelled') returning id",
+      [requestId, ctx.org.orgId, agentRole],
     );
     if (!updated.length) throw new AppError("conflict", "This request is already running or finished.");
     if (request.work_job_id) {
@@ -267,6 +295,7 @@ export interface LeadRow {
   domain: string | null;
   industry: string | null;
   location: string | null;
+  source_platform?: string;
   score: number | null;
   score_breakdown: Record<string, number>;
   qualification_summary: string | null;
@@ -275,20 +304,45 @@ export interface LeadRow {
   recommended_next_action: string;
   buying_signals: string[];
   signal_records: LeadSignalRecord[];
-  evidence: Array<{ url: string; observed_at?: string | null; summary?: string | null; source?: "openstreetmap" | "company_website" | null }>;
+  evidence: LeadSourceEvidence[];
   duplicate_status: string;
   duplicate_matches: Array<{ kind: "lead" | "crm_company"; id: string; label: string; domain: string | null }>;
   public_contact: { name?: string | null; role?: string | null; email?: string | null; phone?: string | null; source_url?: string | null } | null;
   review_status: "pending" | "approved" | "rejected";
   crm_sync_status: string;
+  crm_company_id?: string | null;
   created_at: Date;
 }
 
-type StoredLeadRow = Omit<LeadRow, "qualification_state" | "qualification_reasons" | "recommended_next_action"> & {
+type StoredLeadRow = Omit<LeadRow, "qualification_state" | "qualification_reasons" | "recommended_next_action" | "evidence"> & {
   qualification_state: LeadRow["qualification_state"] | null;
   qualification_reasons: string[] | null;
   recommended_next_action: string | null;
+  evidence: unknown;
 };
+
+function readLeadEvidence(value: unknown, sourcePlatform: string | undefined): LeadSourceEvidence | null {
+  if (value === null || typeof value !== "object" || !("url" in value) || typeof value.url !== "string" || !value.url.trim()) return null;
+  const origin = "source" in value ? value.source : null;
+  const approvedDiscovery = sourcePlatform === "approved_source" || sourcePlatform === "synthetic_fixture";
+  const directoryEvidence = origin === "fsa_directory" && approvedDiscovery
+    && /^https:\/\/ratings\.food\.gov\.uk\/business\/[1-9][0-9]*$/.test(value.url);
+  const reviewerEvidence = origin === "reviewer_company_website" && approvedDiscovery;
+  const source: LeadSourceEvidence["source"] =
+    origin === "openstreetmap" || origin === "company_website" || directoryEvidence || reviewerEvidence || (origin === "tenant_upload" && sourcePlatform === "tenant_upload")
+      ? origin : null;
+  const observation = "observed_at" in value ? value.observed_at : null;
+  const timestamp = isResearchSourceKey(source) && typeof observation === "string"
+    ? Date.parse(observation) : NaN;
+  const reviewedAt = reviewerEvidence && "reviewed_at" in value && typeof value.reviewed_at === "string" ? Date.parse(value.reviewed_at) : NaN;
+  return {
+    url: value.url,
+    source,
+    observed_at: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null,
+    ...(Number.isFinite(reviewedAt) ? { reviewed_at: new Date(reviewedAt).toISOString() } : {}),
+    summary: "summary" in value && typeof value.summary === "string" ? value.summary : null,
+  };
+}
 
 function legacyQualification(row: StoredLeadRow, evidenceCount: number, summary: string | null) {
   if (row.duplicate_status === "duplicate") {
@@ -322,27 +376,24 @@ function legacyQualification(row: StoredLeadRow, evidenceCount: number, summary:
 export async function listLeads(ctx: OrgContext, status: "pending" | "approved" | "rejected" | "all" = "all"): Promise<LeadRow[]> {
   return withUser(ctx.user.id, async (db) => {
     const { rows } = await db.query<StoredLeadRow>(
-      `select id, business_name, website, domain, industry, location, score, score_breakdown, qualification_summary,
+      `select id, business_name, website, domain, industry, location, source_platform, score, score_breakdown, qualification_summary,
               qualification_state, qualification_reasons, recommended_next_action, buying_signals, signal_records,
-              evidence, duplicate_status, duplicate_matches, public_contact, review_status, crm_sync_status, created_at
+              evidence, duplicate_status, duplicate_matches, public_contact, review_status, crm_sync_status,
+              case when $3::boolean then crm_company_id end as crm_company_id, created_at
        from leads where org_id = $1 and ($2 = 'all' or review_status = $2)
        order by created_at desc limit 500`,
-      [ctx.org.orgId, status],
+      [ctx.org.orgId, status, ctx.can("companies.view")],
     );
     // Older rows may contain model-authored claims about CRM checks, queue persistence, or page
     // observation times. Those are application-owned facts, so suppress unsupported claims at
     // read time as well as when new research is saved; the underlying evidence rows stay intact.
     return rows.map((row) => {
       const summary = sanitizeQualificationSummary(row.qualification_summary);
-      const evidence = Array.isArray(row.evidence) ? row.evidence.map((item) => {
-        const source = item.source === "openstreetmap" || item.source === "company_website" ? item.source : null;
-        const observedAt = source && typeof item.observed_at === "string" && !Number.isNaN(Date.parse(item.observed_at))
-          ? new Date(item.observed_at).toISOString()
-          : null;
-        return { ...item, source, observed_at: observedAt };
-      }) : [];
+      const evidence = Array.isArray(row.evidence)
+        ? row.evidence.map((item) => readLeadEvidence(item, row.source_platform)).filter((item) => item !== null)
+        : [];
       const evidenceUrls = new Set(evidence.map((item) => item.url));
-      const publicContact = row.public_contact && typeof row.public_contact.source_url === "string"
+      const publicContact = row.source_platform !== "tenant_upload" && row.public_contact && typeof row.public_contact.source_url === "string"
         && evidenceUrls.has(row.public_contact.source_url)
         ? row.public_contact
         : null;
@@ -383,18 +434,90 @@ export async function listResearchRequests(ctx: OrgContext) {
   });
 }
 
+/** Records a workspace reviewer's first-party citation without contacting the site or using the model. */
+export async function addLeadCompanyEvidence(ctx: OrgContext, input: { leadId: string; url: string; summary: string; confirmed: boolean }) {
+  if (!ctx.can("leads.review") || ctx.org.isDemo) throw new AppError("forbidden", "Only workspace owners and admins can add first-party lead evidence.");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.leadId)) throw new AppError("invalid_input", "Choose a valid lead.");
+  if (input.confirmed !== true) throw new AppError("invalid_input", "Confirm that you checked a public page published by this business.");
+  const rawUrl = input.url.trim();
+  if (rawUrl.length > 500 || !/^https:\/\//i.test(rawUrl) || /[\s\\\p{Cc}]/u.test(rawUrl)) throw new AppError("invalid_input", "Enter a public HTTPS link to the company's page.");
+  const url = parsePublicUrl(rawUrl);
+  if (url.protocol !== "https:" || url.port || url.hostname.endsWith(".") || isIP(url.hostname.replace(/^\[|\]$/g, ""))) throw new AppError("invalid_input", "Enter a company website link with a public HTTPS domain.");
+  const summary = input.summary.replace(/\p{Cc}|\s/gu, " ").replace(/ +/g, " ").trim();
+  if (!summary || summary.length > 500) throw new AppError("invalid_input", "Record what the company's page shows in up to 500 characters.");
+  const domain = normalizeDomain(url.origin);
+  if (!domain) throw new AppError("invalid_input", "Enter a valid company website domain.");
+  const reviewedAt = new Date().toISOString();
+  const origin = url.origin;
+  url.hash = "";
+  return withSystem(async (db) => {
+    await lockLeadIntake(db, ctx.org.orgId);
+    const { rows: [lead] } = await db.query<{
+      business_name: string; evidence: unknown; source_platform: string;
+      qualification_state: LeadRow["qualification_state"]; review_status: LeadRow["review_status"]; crm_sync_status: string;
+    }>(
+      `select business_name, evidence, source_platform, qualification_state, review_status, crm_sync_status
+         from leads where org_id = $1 and id = $2 for update`,
+      [ctx.org.orgId, input.leadId],
+    );
+    if (!lead) throw new AppError("not_found", "Lead not found.");
+    const evidence: unknown[] = Array.isArray(lead.evidence) ? lead.evidence : [];
+    const discovery = evidence.map((item) => readLeadEvidence(item, lead.source_platform)).filter((item) => item?.source === "openstreetmap" || item?.source === "fsa_directory");
+    if (!["approved_source", "synthetic_fixture"].includes(lead.source_platform) || !discovery.length
+      || lead.qualification_state !== "needs_evidence" || lead.review_status === "rejected" || lead.crm_sync_status !== "not_synced") {
+      throw new AppError("conflict", "This lead no longer needs first-party evidence in the review queue.");
+    }
+    if (discovery.some((item) => normalizeDomain(item?.url) === domain)) {
+      throw new AppError("invalid_input", "Use a page published by the company rather than its directory or map listing.");
+    }
+    const duplicate = await findLeadDuplicates(db, ctx.org.orgId, { business_name: lead.business_name, website: origin }, input.leadId);
+    const duplicateReasons = duplicate.status === "duplicate"
+      ? ["An existing lead or CRM company has the same domain."]
+      : ["An existing lead or CRM company has the same business name."];
+    const qualificationState = duplicate.status === "no_match" ? "evidence_backed" : duplicate.status;
+    const nextAction = duplicate.status === "no_match"
+      ? "Review the cited company page and decide whether the business fits."
+      : "Compare the existing record before adding this business to the CRM.";
+    const reasons = duplicate.status === "no_match" ? ["A workspace reviewer checked a page published by this business and provided a source link."] : duplicateReasons;
+    const citation = { source: "reviewer_company_website", url: url.href, summary, reviewed_at: reviewedAt };
+    await db.query(
+      `update leads set website = $3, domain = $4, evidence = $5::jsonb, qualification_state = $6,
+         qualification_reasons = $7, recommended_next_action = $8, duplicate_status = $9, duplicate_matches = $10::jsonb,
+         qualification_summary = $11, public_contact = '{}'::jsonb, review_status = 'pending', reviewed_at = null, reviewed_by = null
+       where org_id = $1 and id = $2`,
+      [ctx.org.orgId, input.leadId, origin, domain, JSON.stringify([...evidence, citation]), qualificationState, reasons, nextAction, duplicate.status, JSON.stringify(duplicate.matches), summary],
+    );
+    await recordAudit({
+      orgId: ctx.org.orgId, actorUserId: ctx.user.id, actorKind: "user", action: "leads.company_evidence_added",
+      targetType: "lead", targetId: input.leadId, result: "success", metadata: { qualificationState, priorReviewStatus: lead.review_status },
+    }, db);
+    return { qualificationState };
+  });
+}
+
 export async function reviewLeads(ctx: OrgContext, leadIds: string[], decision: "approve" | "reject") {
   if (!ctx.can("leads.review")) throw new AppError("forbidden", "Only owners and admins can review leads.");
+  if (decision !== "approve" && decision !== "reject") throw new AppError("invalid_input", "Choose whether to approve or reject the leads.");
   const ids = leadIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)).slice(0, 200);
   if (!ids.length) throw new AppError("invalid_input", "Select at least one lead.");
   const res = await withSystem(async (db) => {
     if (decision === "approve") {
-      const disqualified = await db.query<{ business_name: string }>(
-        "select business_name from leads where org_id = $1 and id = any($2::uuid[]) and review_status = 'pending' and qualification_state = 'disqualified' limit 1",
+      const { rows: pending } = await db.query<{ business_name: string; qualification_state: string; needs_company_evidence: boolean }>(
+        `select business_name, qualification_state,
+                (source_platform in ('approved_source', 'synthetic_fixture') and qualification_state = 'needs_evidence'
+                 and (evidence @> '[{"source":"openstreetmap"}]' or evidence @> '[{"source":"fsa_directory"}]')) as needs_company_evidence
+           from leads
+          where org_id = $1 and id = any($2::uuid[]) and review_status = 'pending'
+          order by id for update`,
         [ctx.org.orgId, ids],
       );
-      if (disqualified.rows[0]) {
-        throw new AppError("invalid_input", `${disqualified.rows[0].business_name} was disqualified under the current targeting rules and cannot be approved for CRM import.`);
+      const disqualified = pending.find((lead) => lead.qualification_state === "disqualified");
+      if (disqualified) {
+        throw new AppError("invalid_input", `${disqualified.business_name} was disqualified under the current targeting rules and cannot be approved for CRM import.`);
+      }
+      const needsEvidence = pending.find((lead) => lead.needs_company_evidence);
+      if (needsEvidence) {
+        throw new AppError("invalid_input", `Add first-party company evidence for ${needsEvidence.business_name} before approving it.`);
       }
     }
     const r = await db.query(
@@ -489,12 +612,12 @@ export async function requestCrmImport(ctx: OrgContext, leadIds: string[]) {
       agentId: partner.agent_id,
       requestedBy: ctx.user.id,
       kind: "lead_import",
-      title: `Import ${rows.length} researched lead${rows.length === 1 ? "" : "s"} into the CRM`,
+      title: `Import ${rows.length} reviewed lead${rows.length === 1 ? "" : "s"} into the CRM`,
       action: { leadIds: leadIdList, workJobId: workJob.id },
       targetType: "leads",
       targetLabel: rows.slice(0, 3).map((r) => r.business_name).join(", ") + (rows.length > 3 ? ` +${rows.length - 3} more` : ""),
       reason: "These businesses were reviewed and approved as good fits.",
-      expectedEffect: "Creates or reuses native CRM company records and creates contacts only when their public contact source URL appears in the saved lead evidence. No customer message is sent and no marketing consent is inferred.",
+      expectedEffect: "Creates or reuses native CRM company records. Workspace CSV entries create companies only. Researched contacts require a public contact URL in the saved lead evidence. No customer message is sent and no marketing consent is inferred.",
       risk: "medium",
       idempotencyKey: requestKey,
     });

@@ -1,6 +1,9 @@
 import "server-only";
+import https from "node:https";
+import { isIP } from "node:net";
+import { Readable } from "node:stream";
 import { AppError } from "@/server/errors";
-import { parsePublicUrl } from "@/server/onboarding/website";
+import { parsePublicUrl, safeLookup } from "@/server/onboarding/website";
 import type { ResearchSourceUsageTracker } from "@/server/leads/research-source-policy";
 
 const MAX_BOUNDS_SPAN = 1.5;
@@ -95,7 +98,7 @@ export function buildOpenStreetMapQuery(bounds: GeographicBounds, maxResults = 2
     `  nwr["name"]["craft"]${bbox};`,
     `  nwr["name"]["amenity"~"^(bank|cafe|clinic|dentist|doctors|restaurant|veterinary)$"]${bbox};`,
     ");",
-    `out center tags ${maxResults};`,
+    `out body center ${maxResults};`,
   ].join("\n");
 }
 
@@ -189,7 +192,7 @@ export function parseOpenStreetMapResponse(payload: unknown, maxResults = 25): {
 function configuredEndpoint(config: OpenStreetMapSourceConfig): URL {
   let endpoint: URL;
   try {
-    endpoint = new URL(config.endpoint);
+    endpoint = parsePublicUrl(new URL(config.endpoint).href);
   } catch {
     throw new AppError("invalid_input", "Choose an approved OpenStreetMap endpoint before running research.");
   }
@@ -207,6 +210,7 @@ function configuredEndpoint(config: OpenStreetMapSourceConfig): URL {
     || endpoint.search
     || endpoint.hash
     || endpoint.pathname !== "/api/interpreter"
+    || isIP(host.replace(/^\[|\]$/g, ""))
     || !allowed.includes(host)) {
     throw new AppError("forbidden", "The OpenStreetMap endpoint is not in this acceptance test's exact allowlist.");
   }
@@ -223,6 +227,26 @@ export function validateOpenStreetMapSourceConfig(config: OpenStreetMapSourceCon
 
 export type OverpassFetcher = (url: URL, init: RequestInit) => Promise<Response>;
 const MAX_RESPONSE_BYTES = 1_000_000;
+
+/** Uses the same public-address socket lookup as approved website reads. */
+const fetchOverpass: OverpassFetcher = (url, init) => new Promise((resolve, reject) => {
+  const headers = Object.fromEntries(new Headers(init.headers));
+  const request = https.request(url, {
+    method: "POST", headers: { ...headers, "accept-encoding": "identity" }, lookup: safeLookup as never, signal: init.signal ?? undefined,
+  }, (incoming) => {
+    const suppliedStatus = incoming.statusCode ?? 0;
+    const status = suppliedStatus >= 200 && suppliedStatus <= 599 ? suppliedStatus : 502;
+    if (status === 204 || status === 205 || status === 304) {
+      incoming.destroy();
+      resolve(new Response(null, { status }));
+      return;
+    }
+    const stream = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
+    resolve(new Response(stream, { status }));
+  });
+  request.once("error", reject);
+  request.end(typeof init.body === "string" ? init.body : undefined);
+});
 
 async function readLimitedJson(response: Response): Promise<unknown> {
   if (!response.body) throw new AppError("upstream_error", "OpenStreetMap returned an empty response.");
@@ -256,7 +280,7 @@ async function readLimitedJson(response: Response): Promise<unknown> {
 export async function searchOpenStreetMap(
   config: OpenStreetMapSourceConfig,
   bounds: GeographicBounds,
-  fetcher: OverpassFetcher = fetch,
+  fetcher: OverpassFetcher = fetchOverpass,
   usageTracker?: ResearchSourceUsageTracker,
 ): Promise<OpenStreetMapResearchResult> {
   if (config.enabled !== true) throw new AppError("forbidden", "OpenStreetMap research is disabled for this workspace.");
@@ -270,13 +294,14 @@ export async function searchOpenStreetMap(
   const maxResults = config.maxResults ?? 25;
   const timeoutSeconds = config.timeoutSeconds ?? 25;
   const query = buildOpenStreetMapQuery(bounds, maxResults, timeoutSeconds);
+  const usageId = usageTracker ? await usageTracker.reserveRequest(endpoint) : null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
-  const usageId = usageTracker ? await usageTracker.reserveRequest(endpoint) : null;
-  let response: Response;
-  let payload: unknown;
+  let httpStatus: number | null = null;
+  let validPayload = false;
+  let parsed: ReturnType<typeof parseOpenStreetMapResponse>;
   try {
-    response = await fetcher(endpoint, {
+    const response = await fetcher(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
@@ -288,24 +313,28 @@ export async function searchOpenStreetMap(
       cache: "no-store",
       redirect: "error",
     });
+    httpStatus = response.status;
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new AppError("upstream_error", httpStatus === 429
+        ? "OpenStreetMap asked us to slow down. The request stopped and will not be retried."
+        : "OpenStreetMap did not complete this bounded research request. No retry was attempted.");
+    }
+    parsed = parseOpenStreetMapResponse(await readLimitedJson(response), maxResults);
+    validPayload = true;
   } catch (error) {
-    if (usageId) await usageTracker?.finishRequest(usageId, { responseReceived: false, httpStatus: null }).catch(() => undefined);
     if (error instanceof AppError) throw error;
     throw new AppError("upstream_error", "OpenStreetMap could not complete this bounded research request. No retry was attempted.");
   } finally {
     clearTimeout(timer);
+    if (usageId) await usageTracker?.finishRequest(usageId, { responseReceived: httpStatus !== null, httpStatus, metadata: { validPayload } });
   }
-  if (usageId) await usageTracker?.finishRequest(usageId, { responseReceived: true, httpStatus: response.status });
-  if (response.ok) payload = await readLimitedJson(response);
-  else await response.body?.cancel().catch(() => undefined);
-  if (!response.ok) {
-    throw new AppError("upstream_error", response.status === 429
-      ? "OpenStreetMap asked us to slow down. The request stopped and will not be retried."
-      : "OpenStreetMap did not complete this bounded research request. No retry was attempted.");
-  }
-  const parsed = parseOpenStreetMapResponse(payload, maxResults);
+  const candidates = parsed.candidates.filter(({ latitude, longitude }) =>
+    latitude !== null && longitude !== null && latitude >= bounds.south && latitude <= bounds.north
+    && longitude >= bounds.west && longitude <= bounds.east);
   return {
     ...parsed,
+    candidates,
     attribution: ATTRIBUTION,
     license: "ODbL-1.0",
     retrievedAt: new Date().toISOString(),

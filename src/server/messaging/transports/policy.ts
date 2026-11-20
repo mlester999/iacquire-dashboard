@@ -10,6 +10,11 @@ export const isTransportName = (value: unknown): value is TransportName =>
 export const isNativeTransport = (value: unknown): value is NativeTransportName =>
   isTransportName(value) && value !== "ghl";
 
+/** Customer messages require the master switch as well as any channel-specific permission. */
+export function outboundMessagingEnabled(): boolean {
+  return env().OUTBOUND_MESSAGING_ENABLED;
+}
+
 /** The exact reason a provider cannot send here. The global customer-message stop takes precedence over the per-provider stop. */
 export function transportWritesDisabledReason(name: TransportName): string | null {
   const e = env();

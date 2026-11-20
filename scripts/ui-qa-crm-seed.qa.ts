@@ -17,6 +17,7 @@ import { closeDb, withSystem, type Queryable } from "../src/server/db/index";
 import { env } from "../src/server/env";
 import { hashPassword } from "../src/server/security/crypto";
 import { applyInvitation, createInvitation, type SessionUser } from "../src/server/auth/service";
+import { AI_GROWTH_PARTNER_ROLE_KEY } from "../src/lib/agents";
 import { ensureAgentInstances } from "../src/server/workforce/service";
 import { permissionsFor, roleHasPermission, type OrgRole } from "../src/lib/permissions";
 import type { Membership, OrgContext } from "../src/server/tenancy/context";
@@ -494,7 +495,7 @@ async function seedBrightside(admin: SessionUser, staffId: string): Promise<Brig
     if (!tagId) throw new Error("No “Estimate requested” tag.");
     const task = { key: "book_visit", kind: "create_task", config: { title: "Book an estimate visit with {{contact.first_name}}", priority: "high", dueIn: { amount: 2, unit: "hours" }, assignee: "user", userId: people.owner.id } };
     const steps = tpl
-      ? [{ key: "acknowledge", kind: "send_message", config: { templateId: tpl.id, contentHash: tpl.contentHash, channel: "email", sendAs: "sales_assistant", businessHoursOnly: true }, next: "book_visit" }, { ...task, next: null }]
+      ? [{ key: "acknowledge", kind: "send_message", config: { templateId: tpl.id, contentHash: tpl.contentHash, channel: "email", sendAs: AI_GROWTH_PARTNER_ROLE_KEY, businessHoursOnly: true }, next: "book_visit" }, { ...task, next: null }]
       : [{ ...task, next: null }];
     const definition = { trigger: { type: "contact.tag_added", filters: { tagIds: [tagId] }, reentry: "once" }, steps };
     const wf = await createWorkflow(owner, { name: "New estimate request (QA)", description: "Acknowledges a new estimate request and asks the office to book the visit.", definition });

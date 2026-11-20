@@ -12,6 +12,24 @@ describe("AQi Operations redaction", () => {
     expect(out).toContain("[redacted]");
   });
 
+  it("also catches natural-language passwords and common cloud, source-control and service tokens", () => {
+    const samples = [
+      "my password is hunter2-QA-ONLY",
+      "GitHub token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+      "fine-grained token github_pat_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef",
+      "AWS key AKIAIOSFODNN7EXAMPLE",
+      "Google key AIzaSyDabcdefghijklmnopqrstuvwxyz0123456789AB",
+      "Slack token xoxb-fixture-only",
+      "URL https://service:private-pass-QA@example.test/api",
+      "-----BEGIN PRIVATE KEY-----\nsynthetic-private-key-material\n-----END PRIVATE KEY-----",
+    ];
+
+    for (const sample of samples) {
+      expect(redactSecrets(sample), sample).not.toBe(sample);
+      expect(redactSecrets(sample), sample).toContain("[redacted]");
+    }
+  });
+
   it("masks email addresses and long phone numbers but leaves dates, versions and counters alone", () => {
     const out = maskContacts("Reply to jane.doe@example.com or +63 917 123 4567 on 2026-10-20, build 0068, 12 items");
     expect(out).not.toContain("jane.doe");

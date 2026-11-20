@@ -4,11 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import WhyPage from "@/app/demo/why/page";
 import { MAINTENANCE_MONTHLY_USD, SETUP_FEE_USD } from "@/lib/billing";
-import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO } from "@/lib/ai-growth-partner";
+import { AI_GROWTH_PARTNER_CAPABILITIES, AI_GROWTH_PARTNER_CAPABILITY_INFO, BUSINESS_BRAIN_SECTIONS, BUSINESS_BRAIN_SECTION_TITLES } from "@/lib/ai-growth-partner";
 import { DEMO_INDUSTRIES } from "@/lib/demo/industries";
-import { CORE_INCLUDES, DEMO_CAPABILITY_AREAS, DIY_ROWS, IMPLEMENTATION_SETS, JOURNEY, NEXT_STEPS, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, VIEWS, VIEW_IDS, WHY_BLOCKS, faqs, isViewId, sampleDeals } from "@/lib/demo/showroom/content";
+import { CORE_INCLUDES, DEMO_AQI_SUGGESTIONS, DEMO_CAPABILITY_AREAS, DIY_ROWS, IMPLEMENTATION_SETS, JOURNEY, NEXT_STEPS, PIPELINE_STAGES, PLAN_NOT_INCLUDED, STAGE_STORY, STUDIO_INCLUDES, VIEWS, VIEW_IDS, WHY_BLOCKS, faqs, isViewId, sampleDeals } from "@/lib/demo/showroom/content";
 import { OVERSIGHT_FOOTER, SCOPE_NOTE } from "@/lib/demo/showroom/capabilities";
 import { scenarioFor } from "@/lib/demo/showroom/industry";
+import { WORKFORCE_AQI_QUESTIONS } from "@/components/demo/showroom/views/workforce";
 import { BUY_CONFIRM, CONSULT_CONFIRM, isConfirmKind } from "@/lib/demo/showroom/confirm-copy";
 
 // What the prospect showroom may say, and the lines it must never cross. The showroom is a sales page that talks about a visitor's own business, so the tests here are about honesty:
@@ -48,11 +49,46 @@ describe("the AI Growth Partner in the showroom", () => {
 
   it("marks the acquisition workflow as illustrative and says that it performs no live research or business action", () => {
     const source = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/workforce.tsx"), "utf8");
-    expect(source).toMatch(/Illustrative workflow/);
-    expect(source).toMatch(/Sample only/);
-    expect(source).toMatch(/No company is researched, no CRM record is changed and no message or booking is made/);
+    const acquisition = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/acquisition-sample.tsx"), "utf8");
+    expect(source).toMatch(/<AcquisitionSample\b/);
+    expect(acquisition).toContain("<SimTag>Simulation</SimTag>");
+    expect(acquisition).toContain("The simulation uses invented evidence. Real leads, CRM records, messages, and bookings are untouched.");
     expect(source).toMatch(/DEMO_CAPABILITY_AREAS\.map/);
     expect(DEMO_CAPABILITY_AREAS.map((area) => area.title)).toContain("Business Operations");
+  });
+
+  it("explains the Business Brain and AI Work Board with invented, local-only examples", () => {
+    const brain = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/business-brain-sample.tsx"), "utf8");
+    const board = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/work-board-sample.tsx"), "utf8");
+    const summary = readFileSync(path.join(ROOT, "src/components/demo/showroom/views/summary.tsx"), "utf8");
+
+    expect(Object.keys(BUSINESS_BRAIN_SECTION_TITLES)).toEqual([...BUSINESS_BRAIN_SECTIONS]);
+    expect(brain).toContain("BUSINESS_BRAIN_SECTIONS.map");
+    expect(brain).toContain("BUSINESS_BRAIN_SECTION_TITLES[section]");
+    expect(brain).toContain("What goes into the Business Brain");
+    expect(brain).toMatch(/SimTag>Sample only/);
+    for (const state of ["Verified", "Client confirmed", "Draft suggestion", "Unknown"]) expect(brain).toContain(state);
+    expect(brain).toContain("Unknown stays unknown: it is never guessed.");
+    expect(brain).toContain("You confirm what the partner may use.");
+
+    const lanes = ["Queued", "Working", "Waiting for approval", "Blocked", "Prepared, not finished", "Completed"];
+    const realBoard = readFileSync(path.join(ROOT, "src/components/work/work-board-kanban.tsx"), "utf8");
+    for (const lane of lanes) {
+      expect(board).toContain(`label: "${lane}"`);
+      expect(realBoard).toContain(`label: "${lane}"`);
+    }
+    expect(board).toContain("DEMO_CAPABILITY_AREAS[lane.capabilityIndex]");
+    expect(board).toContain("AI Growth Partner");
+    expect(board).toContain("Approved in this demo. Nothing was sent.");
+    expect(board).toContain("Completed means saved execution evidence; drafts waiting for a decision stay in Prepared, not finished.");
+    expect(board).not.toMatch(/fetch\s*\(|\/api\//);
+    expect(brain).not.toMatch(/fetch\s*\(|\/api\//);
+
+    expect(WORKFORCE_AQI_QUESTIONS).toEqual([
+      "What is the AI Work Board?",
+      "How does a fact in the Business Brain get confirmed?",
+    ]);
+    expect(summary.match(/\{OVERSIGHT_FOOTER\}/g)).toHaveLength(1);
   });
 });
 
@@ -93,6 +129,9 @@ describe("the plans as the showroom words them", () => {
     expect(answers.map((f) => f.a).join(" ")).toContain(setup);
     expect(answers.map((f) => f.a).join(" ")).toContain(monthly);
     expect(answers.find((f) => /consultation/i.test(f.q))?.a).toMatch(/does not book anything or charge anything/i);
+    const approvalAnswer = answers.find((f) => /message my customers/i.test(f.q))?.a ?? "";
+    expect(approvalAnswer).toContain("approval rules configured");
+    expect(approvalAnswer).not.toMatch(/anything that reaches a customer waits/i);
   });
 
   it("compares with doing it yourself in words only: no competitor price, hour or percentage anywhere in the sales copy", () => {
@@ -108,6 +147,8 @@ describe("the views", () => {
     expect(JOURNEY.map((j) => j.step)).toEqual([1, 2, 3, 4]);
     for (const j of JOURNEY) expect(VIEW_IDS, j.title).toContain(j.view);
     expect(JOURNEY.map((j) => j.view)).toEqual(["workforce", "crm", "automation", "summary"]);
+    expect(Object.keys(DEMO_AQI_SUGGESTIONS)).toEqual([...VIEW_IDS]);
+    expect(DEMO_AQI_SUGGESTIONS.workforce).toEqual(WORKFORCE_AQI_QUESTIONS);
     expect(isViewId("workforce")).toBe(true);
     for (const bad of ["", "admin", "../x", "<script>", undefined, null, 3]) expect(isViewId(bad)).toBe(false);
   });

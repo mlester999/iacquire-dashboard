@@ -118,6 +118,6 @@ describe("the Performance Analyst's read-only social media review", () => {
     expect((await rows<{ status: string }>("select status from social_posts where id = $1", [waiting.id]))[0].status).toBe("pending_approval");
     expect(simulated.published(acc.externalId)).toHaveLength(0);
     // A role that does not hold the capability is refused.
-    await expect(dispatchCapabilityJob(s.owner, { agentRole: "sales_assistant", capability: "social_performance_review", title: "x" })).rejects.toThrow(/role does not include/i);
+    await expect(dispatchCapabilityJob(s.owner, { agentRole: "sales_assistant", capability: "social_performance_review", title: "x" })).rejects.toMatchObject({ code: "forbidden", message: "The assigned AI profile cannot use this capability." });
   }, 60000);
 });

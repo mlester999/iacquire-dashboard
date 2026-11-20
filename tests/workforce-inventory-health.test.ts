@@ -105,8 +105,8 @@ describe("health check and persisted inventory attestation", () => {
       await connectHermesProfile({ agentId: unconfigured, baseUrl: other.url, profile, apiKey: KEY, agencyUserId: admin.id });
       const result = await runHealthCheck(unconfigured, { userId: admin.id, kind: "agency" });
       expect(result).toMatchObject({ ok: false, status: "setup_required" });
-      expect(result.detail).toMatch(/configuration hasn't been applied yet/);
-      expect(result.detail).toMatch(/Super Admin needs to save an initial configuration/);
+      expect(result.detail).toMatch(/needs an applied configuration/);
+      expect(result.detail).toMatch(/A Super Admin can save an initial configuration in AI Growth Partner Operations/);
       const { rows } = await withSystem((db) => db.query<{ tool_inventory_digest: string | null }>("select tool_inventory_digest from agent_instances where id = $1", [unconfigured]));
       // The inventory itself verified and was recorded; only the missing configuration keeps the employee offline.
       expect(rows[0].tool_inventory_digest).toMatch(/^[0-9a-f]{64}$/);

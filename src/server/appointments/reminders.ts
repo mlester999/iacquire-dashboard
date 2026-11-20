@@ -4,9 +4,11 @@ import { releaseReservation } from "@/server/billing/ledger";
 import { notifyOrgRoles } from "@/server/notifications";
 import { queueOutreach } from "@/server/messaging/outreach";
 import { env } from "@/server/env";
+import { AI_RUNTIME_PAUSED_DETAIL } from "@/server/automation/gate";
 import { MANAGE_LINK_PLACEHOLDER } from "@/server/messaging/redact";
 import { formatSlot, reminderSchedule } from "@/lib/appointments";
 import { absoluteUrl, manageUrl } from "@/lib/calendars/urls";
+import { partnerFirstAgentSql, resolveActorAgent } from "@/server/workforce/partner-runtime";
 
 const LIVE = ["new", "confirmed"];
 
@@ -105,8 +107,7 @@ export interface ClaimedReminder {
 
 /** The AI employee that owns appointment work for a workspace. */
 export async function appointmentSetterId(db: Queryable, orgId: string): Promise<string | null> {
-  const { rows } = await db.query<{ id: string }>("select id from agent_instances where org_id = $1 and role_key = 'appointment_setter'", [orgId]);
-  return rows[0]?.id ?? null;
+  return (await resolveActorAgent(db, orgId, "appointment_setter"))?.agentId ?? null;
 }
 
 const MAX_REMINDER = 600;
@@ -225,7 +226,7 @@ export async function claimDueReminders(now: Date, limit?: number): Promise<Clai
          (select reminders_approval_id from appointment_settings s where s.org_id = appointment_reminders.org_id) as approval_id,
          (select a.status = 'approved' and (a.expires_at is null or a.expires_at > now()) from approval_requests a
            where a.id = (select reminders_approval_id from appointment_settings s where s.org_id = appointment_reminders.org_id)) as approval_live,
-         (select id from agent_instances g where g.org_id = appointment_reminders.org_id and g.role_key = 'appointment_setter') as agent_id,
+         (${partnerFirstAgentSql("appointment_reminders.org_id", "appointment_setter")}) as agent_id,
          (select provider from appointment_refs where id = appointment_id) as provider, (select location from appointment_refs where id = appointment_id) as location,
          (select invitee_timezone from appointment_refs where id = appointment_id) as invitee_tz,
          (select t.allow_customer_changes from crm_appointment_types t where t.id = (select appointment_type_id from appointment_refs where id = appointment_id)) as allow_changes,
@@ -276,12 +277,25 @@ export async function queueClaimedReminder(d: ClaimedReminder, now: Date): Promi
       location: d.location, withManageLink, appUrl: env().APP_URL,
     });
     const res = await queueOutreach(db, {
-      orgId: d.org_id, contactId: d.contact_id, agentId: d.agent_id, scope: "reminder", body: text, subject: "Appointment reminder", approvalId: d.approval_id, now,
+      orgId: d.org_id, contactId: d.contact_id, agentId: d.agent_id, scope: "reminder", purpose: "service", body: text, subject: "Appointment reminder", approvalId: d.approval_id, now,
       dedupeKey: `reminder:${d.appointment_id}:${d.offset_minutes}:${dueAt.getTime()}`,
     });
+    const pausedRuntime = res.reason === "automation_paused" && res.detail === AI_RUNTIME_PAUSED_DETAIL;
+    const agentUnavailable = res.reason === "agent_not_ready" || pausedRuntime;
+    const reason = agentUnavailable ? res.detail ?? res.reason : res.reason ?? null;
+    if (res.status === "blocked" && agentUnavailable) {
+      await notifyOrgRoles(db, d.org_id, ["owner", "admin"], {
+        kind: "booking_needs_action",
+        severity: "warning",
+        title: "Appointment reminders need a ready AI runtime",
+        body: reason ?? "Reminders stay paused until the AI runtime passes its readiness checks.",
+        link: "/appointments",
+        dedupeKey: `reminders-agent:${d.org_id}:${now.toISOString().slice(0, 10)}`,
+      });
+    }
     const done = await db.query(
       "update appointment_reminders set status = $2, reason = $3, message_id = $4 where id = $1 and status = 'queued' and due_at = $5 and message_id is null",
-      [d.id, res.status === "blocked" ? "blocked" : "queued", res.reason ?? null, res.messageId ?? null, dueAt],
+      [d.id, res.status === "blocked" ? "blocked" : "queued", reason, res.messageId ?? null, dueAt],
     );
     if (!done.rowCount) return "skipped";
     return res.status === "blocked" ? "blocked" : "queued";

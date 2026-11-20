@@ -37,7 +37,7 @@ const goal: GrowthPartnerGoalProgress = {
 describe("Growth Partner goals panel", () => {
   it("shows real progress and clearly labels targets as objectives", () => {
     render(<GrowthPartnerGoalsPanel goals={[goal]} canManage hasPartner />);
-    expect(screen.getByRole("heading", { name: "Growth goals" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Goals" })).toBeTruthy();
     expect(screen.getByText("2 of 5 · this week")).toBeTruthy();
     expect(screen.getByText("3 to go")).toBeTruthy();
     expect(screen.getByRole("progressbar", { name: "Leads approved weekly target progress" }).getAttribute("aria-valuenow")).toBe("2");

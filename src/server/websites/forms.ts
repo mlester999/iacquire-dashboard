@@ -58,10 +58,17 @@ async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> 
     const channel: Channel = email ? "email" : "sms";
     const address = (email ?? phone)!;
     // A web form proves nothing about who typed the address, so the identity stays unverified until the person or a human confirms it.
-    const { contactId, created } = await resolveContact(db, { orgId: s.org_id, channel, address, name: s.name, source: "website_form" });
+    const { contactId, created } = await resolveContact(db, { orgId: s.org_id, channel, address, name: s.name, source: "website_form", typedByVisitor: true });
+    let phoneBelongsToContact = !email && Boolean(phone);
     if (email && phone) {
-      const other = await db.query("select 1 from contact_identities where org_id = $1 and kind = 'phone' and value = $2", [s.org_id, phone]);
-      if (!other.rows.length) await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified) values ($1, $2, 'phone', $3, false)", [s.org_id, contactId, phone]);
+      const other = await db.query<{ contact_id: string; verified: boolean }>("select contact_id, verified from contact_identities where org_id = $1 and kind = 'phone' and value = $2", [s.org_id, phone]);
+      if (!other.rows.length) {
+        await db.query("insert into contact_identities (org_id, contact_id, kind, value, verified, typed_by_visitor) values ($1, $2, 'phone', $3, false, true)", [s.org_id, contactId, phone]);
+        phoneBelongsToContact = true;
+      } else if (other.rows[0].contact_id === contactId) {
+        phoneBelongsToContact = true;
+        if (!other.rows[0].verified) await db.query("update contact_identities set typed_by_visitor = true where org_id = $1 and contact_id = $2 and kind = 'phone' and value = $3 and not verified", [s.org_id, contactId, phone]);
+      }
     }
     if (created) await db.query("update contacts set lifecycle_stage = 'lead_captured', phone = coalesce(phone, $3) where id = $1 and org_id = $2", [contactId, s.org_id, phone]);
     else if (s.name) await db.query("update contacts set display_name = case when display_name = '' then $3 else display_name end where id = $1 and org_id = $2", [contactId, s.org_id, s.name.slice(0, 200)]);
@@ -70,7 +77,7 @@ async function processOne(s: Claimed): Promise<"processed" | "spam" | "failed"> 
     const evidence = `Website form (${s.host}): ${s.consent_text}`.slice(0, 500);
     const channels: Channel[] = [];
     if (email) channels.push("email");
-    if (phone && coversTexting(s.consent_text)) channels.push("sms");
+    if (phoneBelongsToContact && phone && coversTexting(s.consent_text)) channels.push("sms");
     for (const ch of channels) {
       await recordConsent(db, { orgId: s.org_id, contactId, channel: ch, purpose: "service", status: "granted", source: "website_form", evidence });
       if (s.marketing_opt_in) await recordConsent(db, { orgId: s.org_id, contactId, channel: ch, purpose: "marketing", status: "granted", source: "website_form", evidence: `${evidence} (marketing opt-in ticked)`.slice(0, 500) });

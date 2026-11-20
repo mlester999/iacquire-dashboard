@@ -94,6 +94,7 @@ export function AdaptiveOnboarding({
   const [returnToReview, setReturnToReview] = React.useState(linked !== null && linked !== "f.review");
 
   const [review, setReview] = React.useState<ReviewModel | null>(null);
+  const [approvedBrainReview, setApprovedBrainReview] = React.useState<ReviewModel["businessBrain"]>();
   const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [reviewNonce, setReviewNonce] = React.useState(0);
   const [submitting, setSubmitting] = React.useState(false);
@@ -160,6 +161,7 @@ export function AdaptiveOnboarding({
   const question: QuestionDef = visible.find((q) => q.id === currentId) ?? QUESTION_BY_ID[currentId] ?? visible[0];
   const questionRequired = isRequired(question, effective);
   const isReview = question.kind.type === "review";
+  const firstBrainReview = session.workforceModel === "growth_partner" && !session.completedAt;
   const stored = answers[question.id];
   const countable = visible.filter((q) => q.kind.type !== "review");
   const number = Math.max(1, countable.findIndex((q) => q.id === question.id) + 1);
@@ -297,6 +299,7 @@ export function AdaptiveOnboarding({
   };
 
   const editFromReview = async (questionId: string) => {
+    if (firstBrainReview) setApprovedBrainReview(undefined);
     setReturnToReview(true);
     await travel(questionId, -1);
   };
@@ -351,13 +354,17 @@ export function AdaptiveOnboarding({
   };
 
   // ----------------------------------------------------------------- submit
+  const reviewConfirmed = firstBrainReview
+    ? approvedBrainReview !== undefined && approvedBrainReview === review?.businessBrain
+    : answers["f.review"]?.value === true;
   const approve = async (value: boolean) => {
+    if (firstBrainReview) setApprovedBrainReview(value ? review?.businessBrain : undefined);
     setAnswers((cur) => ({ ...cur, "f.review": { value, skipped: false, source: "user", needsConfirmation: false, updatedAt: new Date().toISOString() } }));
     pipeline.queue("f.review", { value });
   };
 
   const submit = async () => {
-    if (actionLock.current || answers["f.review"]?.value !== true) return;
+    if (actionLock.current || !reviewConfirmed) return;
     actionLock.current = true;
     setSubmitting(true);
     setReviewError(null);
@@ -369,7 +376,7 @@ export function AdaptiveOnboarding({
       return;
     }
     let res: Awaited<ReturnType<typeof api.submit>>;
-    try { res = await api.submit(); } catch {
+    try { res = await api.submit(review?.businessBrain?.confirmation); } catch {
       setSubmitting(false);
       actionLock.current = false;
       setReviewError("We couldn't submit your setup. Your answers are saved; please try again.");
@@ -378,7 +385,14 @@ export function AdaptiveOnboarding({
     if (!res.ok) {
       setSubmitting(false);
       actionLock.current = false;
-      setReviewError(res.error);
+      if (firstBrainReview && res.code === "conflict") {
+        setApprovedBrainReview(undefined);
+        setReview(null);
+        toast.error(res.error);
+        setReviewNonce((n) => n + 1);
+      } else {
+        setReviewError(res.error);
+      }
       return;
     }
     // A draft booking calendar made from the answers is said out loud, with the fact that it is not live, and so is everything a re-submission kept, held, skipped or left alone.
@@ -399,7 +413,7 @@ export function AdaptiveOnboarding({
   const websiteValue = typeof effective["a.website"] === "string" ? (effective["a.website"] as string) : "";
   const aiSourced = stored && !stored.skipped && (stored.source === "ai_suggestion" || stored.source === "website_analysis") && !isEmptyValue(stored.value);
   const exitAction = <Button type="button" variant="ghost" size="sm" onClick={() => void saveAndExit()} disabled={navigating || submitting}>Save &amp; exit</Button>;
-  const canApprove = Boolean(review && answers["f.review"]?.value === true && !review.blockers.some((blocker) => !blocker.startsWith("Confirm that you approve")));
+  const canApprove = Boolean(review && reviewConfirmed && !review.blockers.some((blocker) => !blocker.startsWith("Confirm that you approve")));
 
   return (
     <main className="onboarding-workspace mx-auto max-w-5xl px-4 pb-28 pt-2 sm:px-6 lg:pb-8">
@@ -464,7 +478,7 @@ export function AdaptiveOnboarding({
                     review={review}
                     loading={!review && !reviewError}
                     error={reviewError}
-                    confirmed={answers["f.review"]?.value === true}
+                    confirmed={reviewConfirmed}
                     submitting={submitting}
                     alreadySubmitted={session.status === "submitted"}
                     onRetry={() => {

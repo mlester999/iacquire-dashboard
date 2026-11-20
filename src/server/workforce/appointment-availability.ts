@@ -1,5 +1,5 @@
 import "server-only";
-import { withSystem } from "@/server/db";
+import { readSystem, withSystem, type Queryable } from "@/server/db";
 import { nativeAvailability } from "@/server/calendars/native-availability";
 import {
   appendWorkEvent,
@@ -28,8 +28,16 @@ const SAMPLE_SLOTS = 100;
  * calendar. It reports the same slots the booking flow would offer, with the reason when it cannot.
  * The count is the real number of bookable start times (it was once capped at 50 and reported as the total), grouped by day in the zone the hosts work in.
  */
-export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: { workerId: string; controller: AbortController }): Promise<void> {
+export async function runAppointmentAvailabilityJob(job: WorkJobRow, context: { workerId: string; controller: AbortController }): Promise<void> {
   const workerId = job.lease_owner ?? "";
+  const assertContinuing = async (db: Queryable) => {
+    if (context.controller.signal.aborted) throw new Error("work_cancelled");
+    const { rows } = await db.query<{ status: string; cancel_requested_at: Date | null }>(
+      "select status, cancel_requested_at from ai_work_jobs where id = $1 and org_id = $2",
+      [job.id, job.org_id],
+    );
+    if (context.controller.signal.aborted || rows[0]?.status !== "running" || rows[0].cancel_requested_at) throw new Error("work_cancelled");
+  };
   const agent = await withSystem(async (db) => {
     const { rows } = await db.query<{ role_key: string; display_name: string }>(
       "select role_key, display_name from agent_instances where id = $1 and org_id = $2",
@@ -66,60 +74,81 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
   const displayTimeZone = readableTimeZone(availability.ok ? availability.hostTimeZone ?? availability.timeZone : null);
   const days = summarizeSlotsByDay(slots, displayTimeZone);
 
-  await withSystem(async (db) => {
-    await recordWorkStage(db, {
+  // Availability may take time; let Stop persist while it is being computed, then check before
+  // recording any result.
+  await readSystem((db) => assertContinuing(db));
+  await withSystem((db) => recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
       stage: "scanning",
       message: "Checking real bookable calendar availability for the next seven days…",
-    });
+    }));
 
-    const findings: ReviewFinding[] = [];
-    if (!availability.ok) {
-      findings.push(reviewFinding({
-        key: "calendar_not_ready",
-        severity: "warning",
-        title: "The calendar cannot offer bookable slots",
-        detail: availability.detail,
-        count: 1,
-        samples: [],
-        evidenceHref: "/crm/calendar",
-        recommendedAction: "Verify and activate a calendar with at least one host and working hours.",
-        requiresApproval: false,
-      }));
-    } else if (slots.length === 0) {
-      findings.push(reviewFinding({
-        key: "no_available_slots",
-        severity: "warning",
-        title: "No bookable slots in the next seven days",
-        detail: "The calendar is active but every candidate time is blocked by working hours, notice, buffers or existing bookings.",
-        count: 1,
-        samples: [],
-        evidenceHref: "/crm/calendar",
-        recommendedAction: "Check host working hours, exceptions and the appointment type's notice period before offering this calendar.",
-        requiresApproval: false,
-      }));
-    }
+  const findings: ReviewFinding[] = [];
+  if (!availability.ok) {
+    findings.push(reviewFinding({
+      key: "calendar_not_ready",
+      severity: "warning",
+      title: "The calendar cannot offer bookable slots",
+      detail: availability.detail,
+      count: 1,
+      samples: [],
+      evidenceHref: "/crm/calendar",
+      recommendedAction: "Verify and activate a calendar with at least one host and working hours.",
+      requiresApproval: false,
+    }));
+  } else if (slots.length === 0) {
+    findings.push(reviewFinding({
+      key: "no_available_slots",
+      severity: "warning",
+      title: "No bookable slots in the next seven days",
+      detail: "The calendar is active but every candidate time is blocked by working hours, notice, buffers or existing bookings.",
+      count: 1,
+      samples: [],
+      evidenceHref: "/crm/calendar",
+      recommendedAction: "Check host working hours, exceptions and the appointment type's notice period before offering this calendar.",
+      requiresApproval: false,
+    }));
+  }
 
-    const metrics: ReviewMetric[] = [{
-      key: "available_slots",
-      label: "Bookable slots (7 days)",
-      value: slots.length,
-      period: "Next 7 days",
-      definition: "Distinct start times the active calendar and its hosts can accept, computed from saved working hours, buffers, notice and live bookings.",
-      source: "crm_calendars, crm_availability_rules, crm_busy_blocks",
-    }];
+  const metrics: ReviewMetric[] = [{
+    key: "available_slots",
+    label: "Bookable slots (7 days)",
+    value: slots.length,
+    period: "Next 7 days",
+    definition: "Distinct start times the active calendar and its hosts can accept, computed from saved working hours, buffers, notice and live bookings.",
+    source: "crm_calendars, crm_availability_rules, crm_busy_blocks",
+  }];
 
-    await recordWorkStage(db, {
+  const { examined, source } = await readSystem(async (db) => {
+    await assertContinuing(db);
+    const examined = [
+      { label: "active calendars", count: await reviewCount(db, "select count(*)::int as count from crm_calendars where org_id = $1 and status = 'active' and archived_at is null", [job.org_id]) },
+      { label: "appointment types", count: await reviewCount(db, "select count(*)::int as count from crm_appointment_types where org_id = $1 and archived_at is null", [job.org_id]) },
+    ];
+    const source = await readReviewSource(db, job.org_id, "calendars");
+    await assertContinuing(db);
+    return { examined, source };
+  });
+  const limitations = `Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted. ${sourceLimitation(source)}`;
+
+  const count = slots.length;
+  const summary = availability.ok
+    ? `Calendar availability checked: ${truncated ? "at least " : ""}${count} bookable slot${count === 1 ? "" : "s"}${days.length ? ` on ${days.length} day${days.length === 1 ? "" : "s"}` : ""} in the next 7 days (${displayTimeZone}).`
+    : `Waiting for Calendar: ${availability.detail}`;
+  const awaitingConnection = !availability.ok;
+
+  await withSystem((db) => recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
       stage: "analyzing",
       message: "Preparing the availability result and any scheduling risk…",
       progress: { checksRun: 2, findings: findings.length, slots: slots.length },
-    });
+    }));
 
+  await withSystem(async (db) => {
     for (const finding of findings) {
       await appendWorkEvent(db, {
         jobId: job.id,
@@ -131,36 +160,30 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
         data: { key: finding.key, href: finding.evidenceHref },
       });
     }
+  });
 
-    // What the check looked at, so "no slots" can be told apart from "no calendar".
-    const examined = [
-      { label: "active calendars", count: await reviewCount(db, "select count(*)::int as count from crm_calendars where org_id = $1 and status = 'active' and archived_at is null", [job.org_id]) },
-      { label: "appointment types", count: await reviewCount(db, "select count(*)::int as count from crm_appointment_types where org_id = $1 and archived_at is null", [job.org_id]) },
-    ];
-    const source = await readReviewSource(db, job.org_id, "calendars");
-    const limitations = `Only bookable start times stored in this workspace were read. No slot was held, no booking was created and no external calendar was contacted. ${sourceLimitation(source)}`;
-
-    const count = slots.length;
-    const summary = availability.ok
-      ? `Calendar availability checked: ${truncated ? "at least " : ""}${count} bookable slot${count === 1 ? "" : "s"}${days.length ? ` on ${days.length} day${days.length === 1 ? "" : "s"}` : ""} in the next 7 days (${displayTimeZone}).`
-      : `Calendar availability could not be checked: ${availability.detail}`;
-
-    await recordWorkStage(db, {
+  await withSystem((db) => recordWorkStage(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
-      stage: "preparing_results",
-      message: "Availability check complete.",
-    });
-    const finished = await finishWorkJob(db, {
+      stage: awaitingConnection ? "awaiting_connection" : "preparing_results",
+      message: awaitingConnection ? "Waiting for a calendar connection before checking availability." : "Availability check complete.",
+    }));
+
+  await readSystem((db) => assertContinuing(db));
+  const finished = await withSystem(async (db) => {
+    const didFinish = await finishWorkJob(db, {
       jobId: job.id,
       orgId: job.org_id,
       workerId,
-      status: "completed",
-      stage: "completed",
+      status: awaitingConnection ? "blocked" : "completed",
+      stage: awaitingConnection ? "awaiting_connection" : "completed",
+      failureCode: awaitingConnection ? "awaiting_connection" : null,
+      failureMessage: awaitingConnection ? availability.detail : null,
       resultCount: slots.length,
       resultSummary: summary,
       result: {
+        ...(awaitingConnection ? { awaitingConnection: { connector: "Calendar", reason: availability.detail, href: "/crm/calendar" } } : {}),
         availability: availability.ok
           ? {
               slots: slots.slice(0, SAMPLE_SLOTS).map((slot) => ({ start: slot.start, end: slot.end })),
@@ -183,12 +206,12 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       },
       event: {
         kind: "notice",
-        stage: "completed",
+        stage: awaitingConnection ? "awaiting_connection" : "completed",
         message: summary,
-        data: { slots: slots.length, examined, source },
+        data: { slots: slots.length, examined, source, ...(awaitingConnection ? { connector: "Calendar", href: "/crm/calendar" } : {}) },
       },
     });
-    if (!finished) throw new Error("work_finished_elsewhere");
+    if (!didFinish) return false;
     await publishReviewReport(db, {
       job,
       agent,
@@ -198,5 +221,7 @@ export async function runAppointmentAvailabilityJob(job: WorkJobRow, _context: {
       limitations,
       checksRun: 2,
     });
+    return true;
   });
+  if (!finished) throw new Error("work_finished_elsewhere");
 }

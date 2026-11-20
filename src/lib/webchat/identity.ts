@@ -12,6 +12,13 @@ export const IDENTITY_UNVERIFIED_DETAIL = "The visitor typed this number or addr
 /** The consent source the website chat's details form records. A grant with this source was ticked by whoever typed the details. */
 export const TYPED_CONSENT_SOURCE = "website_chat_form";
 
+/** Public form grants record the submitter's checkbox, not proof that the owner of the address agreed. */
+export const UNVERIFIED_FORM_CONSENT_SOURCES = new Set([TYPED_CONSENT_SOURCE, "website_form", "crm_form"]);
+
+export function isUnverifiedFormConsentSource(source: string | null | undefined): boolean {
+  return source != null && UNVERIFIED_FORM_CONSENT_SOURCES.has(source);
+}
+
 /** The wording stored with a consent event the details form records. It says plainly that the details were typed and not checked. */
 export function typedConsentEvidence(notice: string, host: string): string {
   return `Typed by the visitor in the website chat, unverified. ${notice} Website chat form on ${host}.`;

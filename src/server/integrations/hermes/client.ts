@@ -401,8 +401,8 @@ export async function startRun(
     throw new AgentRunNotReadyError("tool_scope_unavailable", "This run has an unsupported tool scope and cannot start.");
   }
   if (options.toolScope === "no_tools") {
-    if (input.sessionId) {
-      throw new AgentRunNotReadyError("tool_scope_unavailable", "A no-tools research run cannot target a separate Hermes conversation.");
+    if (input.sessionId || input.memoryScope) {
+      throw new AgentRunNotReadyError("tool_scope_unavailable", "An isolated run cannot attach to a Hermes conversation or persistent runtime memory.");
     }
     await assertNoToolRunScopeAvailable(conn);
   }
@@ -587,18 +587,28 @@ export async function assertNoToolRunScopeAvailable(conn: HermesConnection): Pro
   }
 }
 
-function connectionNotReadyMessage(status: string): string {
+function connectionNotReadyMessage(status: string, roleKey?: string): string {
+  if (roleKey === "growth_partner") {
+    if (status === "setup_required" || status === "provisioning") {
+      return "Your AI Growth Partner is still being set up and hasn't passed its connection check yet.";
+    }
+    if (status === "offline" || status === "error") {
+      return "Your AI Growth Partner is offline right now; it hasn't passed its connection check. Please try again shortly.";
+    }
+    return "Your AI Growth Partner hasn't passed its connection check yet, so it can't run.";
+  }
   if (status === "setup_required" || status === "provisioning") {
-    return "This AI employee is still being set up and hasn't passed its connection and tool-inventory check yet.";
+    return "This AI profile is still being set up and hasn't passed its connection and tool-inventory check yet.";
   }
   if (status === "offline" || status === "error") {
-    return "This AI employee is offline right now; it hasn't passed its connection and tool-inventory check. Please try again shortly.";
+    return "This AI profile is offline right now; it hasn't passed its connection and tool-inventory check. Please try again shortly.";
   }
-  return "This AI employee hasn't passed its connection and tool-inventory check yet, so it can't run.";
+  return "This AI profile hasn't passed its connection and tool-inventory check yet, so it can't run.";
 }
 
 interface AgentRunGateRow {
   kind: string;
+  role_key?: string;
   enabled: boolean;
   status: string;
   credential_ready: boolean;
@@ -620,22 +630,23 @@ interface AgentRunGateRow {
  * a recorded digest the live catalog would have nothing to be compared against, so a never-health-checked employee
  * could run on a catalog that merely looks safe today.
  */
-export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "hermes_profile_config_version_id" | "tool_inventory_digest" | "credential_ready">): string {
-  if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
+export function assertAgentRunnable(row: Pick<AgentRunGateRow, "enabled" | "status" | "active_config_version_id" | "hermes_profile_config_version_id" | "tool_inventory_digest" | "credential_ready"> & Pick<AgentRunGateRow, "role_key">): string {
+  const partner = row.role_key === "growth_partner";
+  if (!row.enabled) throw new AgentRunNotReadyError("disabled", partner ? "Your AI Growth Partner isn't enabled, so it can't run." : "This AI profile isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
-    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
+    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status, row.role_key));
   }
   if (!row.active_config_version_id) {
-    throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+    throw new AgentRunNotReadyError("not_configured", partner ? "Your AI Growth Partner has no applied configuration, so it can't run. Apply its settings first." : "This AI profile has no applied configuration, so it can't run. Apply its settings first.");
   }
   if (row.hermes_profile_config_version_id && row.hermes_profile_config_version_id !== row.active_config_version_id) {
-    throw new AgentRunNotReadyError("configuration_sync_required", "This AI employee's approved configuration is still synchronizing to its dedicated Hermes profile.");
+    throw new AgentRunNotReadyError("configuration_sync_required", partner ? "Your AI Growth Partner's approved configuration is still synchronizing to its runtime." : "This AI profile's approved configuration is still synchronizing to its dedicated Hermes profile.");
   }
   if (!row.credential_ready) {
-    throw new AgentRunNotReadyError("credential_unavailable", "This AI employee's saved Hermes credential is missing or revoked, so it can't run.");
+    throw new AgentRunNotReadyError("credential_unavailable", partner ? "Your AI Growth Partner's saved connection is missing or revoked, so it can't run." : "This AI profile's saved Hermes credential is missing or revoked, so it can't run.");
   }
   if (!row.tool_inventory_digest || !/^[0-9a-f]{64}$/.test(row.tool_inventory_digest)) {
-    throw new AgentRunNotReadyError("inventory_not_recorded", "This AI employee has no verified tool inventory on record yet, so it can't run. Run its health check first.");
+    throw new AgentRunNotReadyError("inventory_not_recorded", partner ? "Your AI Growth Partner has no verified tool inventory on record yet, so it can't run. Run its connection check first." : "This AI profile has no verified tool inventory on record yet, so it can't run. Run its health check first.");
   }
   return row.tool_inventory_digest;
 }
@@ -650,21 +661,22 @@ export interface AgentRunPreflightOptions {
 }
 
 function assertRunGateState(row: AgentRunGateRow, options: AgentRunPreflightOptions = {}) {
-  if (!row.enabled) throw new AgentRunNotReadyError("disabled", "This AI employee isn't enabled, so it can't run.");
+  const partner = row.role_key === "growth_partner";
+  if (!row.enabled) throw new AgentRunNotReadyError("disabled", partner ? "Your AI Growth Partner isn't enabled, so it can't run." : "This AI profile isn't enabled, so it can't run.");
   if (!canChat(row.status as AgentStatus)) {
-    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status));
+    throw new AgentRunNotReadyError("not_ready", connectionNotReadyMessage(row.status, row.role_key));
   }
   if (!row.active_config_version_id) {
-    throw new AgentRunNotReadyError("not_configured", "This AI employee has no applied configuration, so it can't run. Apply its settings first.");
+    throw new AgentRunNotReadyError("not_configured", partner ? "Your AI Growth Partner has no applied configuration, so it can't run. Apply its settings first." : "This AI profile has no applied configuration, so it can't run. Apply its settings first.");
   }
   if (row.last_health_ok === false) {
-    throw new AgentRunNotReadyError("not_ready", "This AI employee's latest connection and permission check did not pass.");
+    throw new AgentRunNotReadyError("not_ready", partner ? "Your AI Growth Partner's latest connection and permission check did not pass." : "This AI profile's latest connection and permission check did not pass.");
   }
   if (!options.allowMissingInventory) {
     assertAgentRunnable(row);
   }
   if (options.requireFreshInventory && !toolInventoryReady(row)) {
-    throw new AgentRunNotReadyError("inventory_expired", "This AI employee's verified tool inventory has expired or is incomplete. Refresh the connection and inventory check before starting a new conversation.");
+    throw new AgentRunNotReadyError("inventory_expired", partner ? "Your AI Growth Partner's verified tool inventory has expired or is incomplete. Refresh its connection check before starting a new conversation." : "This AI profile's verified tool inventory has expired or is incomplete. Refresh the connection and inventory check before starting a new conversation.");
   }
 }
 
@@ -708,7 +720,7 @@ async function assertInternalProfileRunAuthorization(db: Queryable, agentId: str
     [agentId, orgId],
   );
   const row = rows[0];
-  if (!row || row.kind !== "agency") throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's internal authorization could not be verified.");
+  if (!row || row.kind !== "agency") throw new AgentRunNotReadyError("readiness_unknown", "This AI profile's internal authorization could not be verified.");
   const identityEvidence = {
     expectedProfile: AGENCY_HERMES_PROFILE_IDS[row.role_key],
     savedProfile: row.hermes_profile,
@@ -768,7 +780,7 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
   try {
     await withSystem(async (db) => {
       const { rows } = await db.query<AgentRunGateRow>(
-        `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
+        `select o.kind,a.role_key,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
                 (cred.id is not null and cred.revoked_at is null and
                  (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
                 a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
@@ -779,21 +791,21 @@ export async function assertAgentRunPreflight(agentId: string, orgId: string, op
         [agentId, orgId],
       );
       const row = rows[0];
-      if (!row) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+      if (!row) throw new HermesError("not_found", "The AI profile is unavailable in this workspace.");
       assertRunGateState(row, options);
       if (row.kind === "agency") await assertInternalProfileRunAuthorization(db, agentId, orgId, options.connection);
     });
   } catch (error) {
     if (error instanceof AgentRunNotReadyError || error instanceof HermesError) throw error;
     // The inventory columns come from migration 0059; without them no digest can have been recorded.
-    throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's readiness could not be verified, so it can't run.");
+    throw new AgentRunNotReadyError("readiness_unknown", "This AI profile's readiness could not be verified, so it can't run.");
   }
 }
 
 async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRunGateRow | null> {
   try {
     const { rows } = await withSystem((db) => db.query<AgentRunGateRow>(
-      `select o.kind,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
+      `select o.kind,a.role_key,a.enabled,a.status,a.active_config_version_id,a.hermes_profile_config_version_id,a.last_health_ok,
               (cred.id is not null and cred.revoked_at is null and
                (cred.credential_reference_id is null or (cred_ref.id is not null and cred_ref.revoked_at is null))) as credential_ready,
               a.tool_inventory_contract,a.tool_inventory_digest,a.tool_inventory_verified_at,a.tool_inventory_expires_at,a.tool_inventory_tool_count
@@ -805,7 +817,7 @@ async function loadAgentRunGate(agentId: string, orgId: string): Promise<AgentRu
     ));
     return rows[0] ?? null;
   } catch {
-    throw new AgentRunNotReadyError("readiness_unknown", "This AI employee's readiness could not be verified, so it can't run.");
+    throw new AgentRunNotReadyError("readiness_unknown", "This AI profile's readiness could not be verified, so it can't run.");
   }
 }
 
@@ -824,7 +836,7 @@ export async function startAgentRun(
 ): Promise<{ runId: string }> {
   await assertAgentRunPreflight(agentId, orgId);
   const gate = await loadAgentRunGate(agentId, orgId);
-  if (!gate) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+  if (!gate) throw new HermesError("not_found", "The AI profile is unavailable in this workspace.");
   const expectedConfigProvided = Object.prototype.hasOwnProperty.call(requirements, "expectedConfigVersionId");
   if (expectedConfigProvided && gate.active_config_version_id !== requirements.expectedConfigVersionId) {
     throw new AgentRunNotReadyError("not_ready", "The employee configuration changed while this chat was being prepared. Start a new chat after readiness is verified.");
@@ -834,7 +846,7 @@ export async function startAgentRun(
   const beforeSubmit = async () => {
     await assertAgentRunPreflight(agentId, orgId, { connection: bound });
     const current = await loadAgentRunGate(agentId, orgId);
-    if (!current) throw new HermesError("not_found", "The AI employee is not part of this workspace.");
+    if (!current) throw new HermesError("not_found", "The AI profile is unavailable in this workspace.");
     const currentDigest = assertAgentRunnable(current);
     if (current.active_config_version_id !== gate.active_config_version_id
         || (expectedConfigProvided && current.active_config_version_id !== requirements.expectedConfigVersionId)) {

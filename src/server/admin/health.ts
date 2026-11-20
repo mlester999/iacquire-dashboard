@@ -1,6 +1,9 @@
 import "server-only";
 import { pendingMigrations, pingDb, withSystem, type Queryable } from "@/server/db";
 import { env } from "@/server/env";
+import { AppError } from "@/server/errors";
+import { contentSessionScope } from "@/server/admin/client-content-policy";
+import type { SessionUser } from "@/server/auth/service";
 import { getN8nStatus, type N8nStatus } from "@/server/integrations/n8n";
 import { helpAiAvailable } from "@/server/help/service";
 import { relativeTime } from "@/lib/utils";
@@ -11,15 +14,52 @@ export interface SystemHealth {
   database: { ok: boolean; latencyMs: number; driver: string; pendingMigrations: string[] };
   hermes: { total: number; online: number; setupRequired: number; offline: number; error: number; lastCheckAt: string | null };
   ghl: { mapped: number; connected: number; errors: number; writesEnabled: boolean };
+  outbound: OutboundHealth;
   n8n: N8nStatus;
   email: { provider: string; queued: number; failed24h: number };
   slack: { configured: boolean };
   helpAi: { configured: boolean };
-  recentErrors: Array<{ at: string; source: string; detail: string; org: string | null }>;
+  /** Whose clients the run counts, agent counts and diagnostic list cover: every client (Super Admin) or only the viewer's assigned clients. */
+  scope: "all_clients" | "assigned_clients";
+  /** `detail` is the client's own text only when the viewer may read it; otherwise a short code and `detailWithheld` is true. `org` (the client's name) is set for a Super Admin only. */
+  recentErrors: Array<{ at: string; source: string; detail: string; detailWithheld: boolean; org: string | null }>;
   runs24h: { total: number; failed: number; cancelled: number; tokens: number };
   pendingProvisioning: number;
   provisioning: ProvisioningHealth;
   crm: CrmDeliveryHealth;
+}
+
+export interface OutboundHealth {
+  messagingEnabled: boolean;
+  writes: Array<{ name: string; on: boolean }>;
+}
+
+export function outboundPresentation(outbound: OutboundHealth): {
+  state: "configured" | "switched_off";
+  detail: string;
+  note: string;
+} {
+  return {
+    state: outbound.messagingEnabled ? "configured" : "switched_off",
+    detail: `Provider write switches: ${outbound.writes.map((write) => `${write.name}: ${write.on ? "on" : "off"}`).join(" · ")}.`,
+    note: outbound.messagingEnabled
+      ? "Provider write switches also apply; configuration does not verify delivery."
+      : "The master switch is off, so no prospect or customer outreach can be sent.",
+  };
+}
+
+/** Only switch names, booleans and the non-secret email provider choice are exposed to the health page. */
+export function outboundHealth(config: ReturnType<typeof env> = env()): OutboundHealth {
+  return {
+    messagingEnabled: config.OUTBOUND_MESSAGING_ENABLED,
+    writes: [
+      { name: "GHL_WRITES_ENABLED", on: config.GHL_WRITES_ENABLED },
+      { name: "RESEND_WRITES_ENABLED", on: config.RESEND_WRITES_ENABLED },
+      { name: "TWILIO_WRITES_ENABLED", on: config.TWILIO_WRITES_ENABLED },
+      { name: "META_WHATSAPP_WRITES_ENABLED", on: config.META_WHATSAPP_WRITES_ENABLED },
+      { name: `EMAIL_PROVIDER=${config.EMAIL_PROVIDER}`, on: config.EMAIL_PROVIDER === "resend" },
+    ],
+  };
 }
 
 /**
@@ -131,41 +171,82 @@ export async function crmDeliveryHealth(q: Queryable, now: Date = new Date()): P
   };
 }
 
-export async function getSystemHealth(): Promise<SystemHealth> {
+/** Who is asking. Only the id and platform role are used, and the role is re-read from the database, so a stale or forged session value cannot widen what is returned. */
+export type HealthViewer = Pick<SessionUser, "id" | "platformRole">;
+
+/** A short class or code is safe to show to anyone who may see the failure exists; anything else is free text and is replaced by the fallback. */
+const SAFE_CODE = /^[A-Za-z0-9_.:-]{1,60}$/;
+const codeOrFallback = (value: string | null | undefined, fallback: string) => (value && SAFE_CODE.test(value) ? value : fallback);
+
+interface RawError { at: Date | null; source: string; org_id: string | null; org_name: string | null; text: string | null; code: string | null }
+
+/**
+ * The platform health report for one agency person.
+ *  - A Super Admin sees every client. Any other agency role sees only the clients assigned to them (app.user_can_access_org) in the agent counts, the 24-hour run counts and the
+ *    diagnostic list, plus platform-level rows (no client) by their code only.
+ *  - A client's free text (run error message, approval execution detail, integration detail) is shown only when the person may read that client's content right now
+ *    (the D70 switch: always true while it is off). Otherwise only the short code is returned.
+ *  - Client names are returned to a Super Admin only.
+ * Counts that are not tied to one client (email outbox, CRM delivery, provisioning) stay platform-wide and carry no client names or text.
+ */
+export async function getSystemHealth(viewer: HealthViewer): Promise<SystemHealth> {
+  if (!viewer || viewer.platformRole === "none") throw new AppError("forbidden", "Agency access is required.");
   const e = env();
   const [db, n8n] = await Promise.all([pingDb(), getN8nStatus()]);
   const pending = db.ok ? await pendingMigrations().catch(() => ["unknown"]) : ["unknown"];
   const data = db.ok
     ? await withSystem(async (q) => {
+        const me = (await q.query<{ role: string; active: boolean }>("select platform_role as role, (status = 'active') as active from users where id = $1", [viewer.id])).rows[0];
+        if (!me?.active || !["agency_staff", "agency_manager", "agency_super_admin"].includes(me.role)) throw new AppError("forbidden", "Agency access is required.");
+        const isSuper = me.role === "agency_super_admin";
+        const scope = await contentSessionScope(q, viewer.id);
         const agents = await q.query<{ status: string; n: number; last: Date | null }>(
-          "select a.status, count(*)::int as n, max(a.last_health_check_at) as last from agent_instances a join organizations o on o.id = a.org_id where a.enabled and o.status <> 'archived' group by a.status",
+          `select a.status, count(*)::int as n, max(a.last_health_check_at) as last from agent_instances a join organizations o on o.id = a.org_id
+            where a.enabled and o.status <> 'archived' and ($1::boolean or app.user_can_access_org($2, a.org_id)) group by a.status`,
+          [isSuper, viewer.id],
         );
-        const ghl = await q.query<{ status: string; n: number }>("select status, count(*)::int as n from ghl_location_mappings group by status");
+        const ghl = await q.query<{ status: string; n: number }>(
+          "select g.status, count(*)::int as n from ghl_location_mappings g where $1::boolean or app.user_can_access_org($2, g.org_id) group by g.status",
+          [isSuper, viewer.id],
+        );
         const email = await q.query<{ queued: number; failed: number }>(
           "select count(*) filter (where status = 'queued')::int as queued, count(*) filter (where status = 'failed' and created_at > now() - interval '1 day')::int as failed from email_outbox",
         );
         const runs = await q.query<{ total: number; failed: number; cancelled: number; tokens: number }>(
           `select count(*)::int as total, count(*) filter (where status in ('failed', 'timeout', 'interrupted'))::int as failed,
                   count(*) filter (where status = 'cancelled')::int as cancelled, coalesce(sum(total_tokens), 0)::int as tokens
-           from agent_runs where started_at > now() - interval '1 day'`,
+           from agent_runs where started_at > now() - interval '1 day' and ($1::boolean or app.user_can_access_org($2, org_id))`,
+          [isSuper, viewer.id],
         );
-        const errors = await q.query<{ at: Date; source: string; detail: string; org: string | null }>(
-          `(select r.finished_at as at, 'agent_run' as source, coalesce(r.error_message, r.error_code, 'failed') as detail, o.name as org
+        const errors = await q.query<RawError>(
+          `(select r.finished_at as at, 'agent_run' as source, r.org_id, o.name as org_name, r.error_message as text, coalesce(r.error_code, r.status) as code
             from agent_runs r join organizations o on o.id = r.org_id
-            where r.status in ('failed', 'timeout', 'interrupted') and r.finished_at > now() - interval '7 days')
+            where r.status in ('failed', 'timeout', 'interrupted') and r.finished_at > now() - interval '7 days' and ($1::boolean or app.user_can_access_org($2, r.org_id)))
            union all
-           (select a.updated_at, 'approval_execution', coalesce(a.execution_detail, 'failed'), o.name
+           (select a.updated_at, 'approval_execution', a.org_id, o.name, a.execution_detail, 'execution_' || a.execution_status
             from approval_requests a join organizations o on o.id = a.org_id
-            where a.execution_status = 'failed' and a.updated_at > now() - interval '7 days')
+            where a.execution_status = 'failed' and a.updated_at > now() - interval '7 days' and ($1::boolean or app.user_can_access_org($2, a.org_id)))
            union all
-           (select s.last_checked_at, 'integration:' || s.provider, coalesce(s.detail, s.status), o.name
+           (select s.last_checked_at, 'integration:' || s.provider, s.org_id, o.name, s.detail, s.status
             from integration_status s left join organizations o on o.id = s.org_id
-            where s.status = 'error' and s.last_checked_at > now() - interval '7 days')
+            where s.status = 'error' and s.last_checked_at > now() - interval '7 days' and ($1::boolean or s.org_id is null or app.user_can_access_org($2, s.org_id)))
            order by at desc nulls last limit 15`,
+          [isSuper, viewer.id],
         );
         const provisioning = await provisioningHealth(q);
         const crm = await crmDeliveryHealth(q);
-        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: errors.rows, provisioning, crm };
+        const recentErrors = errors.rows.map((r) => {
+          // Platform-level rows (no client) carry no tenant text: a Super Admin may read theirs, everyone else sees the code.
+          const mayReadText = r.org_id ? scope.permits(r.org_id) : isSuper;
+          return {
+            at: r.at ? new Date(r.at).toISOString() : "",
+            source: r.source,
+            detail: mayReadText && r.text ? r.text : codeOrFallback(r.code, "failed"),
+            detailWithheld: Boolean(r.text) && !mayReadText,
+            org: isSuper ? r.org_name : null,
+          };
+        });
+        return { agents: agents.rows, ghl: ghl.rows, email: email.rows[0], runs: runs.rows[0], errors: recentErrors, provisioning, crm, isSuper };
       })
     : null;
 
@@ -188,11 +269,13 @@ export async function getSystemHealth(): Promise<SystemHealth> {
       errors: data?.ghl.find((g) => g.status === "error")?.n ?? 0,
       writesEnabled: e.GHL_WRITES_ENABLED,
     },
+    outbound: outboundHealth(e),
     n8n,
     email: { provider: e.EMAIL_PROVIDER, queued: data?.email.queued ?? 0, failed24h: data?.email.failed ?? 0 },
     slack: { configured: Boolean(e.SLACK_SUPPORT_WEBHOOK_URL) },
     helpAi: { configured: await helpAiAvailable() },
-    recentErrors: (data?.errors ?? []).map((r) => ({ at: r.at ? new Date(r.at).toISOString() : "", source: r.source, detail: r.detail, org: r.org })),
+    scope: (data ? data.isSuper : viewer.platformRole === "agency_super_admin") ? "all_clients" : "assigned_clients",
+    recentErrors: data?.errors ?? [],
     runs24h: data?.runs ?? { total: 0, failed: 0, cancelled: 0, tokens: 0 },
     pendingProvisioning: data?.provisioning.open ?? 0,
     provisioning: data?.provisioning ?? EMPTY_PROVISIONING_HEALTH,

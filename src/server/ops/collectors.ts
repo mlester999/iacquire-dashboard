@@ -202,7 +202,7 @@ async function domains(db: Queryable, now: Date): Promise<Observation[]> {
   return out;
 }
 
-const PROVIDER_LABEL: Record<string, string> = { ghl: "GoHighLevel", hermes: "AI employee service", n8n: "n8n automation", google_calendar: "Google Calendar", email: "Email", domain: "Domain", supabase: "Supabase", external: "External service" };
+const PROVIDER_LABEL: Record<string, string> = { ghl: "GoHighLevel", hermes: "AI runtime", n8n: "n8n automation", google_calendar: "Google Calendar", email: "Email", domain: "Domain", supabase: "Supabase", external: "External service" };
 
 async function integrations(db: Queryable): Promise<Observation[]> {
   const { rows } = await db.query<{ id: string; org_id: string | null; provider: string; status: string; last_error: string | null; name: string | null }>(

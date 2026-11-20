@@ -142,7 +142,16 @@ describe("a typed chat contact that staff merged into a customer", () => {
 
 describe("the other automated paths", () => {
   const outreach = (contactId: string, over: Partial<OutreachRequest>): OutreachRequest => ({
-    orgId: c.m.org.id, contactId, agentId: c.m.salesAgentId, scope: "followup", body: "A short message.", subject: "Hello", approvalId: null, dedupeKey: `reg-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, ...over,
+    orgId: c.m.org.id, contactId, agentId: c.m.salesAgentId, scope: "followup", purpose: "service", body: "A short message.", subject: "Hello", approvalId: null, dedupeKey: `reg-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, ...over,
+  });
+
+  it("requires an explicit purpose before it creates a conversation for automated outreach", async () => {
+    const lead = await typedLead(c);
+    const before = (await rows<{ n: number }>("select count(*)::int as n from conversations where org_id = $1 and contact_id = $2", [c.m.org.id, lead.contactId]))[0].n;
+    const incomplete = { ...outreach(lead.contactId, {}), purpose: undefined } as unknown as OutreachRequest;
+
+    expect(await withSystem((db) => queueOutreach(db, incomplete))).toMatchObject({ status: "blocked", reason: "purpose_required" });
+    expect((await rows<{ n: number }>("select count(*)::int as n from conversations where org_id = $1 and contact_id = $2", [c.m.org.id, lead.contactId]))[0].n).toBe(before);
   });
 
   it("refuses an appointment reminder, a retention program message, a follow-up and a promotional campaign, each with the real reason, and queues nothing", async () => {
@@ -194,7 +203,7 @@ describe("when the real owner of the number writes in", () => {
   it("lets service messages through from then on, but never the promotional tick the visitor made", async () => {
     const lead = await typedLead(c, { email: null, marketing: true });
     await channelConversation(c, lead.contactId, "sms");
-    const decide =(req: Partial<OutreachRequest>) => withSystem((db) => queueOutreach(db, { orgId: c.m.org.id, contactId: lead.contactId, agentId: c.m.salesAgentId, scope: "followup", body: "Checking in.", subject: "Hi", approvalId: null, dedupeKey: `own-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, channel: "sms", ...req }));
+    const decide =(req: Partial<OutreachRequest>) => withSystem((db) => queueOutreach(db, { orgId: c.m.org.id, contactId: lead.contactId, agentId: c.m.salesAgentId, scope: "followup", purpose: "service", body: "Checking in.", subject: "Hi", approvalId: null, dedupeKey: `own-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, channel: "sms", ...req }));
     expect(await decide({})).toMatchObject({ status: "blocked", reason: "identity_unverified" });
     // The number's real owner texts the business (the carrier proves where it came from).
     await inbound(c.m.org.id, { provider: "twilio", channel: "sms", address: lead.phone!, ghlContactId: null, body: "Hello, is this the roofing company?" });
@@ -206,7 +215,7 @@ describe("when the real owner of the number writes in", () => {
 
   it("keeps the person's own confirmation as the only other way in, and it unlocks service messages only", async () => {
     const lead = await typedLead(c, { email: null, marketing: true });
-    const decide = (req: Partial<OutreachRequest>) => withSystem((db) => queueOutreach(db, { orgId: c.m.org.id, contactId: lead.contactId, agentId: c.m.salesAgentId, scope: "followup", body: "Checking in.", subject: "Hi", approvalId: null, dedupeKey: `conf-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, channel: "sms", ...req }));
+    const decide = (req: Partial<OutreachRequest>) => withSystem((db) => queueOutreach(db, { orgId: c.m.org.id, contactId: lead.contactId, agentId: c.m.salesAgentId, scope: "followup", purpose: "service", body: "Checking in.", subject: "Hi", approvalId: null, dedupeKey: `conf-${Math.random().toString(36).slice(2)}`, now: NOW, businessHoursOnly: false, channel: "sms", ...req }));
     expect(await decide({})).toMatchObject({ status: "blocked", reason: "identity_unverified" });
     await confirmContactIdentity(c.m.ctx("owner"), { identityId: (await identityOf(c.m.org.id, "phone", lead.phone!)).id, how: "Called the number and spoke to Dana." });
     expect(await decide({})).toMatchObject({ status: "queued" });

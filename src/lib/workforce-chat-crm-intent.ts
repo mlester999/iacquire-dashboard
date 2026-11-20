@@ -4,11 +4,14 @@ export type WorkforceChatCrmIntent =
   | { kind: "none" }
   | { kind: "clarification"; message: string }
   | { kind: "create_contact"; displayName: string; email: string | null; phone: string | null }
+  | { kind: "import_approved_lead" }
   | { kind: "create_opportunity"; name: string; contactName: string; value: number | null }
   | { kind: "move_opportunity"; name: string; contactName: string; stageName: string; lostReason: string | null };
 
 const NONE: WorkforceChatCrmIntent = { kind: "none" };
-const PRONOUN_NAME = /^(?:this|that|the|a|an)\s+(?:contact|customer|client|prospect|lead)$/i;
+const PRONOUN_NAME = /^(?:this|that|the|a|an)\s+(?:(?:[a-z][a-z'-]*)\s+){0,3}(?:contact|customer|client|prospect|lead)$/i;
+const APPROVED_LEAD_REFERENCE = /\b(?:this|that|the)\s+(?:(?:approved|qualified|reviewed|new|potential|target)\s+)+(?:prospect|lead|business)\b/i;
+const PRONOUN_CRM_REFERENCE = /\b(?:for|add|create|save)\s+(?:this|that|the)\s+(?:(?:[a-z][a-z'-]*)\s+){0,3}(?:contact|customer|client|prospect|lead)\b/i;
 const OPPORTUNITY_CREATE = /^(?:please\s+)?(?:create|add)\s+(?:(?:an?|new|crm)\s+)*(?:opportunity|deal)\b/i;
 const OPPORTUNITY_MOVE = /^(?:please\s+)?(?:move|change)\s+(?:(?:the|this|crm)\s+)*(?:opportunity|deal)\b/i;
 const OPPORTUNITY_HELP = "I can create one opportunity for a contact already in your CRM. Say “Create an opportunity called Roof Replacement for Jamie Lee”; include a value only when it is confirmed. No record was changed.";
@@ -72,8 +75,9 @@ export function parseWorkforceChatCrmIntent(role: WorkforceRoleKey, content: str
   if (role !== "growth_partner") return NONE;
   const text = content.replace(/\s+/g, " ").trim();
   if (OPPORTUNITY_MOVE.test(text)) return parseOpportunityMove(text);
-  if (!/^(?:please\s+)?(?:add|create|save)\b/i.test(text)) return NONE;
+  if (!/^(?:please\s+)?(?:add|create|save|import)\b/i.test(text)) return NONE;
   if (OPPORTUNITY_CREATE.test(text)) return parseOpportunity(text);
+  if (APPROVED_LEAD_REFERENCE.test(text)) return { kind: "import_approved_lead" };
 
   const explicitCrm = /\b(?:to|in)\s+(?:(?:our|the)\s+)?crm\b/i.test(text);
   const email = text.match(/\bemail(?:\s+address)?\s*(?:is\s+|:\s*)?([a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,})\b/i)?.[1] ?? null;
@@ -82,6 +86,12 @@ export function parseWorkforceChatCrmIntent(role: WorkforceRoleKey, content: str
   const explicitObject = /\b(?:contact|prospect|lead|customer|client)\b/i.test(text) || (explicitCrm && Boolean(email || phone));
   const explicitCreate = /^(?:please\s+)?(?:create|add)\s+(?:a\s+)?(?:new\s+)?(?:crm\s+)?(?:contact|prospect|lead|customer|client)\b/i.test(text);
   if (!explicitObject || (!explicitCrm && !explicitCreate)) return NONE;
+  if (PRONOUN_CRM_REFERENCE.test(text)) {
+    return {
+      kind: "clarification",
+      message: "I can add one person to the CRM. Please include their full name and an email address or phone number so I can check for duplicates first.",
+    };
+  }
 
   const labeledName = text.match(/\b(?:full\s+name|name)\s*(?:is\s+|:\s*)["“]?([^,;.!?]+?)["”]?(?=\s+(?:with\s+)?(?:email|phone)\b|$)/i)?.[1]?.trim();
   let candidate = (labeledName ?? text)

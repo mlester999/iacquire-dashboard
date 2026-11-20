@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AGENT_ROLE_KEYS, AGENCY_HERMES_PROFILE_IDS } from "@/lib/agents";
 import { permissionsFor, roleHasPermission } from "@/lib/permissions";
 import { withServiceRole, withSystem } from "@/server/db";
-import { listAgencyAgents, listAllAgents } from "@/server/admin/queries";
+import { getTenantDetail, listAgencyAgents, listAllAgents } from "@/server/admin/queries";
 import { updateAgencyUserPermission } from "@/server/admin/team";
 import {
   connectAgencyHermesProfile,
@@ -153,6 +153,9 @@ describe("agency Hermes workforce isolation", () => {
       [clientOrg.id],
     ));
     expect(clientRows[0].count).toBe(AGENT_ROLE_KEYS.length);
+    const legacyClient = await getTenantDetail(admin, clientOrg.id);
+    expect(legacyClient.agents.map((agent) => agent.role_key).sort()).toEqual([...AGENT_ROLE_KEYS].sort());
+    expect(legacyClient.growthPartner).toBeNull();
 
     salesAgentId = (await withSystem((db) => db.query<{ id: string }>(
       "select id from agent_instances where org_id=$1 and role_key='sales_assistant'",

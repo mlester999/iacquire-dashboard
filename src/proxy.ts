@@ -17,6 +17,7 @@ import { routeRequest, siteContentSecurityPolicy, type DeploymentRole, type Site
  */
 const PUBLIC = [
   /^\/login/,
+  /^\/product\/?$/,
   /^\/forgot-password/,
   /^\/reset-password/,
   /^\/verify-email/,

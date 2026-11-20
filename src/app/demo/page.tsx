@@ -10,7 +10,8 @@ import { parseFieldWords, startNotice } from "@/lib/demo/outcomes";
 import { cleanUtm } from "@/lib/demo/rules";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Ask for a demo" };
+const description = "Walk through how one AI Growth Partner reviews a prospect, adds an approved lead to the CRM, and prepares a follow-up using sample data.";
+export const metadata: Metadata = { title: "AI Growth Partner demo", description, openGraph: { title: "iAcquireOS guided demo", description } };
 
 const one = (v: string | string[] | undefined): string | undefined => (typeof v === "string" ? v : undefined);
 

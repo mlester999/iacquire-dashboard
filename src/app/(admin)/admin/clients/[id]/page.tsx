@@ -40,7 +40,12 @@ export default async function ClientDetailPage({ params, searchParams }: { param
       orgId: id,
       flags: { provisioner: config.HERMES_PROVISIONER_ENABLED, deprovision: config.HERMES_PROVISIONER_DEPROVISION_ENABLED, clientTools: config.HERMES_CLIENT_BUSINESS_MCP_ENABLED },
       tiers: { tools: on("client_business_tools"), proposals: on("client_business_proposals") },
-      profiles: data.agents.map((agent) => ({ id: agent.id, name: workforceIdentityLabel(agent.role_key, agent.display_name), enabled: agent.enabled, hasProfile: Boolean(agent.hermes_profile) })),
+      profiles: [
+        ...data.agents.map((agent) => ({ id: agent.id, name: workforceIdentityLabel(agent.role_key, agent.display_name), enabled: agent.enabled, hasProfile: Boolean(agent.hermes_profile) })),
+        ...(data.growthPartner?.runtime_agent_instance_id
+          ? [{ id: data.growthPartner.runtime_agent_instance_id, name: "AI Growth Partner", enabled: data.growthPartner.enabled === true, hasProfile: Boolean(data.growthPartner.hermes_profile) }]
+          : []),
+      ],
     };
   }
   return (

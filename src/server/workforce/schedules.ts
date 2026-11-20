@@ -5,7 +5,7 @@ import { recordAudit } from "@/server/audit";
 import { AI_GROWTH_PARTNER_ROLE_KEY, canChat, isWorkforceRoleKey, type WorkforceRoleKey, type AgentStatus } from "@/lib/agents";
 import { capabilityDefinition } from "@/lib/workforce-capabilities";
 import { jobBlockCode, jobGate } from "@/server/automation/job-gate";
-import { appendWorkEvent, createWorkJob, type WorkJobStatus } from "@/server/workforce/jobs";
+import { appendWorkEvent, createWorkJob, staleQueuedJobs, STALE_QUEUED_MS, type WorkJobStatus } from "@/server/workforce/jobs";
 import { kickWorkJob } from "@/server/workforce/work-kick";
 import { createScheduledResearchJob } from "@/server/leads/scheduled-research";
 import { parseResearchAssignment } from "@/lib/research-intent";
@@ -26,7 +26,8 @@ import type { OrgContext } from "@/server/tenancy/context";
  *   3. the employee is enabled, configured and available;
  *   4. the capability is still in the reviewed, read-only allowlist.
  *
- * The tick never runs provider work itself. It creates a job and wakes the worker/recovery path.
+ * The schedule job creates durable work and wakes it for an earlier run; the scheduler's queued
+ * runner is the durable execution path when the in-process kick does not complete.
  */
 
 export const SCHEDULE_CADENCES = ["hourly", "daily", "weekly"] as const;
@@ -87,10 +88,10 @@ async function resolveAgent(ctx: OrgContext, role: WorkforceRoleKey, transaction
     return rows[0] ?? null;
   };
   const agent = transaction ? await read(transaction) : await withSystem(read);
-  if (!agent) throw new AppError("not_found", "AI employee not found.");
-  if (!agent.enabled) throw new AppError("agent_unavailable", "This AI employee is paused.");
-  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "This AI employee has no applied configuration yet.");
-  if (!canChat(agent.status)) throw new AppError("agent_unavailable", "This AI employee is not available for scheduled work yet.");
+  if (!agent) throw new AppError("not_found", "AI runtime not found.");
+  if (!agent.enabled) throw new AppError("agent_unavailable", "The AI runtime is paused.");
+  if (!agent.active_config_version_id) throw new AppError("agent_unavailable", "The AI runtime needs an applied configuration.");
+  if (!canChat(agent.status)) throw new AppError("agent_unavailable", "The AI runtime is unavailable for scheduled work yet.");
   return agent;
 }
 
@@ -488,7 +489,12 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
       let previousActive = false;
       if (schedule.last_job_id) {
         const previous = await db.query<{ status: WorkJobStatus }>("select status from ai_work_jobs where id = $1 and org_id = $2", [schedule.last_job_id, schedule.org_id]);
-        previousActive = previous.rows[0] ? ACTIVE.includes(previous.rows[0].status) : false;
+        const stalePrevious = previous.rows[0]?.status === "queued"
+          ? await staleQueuedJobs(db, STALE_QUEUED_MS, [schedule.last_job_id])
+          : [];
+        previousActive = previous.rows[0]
+          ? ACTIVE.includes(previous.rows[0].status) && !stalePrevious.includes(schedule.last_job_id)
+          : false;
       }
       const runnable = Boolean(
         definition
@@ -577,7 +583,7 @@ export async function runDueSchedules(options: { now?: Date; limit?: number } = 
         jobId: job.id,
         orgId: schedule.org_id,
         kind: "notice",
-        message: "Created by an enabled AI workforce schedule.",
+        message: "Created by an enabled AI Work Board schedule.",
         data: { scheduleId: schedule.id, scheduledAt: scheduledAt.toISOString() },
       });
       jobIds.push(job.id);

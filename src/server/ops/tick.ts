@@ -57,7 +57,8 @@ import { purgeExpiredBriefings, runDueBriefings } from "@/server/aqi/ops/briefin
 import { purgeExpiredOpsConversations } from "@/server/aqi/ops/conversations";
 import { autoCloseResolvedRequests, runAttachmentCleanup, runResponseTargetCheck, runSupportEmails } from "@/server/support/jobs";
 import { PROJECT_REVIEW_OVERDUE_BUDGET_MS, runProjectReviewOverdue } from "@/server/projects/jobs";
-import { recoverExpiredWorkJobs } from "@/server/workforce/jobs";
+import { recoverExpiredWorkJobs, staleQueuedJobs, STALE_QUEUED_MS } from "@/server/workforce/jobs";
+import { runQueuedWorkWithinBudget } from "@/server/workforce/work-runner";
 import { runDueSchedules } from "@/server/workforce/schedules";
 import { runDueTriggers } from "@/server/workforce/triggers";
 import { releaseHeldProactiveReports, runProactiveBriefings } from "@/server/workforce/reports";
@@ -254,16 +255,20 @@ export const JOBS: ScheduledJob[] = [
   // Investigation history and stored briefings older than 180 days are removed, 100 of each at a time. Confirmed actions stay in
   // aqi_ops_actions and the audit log.
   { name: "aqiOperationsRetention", run: async () => (await purgeExpiredOpsConversations()) + (await purgeExpiredBriefings()) },
-  // AI work recovery is a fast, idempotent sweep: a job whose worker lease expired is re-queued
-  // (while attempts remain) or failed honestly. It never executes provider work inside the tick;
-  // the dedicated workforce worker (scripts/workforce-worker.ts) runs queued jobs.
-  { name: "aiWorkRecovery", everyMinutes: 5, run: async () => { const r = await recoverExpiredWorkJobs(); return r.retried + r.failed + r.cancelled; } },
+  // AI work recovery settles expired leases and cancellations, and visibly cancels never-claimed
+  // queue entries older than 30 minutes. The immediately following runner handles queued work.
+  { name: "aiWorkRecovery", everyMinutes: 5, run: async () => {
+    const r = await recoverExpiredWorkJobs();
+    const stale = await withSystem((db) => staleQueuedJobs(db, STALE_QUEUED_MS));
+    return r.retried + r.failed + r.cancelled + stale.length;
+  } },
+  { name: "aiWorkRunQueued", run: runQueuedWorkWithinBudget },
   // Enabled workforce schedules create durable jobs only when the operator sets
   // WORKFORCE_SCHEDULES_ENABLED=true. The row switch and this global switch are both required;
-  // the tick still never executes provider work itself.
+  // the schedule job only creates work; the queue runner is registered immediately after recovery.
   { name: "aiWorkSchedules", run: async () => (await runDueSchedules()).created },
   // Event triggers create durable jobs only when WORKFORCE_TRIGGERS_ENABLED=true. The trigger row
-  // must also be enabled; both are required and neither runs provider work inside the tick.
+  // must also be enabled; this job creates work, while the separate queue runner starts eligible jobs.
   { name: "aiWorkTriggers", run: async () => (await runDueTriggers()).created },
   // A non-critical proactive report that arrived during quiet hours is released after they end.
   // This only delivers an existing, already-verified report; it never creates work.

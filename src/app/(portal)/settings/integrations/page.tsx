@@ -1,17 +1,29 @@
 import Link from "next/link";
-import { ArrowRight, Bot, Calendar, CheckCircle2, Clock, Database, Info, MapPin, MessageSquare, Plug, ShieldCheck, TriangleAlert, Workflow, type LucideIcon } from "lucide-react";
+import { cookies } from "next/headers";
+import type { ReactNode } from "react";
+import { ArrowRight, Bot, Calendar, CheckCircle2, Clock, Database, MapPin, MessageSquare, Plug, ShieldCheck, TriangleAlert, Workflow, type LucideIcon } from "lucide-react";
 import { requireOrgContext } from "@/server/tenancy/context";
 import { withUser } from "@/server/db";
+import { isInternalAgencyCrmMember, memberActor } from "@/server/crm/actor";
+import { calendarConnectionSettings, listMyConnections } from "@/server/calendars/connections";
+import { getSlackWebhookSummary } from "@/server/automation-studio/connections";
+import { outboundMessagingDisabled } from "@/server/messaging/outbound-policy";
 import { Card } from "@/components/ui/primitives";
 import { RequestConnection } from "@/components/settings/request-connection";
 import { AccentStrip, IconTile, Notice } from "@/components/settings/panel";
 import { InfoChip, StatusPill, type StatusTone } from "@/components/ui/status";
 import { relativeTime, sentenceCase } from "@/lib/utils";
 import { MetricCard, SectionLabel } from "@/components/ui/workspace";
-import { buildClientCrmCards, type ClientCardStatus } from "@/lib/integrations/client-tools";
+import { buildClientCrmCards, buildOAuthCalendarCard, buildSlackWebhookCard, type ClientCardStatus } from "@/lib/integrations/client-tools";
 import type { CapabilityProvider, CrmMode } from "@/lib/crm/types";
 import { runtimeReadySql } from "@/lib/employee-runtime";
 import { growthPartnerRuntimeSummary } from "@/lib/integrations/growth-partner-runtime-summary";
+import { WorkspaceOAuthControls } from "@/components/settings/workspace-oauth-controls";
+import { WorkspaceKnowledgeControls } from "@/components/settings/workspace-knowledge-controls";
+import { listWorkspaceKnowledge } from "@/server/integrations/workspace-knowledge";
+import { WORKSPACE_OAUTH_LABEL, WORKSPACE_OAUTH_NOTICE, WORKSPACE_OAUTH_PROVIDERS } from "@/lib/integrations/workspace-oauth";
+import { readWorkspaceOAuthNotice } from "@/server/integrations/workspace-oauth-notice";
+import { canManageWorkspaceOAuth, listWorkspaceOAuthConnections } from "@/server/integrations/workspace-oauth";
 
 export const metadata = { title: "Integrations" };
 
@@ -30,6 +42,8 @@ interface Row {
   statusLabel?: string;
   check?: string;
   link?: { href: string; label: string };
+  hideConnectionRequest?: boolean;
+  controls?: ReactNode;
 }
 
 export default async function IntegrationsPage() {
@@ -109,12 +123,77 @@ export default async function IntegrationsPage() {
     : [];
   const crmIcons: Record<string, LucideIcon> = { native_crm: Database, ghl_crm: Database, native_calendar: Calendar, ghl_calendar: Calendar };
 
+  const canReadOwnCalendarConnections = canSeeCrm && ctx.can("appointments.view") && owner("calendars") === "native"
+    && (ctx.org.kind === "client" || isInternalAgencyCrmMember(ctx));
+  const canSeeStudio = ctx.org.kind === "client" && ctx.can("workflows.view");
+  const canManageWorkspaceConnections = canManageWorkspaceOAuth(ctx);
+  const [calendarConnections, slackCard, workspaceConnections, workspaceKnowledge, cookieJar] = await Promise.all([
+    canReadOwnCalendarConnections ? listMyConnections(memberActor(ctx)) : Promise.resolve([]),
+    canSeeStudio
+      ? getSlackWebhookSummary(memberActor(ctx))
+          .then(({ entitled, connections }) => buildSlackWebhookCard(entitled, connections))
+          .catch(() => buildSlackWebhookCard(null, []))
+      : Promise.resolve(null),
+    listWorkspaceOAuthConnections(ctx).catch(() => null),
+    listWorkspaceKnowledge(ctx).catch(() => null),
+    cookies(),
+  ]);
+  const workspaceNotice = readWorkspaceOAuthNotice(ctx, cookieJar.get(WORKSPACE_OAUTH_NOTICE)?.value);
+  const workspaceRows: Row[] = WORKSPACE_OAUTH_PROVIDERS.map((provider) => {
+    const connection = workspaceConnections?.find((row) => row.provider === provider);
+    const status = connection?.configured ? connection.status : "disconnected";
+    const statusLabel = !workspaceConnections ? "Status unavailable"
+      : !connection ? "Unavailable"
+        : !connection.configured ? "Requires setup"
+          : { connected: "Connected", disconnected: "Available", needs_check: "Check needed", needs_reauth: "Needs authorization", error: "Check failed" }[status];
+    return {
+      key: provider, name: WORKSPACE_OAUTH_LABEL[provider], icon: Plug,
+      body: provider === "notion"
+        ? "Connect Notion to import shared pages or database text for review."
+        : "Connect Airtable to import selected fields from a shared base and table for review.",
+      status: {
+        provider,
+        status: status === "needs_check" || status === "needs_reauth" ? "degraded" : status,
+        detail: null,
+        last_checked_at: connection?.lastVerifiedAt ?? null,
+      },
+      fact: status === "connected" && provider === "airtable" && connection?.hasSharedResources === false ? "No bases shared" : undefined,
+      statusLabel,
+      check: status === "connected" ? "Authorization verified" : !connection || !connection.configured ? "Managed by iAcquire"
+        : "Workspace owners and admins manage access",
+      controls: canManageWorkspaceConnections && connection ? (
+        <>
+          <WorkspaceOAuthControls orgId={ctx.org.orgId} connection={connection} />
+          {ctx.can("knowledge.view") && ctx.can("knowledge.edit") && workspaceKnowledge && (
+            <WorkspaceKnowledgeControls key={ctx.org.orgId + provider + (connection.status === "disconnected" ? "-disconnected" : "")}
+              orgId={ctx.org.orgId} connection={connection} saved={workspaceKnowledge.find((source) => source.provider === provider)} />
+          )}
+        </>
+      ) : undefined,
+      hideConnectionRequest: true,
+    };
+  });
+  const calendarRows: Row[] = [];
+  if (canReadOwnCalendarConnections) {
+    const settings = calendarConnectionSettings();
+    for (const provider of settings.providers) {
+      if (provider.key === "google" || provider.key === "microsoft") {
+        calendarRows.push({
+          ...buildOAuthCalendarCard({ ...provider, key: provider.key }, calendarConnections, ctx.can("calendars.connect"), settings.syncPaused),
+          icon: Calendar,
+        });
+      }
+    }
+  }
+
   const enabledChannels = counts?.enabled_channels ?? 0;
   const testedChannels = counts?.tested_channels ?? 0;
+  const outboundPaused = Boolean(outboundMessagingDisabled());
   const activeWorkflows = counts?.active_workflows ?? 0;
   const runtimeSummary = growthPartnerRuntimeSummary(growthPartnerRuntime?.online ?? 0, growthPartnerRuntime?.total ?? 0);
   const rows: Row[] = [
     ...crmCards.map((card) => ({ ...card, icon: crmIcons[card.key] ?? Database })),
+    ...calendarRows,
     {
       key: "hermes",
       icon: Bot,
@@ -126,12 +205,14 @@ export default async function IntegrationsPage() {
       key: "messaging",
       icon: MessageSquare,
       name: "Customer messaging",
-      body: enabledChannels
-        ? `${enabledChannels} channel${enabledChannels === 1 ? "" : "s"} on. Email, SMS and WhatsApp send through iAcquire with consent checks and delivery tracking.`
-        : "No messaging channel is on yet. Turn one on when you're ready; your AI Growth Partner prepares drafts for approval until then.",
+      body: outboundPaused
+        ? "Outbound customer messaging is paused. Your AI Growth Partner can prepare drafts for review."
+        : enabledChannels
+          ? `${enabledChannels} channel${enabledChannels === 1 ? "" : "s"} enabled in this workspace. Delivery also depends on provider readiness and consent.`
+          : "No messaging channel is enabled. Your AI Growth Partner can prepare drafts for review.",
       fact: testedChannels ? `${testedChannels} tested` : undefined,
-      status: enabledChannels ? { provider: "native_messaging", status: "configured", detail: null, last_checked_at: null } : undefined,
-      statusLabel: enabledChannels ? "Configured" : "Not enabled",
+      status: outboundPaused || enabledChannels ? { provider: "native_messaging", status: outboundPaused ? "degraded" : "configured", detail: null, last_checked_at: null } : undefined,
+      statusLabel: outboundPaused ? "Sending paused" : enabledChannels ? "Configured" : "Not enabled",
       check: enabledChannels ? "Built into iAcquire" : "Managed by iAcquire",
     },
     {
@@ -145,6 +226,8 @@ export default async function IntegrationsPage() {
       statusLabel: activeWorkflows ? "Active" : "Not active",
       check: "Built into iAcquire",
     },
+    ...(slackCard ? [{ ...slackCard, icon: MessageSquare, hideConnectionRequest: true }] : []),
+    ...workspaceRows,
   ];
   // Built-in tools are not "verified connections"; only a recorded service check counts here.
   const connected = rows.filter((r) => r.status?.status === "connected" && r.check !== "Built into iAcquire").length;
@@ -158,6 +241,12 @@ export default async function IntegrationsPage() {
           No API keys to share or infrastructure to configure. Ask the team whenever a connection needs attention.
         </Notice>
       </section>
+      {workspaceNotice && <Notice tone={workspaceNotice.outcome === "denied" ? "neutral" : "warning"}
+        icon={<Plug />} title={workspaceNotice.outcome === "denied" ? "Authorization declined" : "Authorization incomplete"}>
+        {workspaceNotice.outcome === "denied"
+          ? `${WORKSPACE_OAUTH_LABEL[workspaceNotice.provider]} did not grant access. Check the provider's permission settings before trying again.`
+          : `Start again from this workspace to verify ${WORKSPACE_OAUTH_LABEL[workspaceNotice.provider]} authorization.`}
+      </Notice>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <MetricCard label="Verified connections" value={connected} detail="From the latest recorded service checks" tone="green" icon={<CheckCircle2 className="size-4" />} />
         <MetricCard label="AI Growth Partner runtime" value={runtimeSummary.value} detail={runtimeSummary.detail} tone="blue" icon={<Bot className="size-4" />} />
@@ -183,9 +272,10 @@ export default async function IntegrationsPage() {
                 {(r.fact || r.status?.last_checked_at) && (
                   <div className="flex flex-wrap gap-1.5">
                     {r.fact && <InfoChip icon={<MapPin aria-hidden />}>{r.key.startsWith("ghl") ? `Location: ${r.fact}` : r.fact}</InfoChip>}
-                    {r.status?.last_checked_at && <InfoChip icon={<Clock aria-hidden />}>Checked {relativeTime(r.status.last_checked_at)}</InfoChip>}
+                    {r.status?.last_checked_at && <InfoChip icon={<Clock aria-hidden />}>{r.key === "notion" || r.key === "airtable" ? "Verified" : "Checked"} {relativeTime(r.status.last_checked_at)}</InfoChip>}
                   </div>
                 )}
+                {r.controls}
               </div>
               <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-t border-line bg-surface-2/50 px-5 py-2.5">
                 {r.link ? (
@@ -195,7 +285,7 @@ export default async function IntegrationsPage() {
                 ) : (
                   <InfoChip className="min-w-0" icon={<ShieldCheck aria-hidden />}>{r.check ?? (s === "connected" ? "Service check passed" : "Managed by iAcquire")}</InfoChip>
                 )}
-                {s !== "connected" && ctx.can("support.use") && !r.link && r.check !== "Built into iAcquire" && <span data-aqi-target="settings.integrations.request"><RequestConnection what={r.name} /></span>}
+                {s !== "connected" && ctx.can("support.use") && !r.link && !r.hideConnectionRequest && r.check !== "Built into iAcquire" && <span data-aqi-target="settings.integrations.request"><RequestConnection what={r.name} /></span>}
               </div>
             </Card>
           );
@@ -207,9 +297,6 @@ export default async function IntegrationsPage() {
           {ctx.can("support.use") && <span className="ml-1 inline-block"><RequestConnection what="GoHighLevel" /></span>}
         </Notice>
       )}
-      <Notice tone="neutral" icon={<Info />}>
-        Slack is optional and used by the iAcquire team internally. You don&apos;t need Slack to use the portal.
-      </Notice>
     </div>
   );
 }
